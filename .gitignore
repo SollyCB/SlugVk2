@@ -1,19 +1,8 @@
-# ignore all
-*
-
-#except
-!.gitignore
-!*.cpp
-!*.hpp
-!*.c
-!*.h
-!CMakeLists.txt
-!shaders/*.vert
-!shaders/*.frag
-!*.lib
-!*.dll
-
-# even subdirs
-!*/
-
 build/
+.cache/
+*~
+*.swp
+shaders/*.spv
+external/glfw-win64-bin/docs/
+!external/glfw-win64-bin/include/
+!external/glfw-win64-bin/lib-vc2022/
