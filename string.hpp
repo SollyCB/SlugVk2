@@ -1,0 +1,63 @@
+#ifndef SOL_STRING_HPP_INCLUDE_GUARD_
+#define SOL_STRING_HPP_INCLUDE_GUARD_
+
+#include "basic.h"
+#include "allocator.hpp"
+
+struct Heap_String_Buffer {
+    u32 len;
+    char *data;
+#if DEBUG
+    u32 cap;
+#endif
+};
+
+struct Temp_String_Buffer {
+    u32 len;
+    char *data;
+#if DEBUG
+    u32 cap;
+#endif
+};
+
+Heap_String_Buffer build_heap_string_buffer(u32 cstr_count, const char **list_of_cstrs);
+Temp_String_Buffer build_temp_string_buffer(u32 cstr_count, const char **list_of_cstrs);
+
+void init_heap_string_buffer(Heap_String_Buffer *string_buffer, u32 size);
+void init_temp_string_buffer(Temp_String_Buffer *string_buffer, u32 size);
+
+// Inlines
+inline void kill_heap_string_buffer(Heap_String_Buffer *string_buffer) {
+    memory_free_heap((void*)(string_buffer->data));
+}
+
+inline void copy_to_heap_string_buffer(Heap_String_Buffer *string_buffer, char *data,  u32 len) {
+#if DEBUG
+    ASSERT(string_buffer->len + len <= string_buffer->cap, "String Buffer Overflow");
+#endif
+
+    memcpy(string_buffer->data + string_buffer->len, data, len);
+    string_buffer->len += len;
+
+}
+inline void copy_to_temp_string_buffer(Temp_String_Buffer *string_buffer, char *data,  u32 len) {
+#if DEBUG
+    ASSERT(string_buffer->len + len <= string_buffer->cap, "String Buffer Overflow");
+#endif
+
+    memcpy(string_buffer->data + string_buffer->len, data, len);
+    string_buffer->len += len;
+}
+
+inline const char *string_buffer_to_cstr(Temp_String_Buffer *string_buffer) {
+    // Always safe
+    string_buffer->data[string_buffer->len] = '\0';
+    return string_buffer->data;
+}
+inline const char *string_buffer_to_cstr(Heap_String_Buffer *string_buffer) {
+    // Always safe
+    string_buffer->data[string_buffer->len] = '\0';
+    return string_buffer->data;
+}
+
+#endif

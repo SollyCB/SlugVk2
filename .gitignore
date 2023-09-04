@@ -1,0 +1,19 @@
+# ignore all
+*
+
+#except
+!.gitignore
+!*.cpp
+!*.hpp
+!*.c
+!*.h
+!CMakeLists.txt
+!shaders/*.vert
+!shaders/*.frag
+!*.lib
+!*.dll
+
+# even subdirs
+!*/
+
+build/
