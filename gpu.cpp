@@ -577,7 +577,61 @@ void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Sub
     cut_diff_temp(mark);
 }
 
+// *Sync
+void create_vk_fences_unsignalled(VkDevice vk_device, u32 count, VkFence *vk_fences) {
+    VkFenceCreateInfo info = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    VkResult check;
+    for(int i = 0; i < count; ++i) {
+        check = vkCreateFence(vk_device, &info, ALLOCATION_CALLBACKS, &vk_fences[i]); 
+        DEBUG_OBJ_CREATION(vkCreateFence, check);
+    }
+}
+void create_vk_fences_signalled(VkDevice vk_device, u32 count, VkFence *vk_fences) {
+    VkFenceCreateInfo info = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    VkResult check;
+    for(int i = 0; i < count; ++i) {
+        check = vkCreateFence(vk_device, &info, ALLOCATION_CALLBACKS, &vk_fences[i]); 
+        DEBUG_OBJ_CREATION(vkCreateFence, check);
+    }
+}
+void destroy_vk_fences(VkDevice vk_device, u32 count, VkFence *vk_fences) {
+    for(int i = 0; i < count; ++i) {
+        vkDestroyFence(vk_device, vk_fences[i], ALLOCATION_CALLBACKS);
+    }
+}
 
+void create_vk_semaphores_binary(VkDevice vk_device, u64 initial_value, u32 count, VkSemaphore *vk_semaphores) {
+    VkSemaphoreCreateInfo info = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+
+    VkResult check;
+    for(int i = 0; i < count; ++i) {
+        check = vkCreateSemaphore(vk_device, &info, ALLOCATION_CALLBACKS, &vk_semaphores[i]);
+        DEBUG_OBJ_CREATION(vkCreateSemaphore, check);
+    }
+}
+void create_vk_semaphores_timeline(VkDevice vk_device, u64 initial_value, u32 count, VkSemaphore *vk_semaphores) {
+    VkSemaphoreTypeCreateInfo type_info = {
+        VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
+        NULL,
+        VK_SEMAPHORE_TYPE_TIMELINE,
+        initial_value,
+    };
+
+    VkSemaphoreCreateInfo info = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+    info.pNext = &type_info;
+
+    VkResult check;
+    for(int i = 0; i < count; ++i) {
+        check = vkCreateSemaphore(vk_device, &info, ALLOCATION_CALLBACKS, &vk_semaphores[i]);
+        DEBUG_OBJ_CREATION(vkCreateSemaphore, check);
+    }
+}
+void destroy_vk_semaphores(VkDevice vk_device, u32 count, VkSemaphore *vk_semaphore) {
+    for(int i = 0; i < count; ++i) {
+        vkDestroySemaphore(vk_device, vk_semaphore[i], ALLOCATION_CALLBACKS);
+    }
+}
 
 #if DEBUG
 VkDebugUtilsMessengerEXT create_debug_messenger(Create_Vk_Debug_Messenger_Info *info) {

@@ -99,6 +99,15 @@ struct Submit_Vk_Command_Buffer_Info {
 };
 void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Submit_Vk_Command_Buffer_Info *infos);
 
+// Sync
+void create_vk_fences_unsignalled(VkDevice vk_device, u32 count, VkFence *vk_fences);
+void create_vk_fences_signalled(VkDevice vk_device, u32 count, VkFence *vk_fences);
+void destroy_vk_fences(VkDevice vk_device, u32 count, VkFence *vk_fences);
+
+void create_vk_semaphores_binary(VkDevice vk_device, u64 initial_value, u32 count, VkSemaphore *vk_semaphores);
+void create_vk_semaphores_timeline(VkDevice vk_device, u64 initial_value, u32 count, VkSemaphore *vk_semaphores);
+void destroy_vk_semaphores(VkDevice vk_device, u32 count, VkSemaphore *vk_semaphore);
+
 #if DEBUG
 static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_messenger_callback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,

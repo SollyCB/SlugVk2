@@ -63,12 +63,12 @@ int main() {
         0, NULL, 0, NULL, 2, graphics_command_buffers,
     };
     VkFence vk_fence;
-    VkFenceCreateInfo fence_info = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-    vkCreateFence(gpu->vk_device, &fence_info, NULL, &vk_fence);
+    create_vk_fences_unsignalled(gpu->vk_device, 1, &vk_fence);
 
     submit_vk_command_buffer(gpu->vk_queues[0], vk_fence, 1, &submit_info);
     vkWaitForFences(gpu->vk_device, 1, &vk_fence, true, 10e9);
-    vkDestroyFence(gpu->vk_device, vk_fence, NULL);
+
+    destroy_vk_fences(gpu->vk_device, 1, &vk_fence);
 
     println("Beginning render loop...\n");
     while(!glfwWindowShouldClose(glfw->window)) {
