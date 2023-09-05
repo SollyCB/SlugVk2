@@ -41,6 +41,9 @@ inline void memory_free_heap(void *ptr) {
     tlsf_free(allocator->tlsf_handle, ptr);
 }
 
+inline void reset_temp() {
+    get_instance_temp()->used = 0;
+}
 inline void cut_tail_temp(u64 size) {
     get_instance_temp()->used -= size;
 }

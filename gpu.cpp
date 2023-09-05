@@ -52,6 +52,7 @@ void kill_gpu(Gpu *gpu) {
     memory_free_heap(gpu);
 }
 
+// *Instance
 VkInstance create_vk_instance(Create_Vk_Instance_Info *info) {
     VkInstanceCreateInfo instance_create_info = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO}; 
 #if DEBUG
@@ -347,7 +348,7 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
     return vk_device;
 } // func create_vk_device
 
-// Surface and Swapchain
+// *Surface and *Swapchain
 static Window *s_Window;
 Window* get_window_instance() { return s_Window; }
 
@@ -471,6 +472,7 @@ VkSwapchainKHR create_vk_swapchain(Gpu *gpu, Window *window) {
     check = vkCreateImageView(gpu->vk_device, &view_info, ALLOCATION_CALLBACKS, &window->vk_image_views[1]);
     DEBUG_OBJ_CREATION(vkCreateImageView, check);
 
+    reset_temp(); // end of initializations so clear temp
     return vk_swapchain;
 }
 void destroy_vk_swapchain(VkDevice device, Window *window) {
@@ -479,56 +481,103 @@ void destroy_vk_swapchain(VkDevice device, Window *window) {
     vkDestroySwapchainKHR(device, window->vk_swapchain, ALLOCATION_CALLBACKS);
 }
 
-// Shader Objs
-#if 0
-VkShaderEXT* create_vk_shaders(VkDevice vk_device, u32 count, Create_Vk_Shader_Info *infos) {
-    VkShaderCreateInfoEXT *create_infos = (VkShaderCreateInfoEXT*)memory_allocate_temp(count * sizeof(VkShaderCreateInfoEXT), 8);
+// *Commands
+void create_vk_command_pools(VkDevice vk_device, Create_Vk_Command_Pool_Info *info, u32 count, VkCommandPool *vk_command_pools) {
+    VkCommandPoolCreateInfo create_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};;
+
+    create_info.flags |= info->transient ? VK_COMMAND_POOL_CREATE_TRANSIENT_BIT : 0x0;
+    create_info.flags |= info->reset_buffers ? VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT : 0x0;
+    create_info.queueFamilyIndex = info->queue_family_index;
+
+    VkResult check;
     for(int i = 0; i < count; ++i) {
-        create_infos[i] = {VK_STRUCTURE_TYPE_SHADER_CREATE_INFO_EXT}; 
-        create_infos[i].flags = infos[i].link ? VK_SHADER_CREATE_LINK_STAGE_BIT_EXT : 0x0;
-        create_infos[i].stage = infos[i].stage;
-        create_infos[i].nextStage = infos[i].next_stage;
-        create_infos[i].codeType = infos[i].code_type_binary ? VK_SHADER_CODE_TYPE_BINARY_EXT : VK_SHADER_CODE_TYPE_SPIRV_EXT;
-        create_infos[i].codeSize = infos[i].code_size;
-        create_infos[i].pCode = infos[i].code;
-        create_infos[i].pName = "main"; // Assume entrypoint in shader code is always 'main()'
-        create_infos[i].setLayoutCount = infos[i].set_layout_count;
-        create_infos[i].pSetLayouts = infos[i].set_layouts;
-        create_infos[i].pushConstantRangeCount = infos[i].push_constant_range_count;
-        create_infos[i].pPushConstantRanges = infos[i].push_constant_ranges;
-        create_infos[i].pSpecializationInfo = infos[i].spec_info;
-    }
-
-    // @Note idk how important contiguous allocation for shader objects is, as idk what their access pattern will 
-    // be like. But I assume it will not really be very linear
-    VkShaderEXT *vk_shaders = (VkShaderEXT*)memory_allocate_heap(count * sizeof(VkShaderEXT), 8);
-    auto check = vkCreateShadersEXT(vk_device, count, create_infos, ALLOCATION_CALLBACKS, vk_shaders);
-    DEBUG_OBJ_CREATION(vkCreateShadersEXT, check);
-
-    return vk_shaders;
-}
-void destroy_vk_shaders(VkDevice vk_device, u32 count, VkShaderEXT *shaders) {
-    for(int i = 0; i < count; ++i)
-        vkDestroyShaderEXT(vk_device, shaders[i], NULL);
-}
-
-VkResult vkCreateShadersEXT(VkDevice device, u32 createInfoCount, const VkShaderCreateInfoEXT *pCreateInfos, const VkAllocationCallbacks *pAllocator, VkShaderEXT *pShaders) 
-{
-    auto func = (PFN_vkCreateShadersEXT) vkGetDeviceProcAddr(device, "vkCreateShadersEXT");
-    if (func != nullptr) {
-        return func(device, createInfoCount, pCreateInfos, pAllocator, pShaders);
-    } else {
-        return VK_ERROR_EXTENSION_NOT_PRESENT;
+        check = vkCreateCommandPool(vk_device, &create_info, ALLOCATION_CALLBACKS, &vk_command_pools[i]);
+        DEBUG_OBJ_CREATION(vkCreateCommandPool, check);
     }
 }
-void vkDestroyShaderEXT(VkDevice device, VkShaderEXT shader, const VkAllocationCallbacks *pAllocator) 
-{
-    auto func = (PFN_vkDestroyShaderEXT) vkGetDeviceProcAddr(device, "vkDestroyShaderEXT");
-    if (func != nullptr) {
-        return func(device, shader, pAllocator);
+void destroy_vk_command_pools(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools) {
+    for(int i = 0; i < count; ++i) {
+        vkDestroyCommandPool(vk_device, vk_command_pools[i], ALLOCATION_CALLBACKS);
     }
 }
-#endif
+void reset_vk_command_pools(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools) {
+    for(int i = 0; i < count; ++i) {
+        vkResetCommandPool(vk_device, vk_command_pools[i], 0x0);
+    }
+}
+void reset_vk_command_pools_and_release_resources(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools) {
+    for(int i = 0; i < count; ++i) {
+        vkResetCommandPool(vk_device, vk_command_pools[i], VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
+    }
+}
+
+void allocate_vk_command_buffers(VkDevice vk_device, Allocate_Vk_Command_Buffer_Info *info, VkCommandBuffer *vk_command_buffers) {
+
+    VkCommandBufferAllocateInfo allocate_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    allocate_info.commandPool = info->pool;
+    allocate_info.commandBufferCount = info->count;
+    allocate_info.level = info->secondary ? VK_COMMAND_BUFFER_LEVEL_SECONDARY :
+                                             VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+    auto check = vkAllocateCommandBuffers(vk_device, &allocate_info, vk_command_buffers);
+    DEBUG_OBJ_CREATION(vkAllocateCommandBuffers, check);
+}
+
+void begin_vk_command_buffer_primary(VkCommandBuffer vk_command_buffer) {
+    VkCommandBufferBeginInfo info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+
+    auto check = vkBeginCommandBuffer(vk_command_buffer, &info);
+    DEBUG_OBJ_CREATION(vkBeginCommandBuffer, check);
+}
+void begin_vk_command_buffer_primary_onetime(VkCommandBuffer vk_command_buffer) {
+    VkCommandBufferBeginInfo info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    auto check = vkBeginCommandBuffer(vk_command_buffer, &info);
+    DEBUG_OBJ_CREATION(vkBeginCommandBuffer, check);
+}
+void end_vk_command_buffer(VkCommandBuffer vk_command_buffer) {
+    auto check = vkEndCommandBuffer(vk_command_buffer);
+    DEBUG_OBJ_CREATION(vkEndCommandBuffer, check);
+}
+
+void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Submit_Vk_Command_Buffer_Info *infos) {
+    u64 mark = get_mark_temp();
+    VkSubmitInfo2 *submit_infos = (VkSubmitInfo2*)memory_allocate_temp(sizeof(VkSubmitInfo2) * count, 8);
+
+    u32 command_buffer_total_count = 0;
+    for(int i = 0; i < count; ++i) {
+        command_buffer_total_count += infos[i].command_buffer_count;
+    }
+    VkCommandBufferSubmitInfo *command_buffer_infos = (VkCommandBufferSubmitInfo*)memory_allocate_temp(sizeof(VkCommandBufferSubmitInfo) * command_buffer_total_count, 8);
+
+    u32 command_buffer_index = 0;
+    for(int i = 0; i < count; ++i) {
+        submit_infos[i] = {VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
+        submit_infos[i].waitSemaphoreInfoCount   = infos[i].wait_semaphore_info_count;
+        submit_infos[i].pWaitSemaphoreInfos      = infos[i].wait_semaphore_infos;
+        submit_infos[i].signalSemaphoreInfoCount = infos[i].signal_semaphore_info_count;
+        submit_infos[i].pSignalSemaphoreInfos    = infos[i].signal_semaphore_infos;
+        submit_infos[i].commandBufferInfoCount   = infos[i].command_buffer_count;
+
+        // @Bug I am basically certain that I will have make a logic error in here somewhere. Check this if submission results ever seem awry, although it does seem to work after a brief basic test so hopes are high
+        for(int j = 0; j < infos[i].command_buffer_count; ++j) {
+            command_buffer_infos[command_buffer_index] = {
+                VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+                NULL,
+                infos[i].command_buffers[j],
+                0,
+            };
+            command_buffer_index++;
+        }
+        submit_infos[i].pCommandBufferInfos = &command_buffer_infos[command_buffer_index - infos[i].command_buffer_count];
+    }
+    auto check = vkQueueSubmit2(vk_queue, count, submit_infos, vk_fence);
+    DEBUG_OBJ_CREATION(vkQueueSubmit2, check);
+    cut_diff_temp(mark);
+}
+
+
 
 #if DEBUG
 VkDebugUtilsMessengerEXT create_debug_messenger(Create_Vk_Debug_Messenger_Info *info) {

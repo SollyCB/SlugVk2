@@ -65,29 +65,39 @@ void destroy_vk_surface(VkInstance vk_instance, VkSurfaceKHR vk_surface);
 VkSwapchainKHR create_vk_swapchain(Gpu *gpu, Window *window); // also creates images and views and adds them to window struct
 void destroy_vk_swapchain(VkDevice vk_device, Window *window); // also destroys image views
 
-// Shader Objs
-#if 0
-struct Create_Vk_Shader_Info {
-    u64 code_size;
-    void *code;
-
-    VkDescriptorSetLayout *set_layouts;
-    VkPushConstantRange *push_constant_ranges;
-    VkSpecializationInfo *spec_info;
-
-    VkShaderStageFlagBits stage;
-    VkShaderStageFlags next_stage;
-
-    u32 push_constant_range_count;
-    u32 set_layout_count;
-
-    // @Todo these can be packed into the above counts
-    bool link;
-    bool code_type_binary;
+// Commands
+struct Create_Vk_Command_Pool_Info {
+    u32 queue_family_index;
+    // @BoolsInStructs
+    bool transient = false;
+    bool reset_buffers = false;
 };
-VkShaderEXT* create_vk_shaders(VkDevice vk_device, u32 count, Create_Vk_Shader_Info *info);
-void destroy_vk_shaders(VkDevice vk_device, u32 count, VkShaderEXT *shaders);
-#endif
+void create_vk_command_pools(VkDevice vk_device, Create_Vk_Command_Pool_Info *info, u32 count, VkCommandPool *vk_command_pools);
+void destroy_vk_command_pools(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools);
+
+void reset_vk_command_pools(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools);
+void reset_vk_command_pools_and_release_resources(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools);
+
+struct Allocate_Vk_Command_Buffer_Info {
+    VkCommandPool pool;
+    u32 count;
+    bool secondary = false;
+};
+void allocate_vk_command_buffers(VkDevice vk_device, Allocate_Vk_Command_Buffer_Info *info, VkCommandBuffer *vk_command_buffers);
+
+void begin_vk_command_buffer_primary(VkCommandBuffer vk_command_buffer);
+void begin_vk_command_buffer_primary_onetime(VkCommandBuffer vk_command_buffer);
+void end_vk_command_buffer(VkCommandBuffer vk_command_buffer);
+
+struct Submit_Vk_Command_Buffer_Info {
+    u32 wait_semaphore_info_count;
+    VkSemaphoreSubmitInfo *wait_semaphore_infos;
+    u32 signal_semaphore_info_count;
+    VkSemaphoreSubmitInfo *signal_semaphore_infos;
+    u32 command_buffer_count;
+    VkCommandBuffer *command_buffers;
+};
+void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Submit_Vk_Command_Buffer_Info *infos);
 
 #if DEBUG
 static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_messenger_callback(
