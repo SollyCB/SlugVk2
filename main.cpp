@@ -15,6 +15,7 @@ int main() {
     init_window(gpu, glfw);
     Window *window = get_window_instance();
 
+    // Command Buffer setup
     u32 command_pool_count = 2;
     VkCommandPool *graphics_command_pools = (VkCommandPool*)memory_allocate_heap(sizeof(VkCommandBuffer) * command_pool_count, 8);
     VkCommandPool  *present_command_pools = (VkCommandPool*)memory_allocate_heap(sizeof(VkCommandBuffer) * command_pool_count, 8);
@@ -62,19 +63,22 @@ int main() {
     Submit_Vk_Command_Buffer_Info submit_info {
         0, NULL, 0, NULL, 2, graphics_command_buffers,
     };
+
+    // Sync Setup
     VkFence vk_fence;
     create_vk_fences_unsignalled(gpu->vk_device, 1, &vk_fence);
-
     submit_vk_command_buffer(gpu->vk_queues[0], vk_fence, 1, &submit_info);
     vkWaitForFences(gpu->vk_device, 1, &vk_fence, true, 10e9);
-
     destroy_vk_fences(gpu->vk_device, 1, &vk_fence);
+
+    
 
     println("Beginning render loop...\n");
     while(!glfwWindowShouldClose(glfw->window)) {
         poll_and_get_input_glfw(glfw);
     }
 
+    // Command Buffer shutdown
     destroy_vk_command_pools(gpu->vk_device, 2, graphics_command_pools);
     memory_free_heap(graphics_command_pools);
     memory_free_heap(graphics_command_buffers);

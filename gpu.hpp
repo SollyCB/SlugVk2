@@ -108,6 +108,8 @@ void create_vk_semaphores_binary(VkDevice vk_device, u64 initial_value, u32 coun
 void create_vk_semaphores_timeline(VkDevice vk_device, u64 initial_value, u32 count, VkSemaphore *vk_semaphores);
 void destroy_vk_semaphores(VkDevice vk_device, u32 count, VkSemaphore *vk_semaphore);
 
+// Pipeline
+
 #if DEBUG
 static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_messenger_callback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,

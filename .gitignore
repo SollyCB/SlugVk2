@@ -1,4 +1,6 @@
 build/
+make.bat
+run.bat
 .cache/
 *~
 *.swp
