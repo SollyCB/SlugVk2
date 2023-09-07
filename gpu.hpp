@@ -65,7 +65,7 @@ void destroy_vk_surface(VkInstance vk_instance, VkSurfaceKHR vk_surface);
 VkSwapchainKHR create_vk_swapchain(Gpu *gpu, Window *window); // also creates images and views and adds them to window struct
 void destroy_vk_swapchain(VkDevice vk_device, Window *window); // also destroys image views
 
-// Commands
+// CommandPools and CommandBuffers
 struct Create_Vk_Command_Pool_Info {
     u32 queue_family_index;
     // @BoolsInStructs
@@ -107,6 +107,18 @@ void destroy_vk_fences(VkDevice vk_device, u32 count, VkFence *vk_fences);
 void create_vk_semaphores_binary(VkDevice vk_device, u64 initial_value, u32 count, VkSemaphore *vk_semaphores);
 void create_vk_semaphores_timeline(VkDevice vk_device, u64 initial_value, u32 count, VkSemaphore *vk_semaphores);
 void destroy_vk_semaphores(VkDevice vk_device, u32 count, VkSemaphore *vk_semaphore);
+
+// Descriptors
+struct Create_Vk_Descriptor_Set_Layout_Info {
+    u32 count;
+    u32 *bindings;
+    VkDescriptorType *descriptor_types;
+    u32 *descriptor_counts;
+    VkShaderStageFlags *shader_access_flags;
+    VkSampler **immutable_samplers;
+};
+VkDescriptorSetLayout create_vk_descriptor_set_layout(VkDevice vk_device, Create_Vk_Descriptor_Set_Layout_Info *info);
+void destroy_vk_descriptor_set_layouts(VkDevice vk_device, u32 count, VkDescriptorSetLayout *layouts);
 
 // Pipeline
 

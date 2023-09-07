@@ -2,10 +2,12 @@
 #include "glfw.hpp"
 #include "gpu.hpp"
 #include "file.hpp"
+#include "spirv.hpp"
 
 int main() {
     init_allocators();
 
+#if 0
     init_glfw(); 
     Glfw *glfw = get_glfw_instance();
 
@@ -92,6 +94,13 @@ int main() {
     kill_window(gpu, window);
     kill_gpu(gpu);
     kill_glfw(glfw);
+
+#endif
+
+    // Spirv test
+    u64 byte_count;
+    const u32 *spirv = (const u32*)file_read_bin_temp("shaders/vertex_1.vert.spv", &byte_count);
+    Parsed_Spirv parsed_spirv = parse_spirv(byte_count, spirv);
 
     kill_allocators();
     return 0;

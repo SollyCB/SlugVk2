@@ -1,7 +1,7 @@
 #include "file.hpp"
 
-const u8* file_read(const char *file_name, u64 *size) {
-    FILE *file = fopen(file_name, "r");
+const u8* file_read_bin_temp(const char *file_name, u64 *size) {
+    FILE *file = fopen(file_name, "rb");
 
     if (!file) {
         std::cerr << "FAILED TO READ FILE " << file_name << "!\n";

@@ -43,10 +43,10 @@ add_executable(Slug
      gpu.cpp
      glfw.cpp
      file.cpp
+     spirv.cpp
 
      #clock.cpp
      #camera.cpp
-     #spv.cpp
      #gltf.cpp
      #image.cpp
 

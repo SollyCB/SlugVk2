@@ -3,6 +3,7 @@
 
 #include "basic.h"
 
-const u8* file_read(const char *file_name, u64 *size);
+// @Todo make a heap file read
+const u8* file_read_bin_temp(const char *file_name, u64 *size);
 
 #endif // include guard
