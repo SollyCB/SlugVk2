@@ -1,15 +1,10 @@
 #version 450
 
-layout(location = 0) in vec3 in_pos;
-
-layout(binding = 0) uniform Camera {
-    mat4 model_view;
-    mat4 projection;
-} camera;
-
-
-layout(binding = 0) uniform sampler2D tex_sampler[4];
-
+layout(binding = 0, set = 4) uniform sampler2D tex_4;
+layout(binding = 0, set = 0) uniform sampler2D tex_0;
+layout(binding = 0, set = 2) uniform sampler2D tex_2;
+layout(binding = 0, set = 1) uniform sampler2D tex_1;
+layout(binding = 0, set = 3) uniform sampler2D tex_3;
 
 void main() {
     gl_Position = vec4(1, 1, 1, 1);

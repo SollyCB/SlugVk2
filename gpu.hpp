@@ -111,12 +111,9 @@ void destroy_vk_semaphores(VkDevice vk_device, u32 count, VkSemaphore *vk_semaph
 // Descriptors
 struct Create_Vk_Descriptor_Set_Layout_Info {
     u32 count;
-    u32 *bindings;
-    VkDescriptorType *descriptor_types;
-    u32 *descriptor_counts;
-    VkShaderStageFlags *shader_access_flags;
-    VkSampler **immutable_samplers;
+    VkDescriptorSetLayoutBinding *bindings;
 };
+// add some helper function to fill in set layout bindings
 VkDescriptorSetLayout create_vk_descriptor_set_layout(VkDevice vk_device, Create_Vk_Descriptor_Set_Layout_Info *info);
 void destroy_vk_descriptor_set_layouts(VkDevice vk_device, u32 count, VkDescriptorSetLayout *layouts);
 

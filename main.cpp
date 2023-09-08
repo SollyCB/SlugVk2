@@ -95,11 +95,11 @@ int main() {
     kill_gpu(gpu);
     kill_glfw(glfw);
 
-#endif
 
+#endif
     // Spirv test
     u64 byte_count;
-    const u32 *spirv = (const u32*)file_read_bin_temp("shaders/vertex_1.vert.spv", &byte_count);
+    const u32 *spirv = (const u32*)file_read_bin_temp("shaders/vertex_3.vert.spv", &byte_count);
     Parsed_Spirv parsed_spirv = parse_spirv(byte_count, spirv);
 
     kill_allocators();

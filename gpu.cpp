@@ -821,6 +821,7 @@ void destroy_vk_semaphores(VkDevice vk_device, u32 count, VkSemaphore *vk_semaph
 // `Descriptors
 VkDescriptorSetLayout create_vk_descriptor_set_layout(VkDevice vk_device, Create_Vk_Descriptor_Set_Layout_Info *info) {
     // @Todo look into what push descriptors are and how are they useful
+    /*
     VkDescriptorSetLayoutCreateInfo create_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
     create_info.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
     create_info.bindingCount = info->count;
@@ -838,11 +839,12 @@ VkDescriptorSetLayout create_vk_descriptor_set_layout(VkDevice vk_device, Create
     }
     create_info.pBindings = layout_bindings;
 
-    VkDescriptorSetLayout layout;
     auto check = vkCreateDescriptorSetLayout(vk_device, &create_info, ALLOCATION_CALLBACKS, &layout);
     DEBUG_OBJ_CREATION(vkCreateDescriptorSetLayout, check);
 
     cut_diff_temp(mark);
+    */
+    VkDescriptorSetLayout layout;
     return layout;
 }
 

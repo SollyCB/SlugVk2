@@ -1,83 +1,5 @@
 #include "spirv.hpp"
 
-enum Shader_Stage_Flags {
-    SHADER_STAGE_VERTEX_BIT = 0x00000001,
-    SHADER_STAGE_TESSELLATION_CONTROL_BIT = 0x00000002,
-    SHADER_STAGE_TESSELLATION_EVALUATION_BIT = 0x00000004,
-    SHADER_STAGE_GEOMETRY_BIT = 0x00000008,
-    SHADER_STAGE_FRAGMENT_BIT = 0x00000010,
-    SHADER_STAGE_COMPUTE_BIT = 0x00000020,
-    SHADER_STAGE_ALL_GRAPHICS = 0x0000001F,
-    SHADER_STAGE_ALL = 0x7FFFFFFF,
-    // Provided by VK_KHR_ray_tracing_pipeline
-    SHADER_STAGE_RAYGEN_BIT_KHR = 0x00000100,
-    // Provided by VK_KHR_ray_tracing_pipeline
-    SHADER_STAGE_ANY_HIT_BIT_KHR = 0x00000200,
-    // Provided by VK_KHR_ray_tracing_pipeline
-    SHADER_STAGE_CLOSEST_HIT_BIT_KHR = 0x00000400,
-    // Provided by VK_KHR_ray_tracing_pipeline
-    SHADER_STAGE_MISS_BIT_KHR = 0x00000800,
-    // Provided by VK_KHR_ray_tracing_pipeline
-    SHADER_STAGE_INTERSECTION_BIT_KHR = 0x00001000,
-    // Provided by VK_KHR_ray_tracing_pipeline
-    SHADER_STAGE_CALLABLE_BIT_KHR = 0x00002000,
-    // Provided by VK_EXT_mesh_shader
-    SHADER_STAGE_TASK_BIT_EXT = 0x00000040,
-    // Provided by VK_EXT_mesh_shader
-    SHADER_STAGE_MESH_BIT_EXT = 0x00000080,
-    // Provided by VK_HUAWEI_subpass_shading
-    SHADER_STAGE_SUBPASS_SHADING_BIT_HUAWEI = 0x00004000,
-    // Provided by VK_HUAWEI_cluster_culling_shader
-    SHADER_STAGE_CLUSTER_CULLING_BIT_HUAWEI = 0x00080000,
-    // Provided by VK_NV_ray_tracing
-    SHADER_STAGE_RAYGEN_BIT_NV = SHADER_STAGE_RAYGEN_BIT_KHR,
-    // Provided by VK_NV_ray_tracing
-    SHADER_STAGE_ANY_HIT_BIT_NV = SHADER_STAGE_ANY_HIT_BIT_KHR,
-    // Provided by VK_NV_ray_tracing
-    SHADER_STAGE_CLOSEST_HIT_BIT_NV = SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
-    // Provided by VK_NV_ray_tracing
-    SHADER_STAGE_MISS_BIT_NV = SHADER_STAGE_MISS_BIT_KHR,
-    // Provided by VK_NV_ray_tracing
-    SHADER_STAGE_INTERSECTION_BIT_NV = SHADER_STAGE_INTERSECTION_BIT_KHR,
-    // Provided by VK_NV_ray_tracing
-    SHADER_STAGE_CALLABLE_BIT_NV = SHADER_STAGE_CALLABLE_BIT_KHR,
-    // Provided by VK_NV_mesh_shader
-    SHADER_STAGE_TASK_BIT_NV = SHADER_STAGE_TASK_BIT_EXT,
-    // Provided by VK_NV_mesh_shader
-    SHADER_STAGE_MESH_BIT_NV = SHADER_STAGE_MESH_BIT_EXT,
-};
-
-enum Descriptor_Type {
-    DESCRIPTOR_TYPE_SAMPLER = 0,
-    DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER = 1,
-    DESCRIPTOR_TYPE_SAMPLED_IMAGE = 2,
-    DESCRIPTOR_TYPE_STORAGE_IMAGE = 3,
-    DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER = 4,
-    DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER = 5,
-    DESCRIPTOR_TYPE_UNIFORM_BUFFER = 6,
-    DESCRIPTOR_TYPE_STORAGE_BUFFER = 7,
-    DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC = 8,
-    DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC = 9,
-    DESCRIPTOR_TYPE_INPUT_ATTACHMENT = 10,
-    // Provided by VK_VERSION_1_3
-    DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK = 1000138000,
-    // Provided by VK_KHR_acceleration_structure
-    DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR = 1000150000,
-    // Provided by VK_NV_ray_tracing
-    DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV = 1000165000,
-    // Provided by VK_QCOM_image_processing
-    DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM = 1000440000,
-    // Provided by VK_QCOM_image_processing
-    DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM = 1000440001,
-    // Provided by VK_EXT_mutable_descriptor_type
-    DESCRIPTOR_TYPE_MUTABLE_EXT = 1000351000,
-    // Provided by VK_EXT_inline_uniform_block
-    DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT =
-    DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK,
-    // Provided by VK_VALVE_mutable_descriptor_type
-    DESCRIPTOR_TYPE_MUTABLE_VALVE = DESCRIPTOR_TYPE_MUTABLE_EXT,
-};
-
 enum Decoration {
     SPEC_ID = 1,
     BLOCK = 2,
@@ -135,6 +57,28 @@ struct Id {
     u16 result_id;
 };
 
+static void sort_vars(int *var_ids, Id *ids, int low, int high) {
+    if (low < high) {
+        int lower = low - 1;
+        int c;
+        for(int i = low;  i < high; ++i) {
+            if (ids[var_ids[i]].descriptor_set < ids[var_ids[high]].descriptor_set) {
+                ++lower;
+                c = var_ids[i];
+                var_ids[i] = var_ids[lower];
+                var_ids[lower] = c;
+            }
+        }
+        ++lower;
+        c = var_ids[lower];
+        var_ids[lower] = var_ids[high];
+        var_ids[high] = c;
+
+        sort_vars(var_ids, ids, low, lower - 1);
+        sort_vars(var_ids, ids, lower + 1, high);
+    }
+}
+
 // @Todo also track the offset of a descriptor according to its binding
 Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
 
@@ -149,21 +93,24 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
     }
 
     u64 mark = get_mark_temp();
+
     u32 id_bound = spirv[3];
     Id *ids = (Id*)memory_allocate_temp(sizeof(Id) * id_bound, 8);
+
     u32 *var_ids = (u32*)memory_allocate_temp(sizeof(u32) * id_bound, 8);
-    u32 var_index = 0;
+    u32 var_count = 0;
 
     Id *id;
     u16 *instr_size;
     u16 *opcode;
     u32 *instr;
 
-    u16 set_index = 0;
+    u16 set_count = 0;
     u16 binding_count = 0;
 
     u64 offset = 5;
     u64 word_count = byte_count >> 2;
+    Parsed_Spirv ret;
     while(offset < word_count) {
 
         opcode = (u16*)(spirv + offset);
@@ -178,16 +125,29 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
             break;
         }
 #endif
-
+        // OpEntryPoint
+        case 15:
+        {
+            switch(instr[0]) { // switch execution model
+            case 0:
+            {
+                ret.stage = SHADER_STAGE_VERTEX_BIT;
+                break;
+            }
+            case 4:
+            {
+                ret.stage = SHADER_STAGE_FRAGMENT_BIT;
+                break;
+            }
+            } // switch execution model
+            break;
+        }
         // OpVariable
         case 59:
         {
             id = ids + instr[0];
             id->result_id = instr[1];
             id->storage_type = (Storage_Type)instr[2];
-
-            var_ids[var_index] = instr[0];
-            var_index++;
 
             break;
         }
@@ -236,8 +196,11 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
                 id->decoration_flags |= (u8)DESCRIPTOR_SET_BIT;
                 id->descriptor_set = (u16)instr[2];
 
-                if (id->descriptor_set >= set_index)
-                    set_index = id->descriptor_set;
+                if (id->descriptor_set >= set_count)
+                    set_count = id->descriptor_set;
+
+                var_ids[var_count] = instr[0];
+                var_count++;
 
                 break;
             }
@@ -264,13 +227,11 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
             id = ids + instr[0];
             id->op_type = OP_TYPE_IMAGE;
             
-            // switch sampled
             ASSERT(instr[6] < 3, "");
-            switch(instr[6]) {
+            switch(instr[6]) { // switch sampled
             case 2:
             {
-                // switch dimensionality
-                switch(instr[2]) {
+                switch(instr[2]) { // switch dimensionality
                 case 6:
                     id->image_type = IMAGE_INPUT;
                     break;
@@ -323,54 +284,52 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
         offset += *instr_size;
     }
 
-    Create_Vk_Descriptor_Set_Layout_Info *set_infos = (Create_Vk_Descriptor_Set_Layout_Info*)memory_allocate_temp(
-            (sizeof(Create_Vk_Descriptor_Set_Layout_Info) * set_index) +
-            ((sizeof(u32))  + // size of binding count
-             (sizeof(u64))  + // size of descriptor type, without extensions this can be smaller
-             (sizeof(u32))) * // size of shader stage flags (this size may need to be increased at some point...
-             binding_count    // the number of bindings referenced in the shader
-            , 8);
+    u64 layout_info_mem_size = sizeof(Descriptor_Set_Layout_Info) * set_count;
+    Descriptor_Set_Layout_Info *layout_infos = (Descriptor_Set_Layout_Info*)memory_allocate_temp(layout_info_mem_size, 8);
+    u64 binding_info_mem_size = sizeof(Descriptor_Set_Layout_Binding_Info) * binding_count;
 
-    // @Speed see the revision below
-    //
-    // @Reminder looping through vars finding common descriptor set indices in order to know how much memory 
-    // needs to be allocated to each set BEFORE the loop which groups data into the 'set_infos'
-    // without this I cannot allocate like data sequentially: I want the pointers in 'set_infos' to point to memory
-    // allocated directly after the struct, so that access to each struct does not cache miss, for example:
-    //
-    //              set_infos[i] end    v set_infos[i].descriptor_types start   etc, etc 
-    //                  v  
-    //  0000000000000000000000000000000000000...000 <- begin set_infos[i + 1]
-    //  ^
-    // set_infos[i] start |  ^ set_infos[i].bindings start
-    //
-    // Revision: This is one way of doing it, but as i just dont know the access pattern for the data that vulkan will    // use, this will just have to be tested later. I will implement the simple way, but this is something small 
-    // to come back to. The simple way being make temp allocations in the loop for each pointer in the struct. 
-    // this is probably just as good depending on the access pattern, as it makes the structs packed... but the 
-    // data that the structs reference becomes further away...
-    /*for(int i = 0; i < var_index; ++i) {
-        if (ids[var_ids[i]].decoration_flags & DESCRIPTOR_SET_BIT)
-    }*/
+    Descriptor_Set_Layout_Binding_Info* binding_infos = (Descriptor_Set_Layout_Binding_Info*)memory_allocate_temp(binding_info_mem_size, 8);
+    memset(layout_infos, 0, layout_info_mem_size + binding_info_mem_size * set_count);
 
+    // *1 note on sorting below
+    sort_vars((int*)var_ids, ids, 0, var_count - 1);
+
+    u16 layout_index = 0;
+    u16 binding_index = 0;
     Id *var;
     Id *result_type;
-    for(int i = 0; i < var_index; ++i) {
-        
+
+    Descriptor_Set_Layout_Info *layout_info;
+    Descriptor_Set_Layout_Binding_Info *binding_info;
+
+    for(int i = 0; i < var_count; ++i) {
         var = ids + var_ids[i];
+        if (layout_index != var->descriptor_set) {
+            layout_index++;
+            binding_index = 0;
+        }
+
+         layout_info = layout_infos + layout_index;
+        binding_info = layout_info + binding_index;
+
+        binding_info->binding = var->binding;
         result_type = ids + var->result_id;
-        ASSERT(result_type->op_type == OP_TYPE_POINTER, "Vars should reference pointers");
-        result_type = ids[result_type->result_id]; // deref pointer
+        ASSERT(result_type->op_type == op_type_pointer, "vars must reference pointers");
+        result_type = ids + result_type->result_id;
 
-        if (var->decoration_flags & (u8)DESCRIPTOR_SET_BIT)
-            set_index = var->descriptor_set;
-
-        set_infos[set_index].bindings;
-
-        switch(result_type->op_type) {
-        case OP_TYPE_ARRAY:
+        if (OP_TYPE_ARRAY:
         {
+            binding_info->descriptor_count = result_type->len;
+            result_type = ids + result_type->result_id;
             break;
         }
+
+        // Continue stripping back layers of references like above with the array.
+        // Also add parsing for the storage type of the var. This should be done before parsing 
+        // the image information, as certain storage types would mean that we immediately know the descriptor
+        // type and we 'continue' here
+
+        switch(result_type->op_type) {
         case OP_TYPE_SAMPLER:
         {
             break;
@@ -383,17 +342,29 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
         {
             break;
         }
+
+        case OP_TYPE_ARRAY:
+            ASSERT(false, "array of arrays");
         case OP_TYPE_POINTER:
-        {
-            break;
-        }
-        case OP_TYPE_FORWARD_POINTER:
-        {
-            break;
-        }
+            ASSERT(false, "Pointer to pointer?");
+
         } // switch result optype
     }
 
     cut_diff_temp(mark);
     return {};
 }
+
+// *1: I sort the descriptor set indices so that when i am parsing the opvars i can fill the memory block allocated 
+// for the binding infos sequentially and packed e.g.:
+// 
+// fill memory like this, i do not need to leave gaps if sets' bindings are filled in order...
+// ---->---->---->---->
+// 000000000000000000000000
+//
+// ...Otherwise i have to do this
+// ---->           ---->         ---->
+// 00000000000000000000000000000000000000
+// I have to allocate more space and leave big gaps to ensure that i have space for the possible number of bindings 
+// in each descriptor set. If i sort them, i know that as soon as i see a novel set index, i can just continue filling
+// knowing that i will not need to come back and add bindings to a previous set index
