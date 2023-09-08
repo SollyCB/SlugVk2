@@ -3,6 +3,9 @@
 
 #include "basic.h"
 
+// There redefinitions of vulkan types here in order to avoid including the vulkan headers 
+// wherever possible
+
 enum Shader_Stage_Flags {
     SHADER_STAGE_VERTEX_BIT = 0x00000001,
     SHADER_STAGE_TESSELLATION_CONTROL_BIT = 0x00000002,

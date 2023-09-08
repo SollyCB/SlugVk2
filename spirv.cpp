@@ -3,6 +3,7 @@
 enum Decoration {
     SPEC_ID = 1,
     BLOCK = 2,
+    BUFFER_BLOCK = 3,
     BUILTIN = 11,
     UNIFORM = 26,
     LOCATION = 30,
@@ -10,13 +11,14 @@ enum Decoration {
     DESCRIPTOR_SET = 34,
 };
 enum Decoration_Flags {
-    SPEC_ID_BIT = 1,
-    BLOCK_BIT = 2,
-    BUILTIN_BIT = 11,
-    UNIFORM_BIT = 26,
-    LOCATION_BIT = 30,
-    BINDING_BIT = 33,
-    DESCRIPTOR_SET_BIT = 34,
+    SPEC_ID_BIT = 0x01,
+    BLOCK_BIT = 0x02,
+    BUFFER_BLOCK_BIT = 0x04,
+    BUILTIN_BIT = 0x08,
+    UNIFORM_BIT = 0x10,
+    LOCATION_BIT = 0x20,
+    BINDING_BIT = 0x40,
+    DESCRIPTOR_SET_BIT = 0x80,
 };
 enum Storage_Type {
     STORAGE_UNIFORM_CONSTANT = 0,
@@ -29,11 +31,11 @@ enum Storage_Type {
 };
 enum Image_Type {
     UNKNOWN,
+    IMAGE_SAMPLED,
+    IMAGE_STORAGE,
     TEXEL_UNIFORM,
     TEXEL_STORAGE,
     IMAGE_INPUT,
-    IMAGE_STORAGE,
-    IMAGE_SAMPLED,
 };
 enum Op_Type {
     OP_TYPE_SAMPLER,
@@ -134,9 +136,29 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
                 ret.stage = SHADER_STAGE_VERTEX_BIT;
                 break;
             }
+            case 1:
+            {
+                ret.stage = SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+                break;
+            }
+            case 2:
+            {
+                ret.stage = SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+                break;
+            }
+            case 3:
+            {
+                ret.stage = SHADER_STAGE_GEOMETRY_BIT;
+                break;
+            }
             case 4:
             {
                 ret.stage = SHADER_STAGE_FRAGMENT_BIT;
+                break;
+            }
+            case 5:
+            {
+                ret.stage = SHADER_STAGE_COMPUTE_BIT;
                 break;
             }
             } // switch execution model
@@ -165,6 +187,11 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
             case BLOCK:
             {
                 id->decoration_flags |= (u8)BLOCK_BIT;
+                break;
+            }
+            case BUFFER_BLOCK:
+            {
+                id->decoration_flags |= (u8)BUFFER_BLOCK_BIT;
                 break;
             }
             case BUILTIN:
@@ -217,6 +244,7 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
         // OpTypeSampledImage
         case 27:
         {
+            // translates to combined image sampler
             ids[*instr].op_type = OP_TYPE_SAMPLED_IMAGE;
             ids[*instr].result_id = instr[1];
             break;
@@ -309,50 +337,95 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
             binding_index = 0;
         }
 
-         layout_info = layout_infos + layout_index;
-        binding_info = layout_info + binding_index;
+        layout_info  = layout_infos + layout_index;
+        binding_info = layout_info->binding_infos + binding_index;
 
         binding_info->binding = var->binding;
         result_type = ids + var->result_id;
-        ASSERT(result_type->op_type == op_type_pointer, "vars must reference pointers");
+        ASSERT(result_type->op_type == OP_TYPE_POINTER, "vars must reference pointers");
         result_type = ids + result_type->result_id;
 
-        if (OP_TYPE_ARRAY:
-        {
-            binding_info->descriptor_count = result_type->len;
+        if (result_type->op_type == OP_TYPE_ARRAY) {
+            binding_info->descriptor_count = result_type->length;
             result_type = ids + result_type->result_id;
-            break;
+        } else {
+            binding_info->descriptor_count = 1;
         }
 
-        // Continue stripping back layers of references like above with the array.
-        // Also add parsing for the storage type of the var. This should be done before parsing 
-        // the image information, as certain storage types would mean that we immediately know the descriptor
-        // type and we 'continue' here
+        if (var->decoration_flags & BLOCK_BIT) {
+            if (var->storage_type == STORAGE_STORAGE_BUFFER)
+                binding_info->descriptor_type = DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            else 
+                binding_info->descriptor_type = DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            continue;
+        }
+        if (var->decoration_flags & BUFFER_BLOCK_BIT) {
+            DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            continue;
+        }
 
         switch(result_type->op_type) {
         case OP_TYPE_SAMPLER:
         {
+            binding_info->descriptor_type = DESCRIPTOR_TYPE_SAMPLER;
             break;
         }
         case OP_TYPE_SAMPLED_IMAGE:
         {
+            binding_info->descriptor_type = DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             break;
         }
+        // It is annoying that image layout types are so opaque up front
         case OP_TYPE_IMAGE:
         {
+            switch(result_type->image_type) {
+            case UNKNOWN:
+            {
+                ASSERT(false, "Unusable Image Descriptor");
+            }
+            case IMAGE_SAMPLED:
+            {
+                binding_info->descriptor_type = DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+                break;
+            }
+            case IMAGE_STORAGE:
+            {
+                binding_info->descriptor_type = DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                break;
+            }
+            case TEXEL_UNIFORM:
+            {
+                binding_info->descriptor_type = DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+                break;
+            }
+            case TEXEL_STORAGE:
+            {
+                binding_info->descriptor_type = DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+                break;
+            }
+            case IMAGE_INPUT:
+            {
+                binding_info->descriptor_type = DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+                break;
+            }
+            } // switch image type
             break;
         }
-
         case OP_TYPE_ARRAY:
-            ASSERT(false, "array of arrays");
+        {
+            ASSERT(false, "array to array?");
+            break;
+        }
         case OP_TYPE_POINTER:
-            ASSERT(false, "Pointer to pointer?");
-
+        {
+            ASSERT(false, "pointer to pointer?");
+            break;
+        }
         } // switch result optype
     }
 
     cut_diff_temp(mark);
-    return {};
+    return ret;
 }
 
 // *1: I sort the descriptor set indices so that when i am parsing the opvars i can fill the memory block allocated 
