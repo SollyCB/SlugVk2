@@ -1,4 +1,5 @@
 #include "string.hpp"
+#include "allocator.hpp"
 
 Heap_String_Buffer build_heap_string_buffer(u32 cstr_count, const char **list_of_cstrs) {
 

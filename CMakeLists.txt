@@ -30,8 +30,10 @@ endif()
 
 if (BUILD_TESTS)
     set(TEST_FILES test.cpp)
+    add_compile_definitions(TEST=true)
 else()
     set(TEST_FILES)
+    #add_compile_definitions(TEST=FASE)
 endif()
 
 # Source

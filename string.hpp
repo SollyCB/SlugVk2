@@ -1,8 +1,10 @@
 #ifndef SOL_STRING_HPP_INCLUDE_GUARD_
 #define SOL_STRING_HPP_INCLUDE_GUARD_
 
-#include "basic.h"
+#include "tlsf.h"
 #include "allocator.hpp"
+#include "typedef.h"
+#include "assert.h"
 
 struct Heap_String_Buffer {
     u32 len;

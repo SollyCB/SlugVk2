@@ -101,4 +101,8 @@ struct Parsed_Spirv {
 
 Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv);
 
+#if TEST
+void test_spirv();
+#endif
+
 #endif // include guard

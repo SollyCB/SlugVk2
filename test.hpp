@@ -1,135 +1,117 @@
-#pragma once
+#ifndef SOL_TEST_HPP_INCLUDE_GUARD_
+#define SOL_TEST_HPP_INCLUDE_GUARD_
 
-#include <cstddef>
-#include <cstdint>
-#include <cstdlib>
-#include <cstring>
-#include <iostream>
+#define TEST_LIST_BROKEN true
+#define TEST_LIST_SKIPPED true
 
-namespace Sol::Test {
+// Define 'TEST_LIST_BROKEN' to list broken tests, and 'TEST_LIST_SKIPPED' to list skipped tests
+#include "assert.h"
+#include "allocator.hpp"
+#include "string.hpp"
+#include "array.hpp"
 
-static const char* RED = "\u001b[1m\u001b[31;1m";
-static const char* NC = "\033[0m";
-static const char* GREEN = "\u001b[32;1m";
-static const char* YELLOW = "\033[1;33m";
-static const char* BLUE = "\u001b[35;1m";
-static const char* CYAN = "\u001b[34;1m";
+enum Test_Result {
+    FAIL    = 0,
+    PASS    = 0x01,
+    SKIPPED = 0x02,
+    BROKEN  = 0x04,
+};
 
-template<typename T>
-void test_fail(
-        const char* test_name, T val1, T val2, const char* name1, 
-        const char* name2, const char* op, const char* file_name, const char* function_name) 
+// @Todo for now these are just heap string buffers to prevent code from interfering with tests 
+// (like emptying the temp allocator at whatever stage). Need to give tests their own temp allocators
+struct Test_Module {
+    Dyn_Array<Heap_String_Buffer> failed_test_names;
+    Dyn_Array<Heap_String_Buffer> skipped_test_names;
+    Dyn_Array<Heap_String_Buffer> broken_test_names;
+    Dyn_Array<Heap_String_Buffer> skipped_broken_test_names;
+    Heap_String_Buffer info;
+    bool skipped;
+    bool broken;
+};
+struct Test_Tracker {
+    Dyn_Array<Test_Module> modules;
+};
+Test_Tracker* get_test_tracker_instance();
+void load_tests();
+void end_tests();
+
+void begin_test_module(const char *name,
+        Test_Module *mod, const char *function_name,
+        const char *file_name, bool broken, bool skipped);
+void end_test_module(Test_Module *mod);
+
+#define RED "\u001b[30;1m"
+#define GREEN "\u001b[32;1m"
+#define YELLOW "\u001b[33;1m"
+#define BLUE "\u001b[34;1m"
+#define NC "\u001b[0m"
+
+#if TEST_LIST_BROKEN
+#define TEST_MSG_BROKEN(name) \
+    std::cout << RED << "BROKEN TEST " << NC << "'" << name << "'\n";
+#else 
+#define TEST_MSG_BROKEN(name)
+#endif
+
+#if TEST_LIST_SKIPPED
+#define TEST_MSG_SKIPPED(name) \
+    std::cout << YELLOW << "Skip Test " << NC << "'" << name << "'\n";
+#define TEST_MSG_SKIP_BROKEN(name) \
+    std::cout << YELLOW << "Warning: Skipping Broken Test " << NC << "'" << name << "'\n";
+#else 
+#define TEST_MSG_SKIPPED(name)
+#define TEST_MSG_SKIP_BROKEN(name)
+#endif
+
+#define SKIP_BROKEN_TEST_MSG(mod) \
+    std::cout << YELLOW << "Warning: Module Skips " << mod.skipped_broken_test_names.len <<  " Broken Tests...\n" << NC;
+
+#define TEST_MSG_FAIL(name, arg1_name, arg2_name, arg1_val, arg2_val) \
+    std::cout << RED << "FAILED TEST " << name << ": \n" << NC <<  \
+    << "    " << arg1_name << " = " << arg1_val << ", " << arg2_name << " = " << arg2_val << '\n';
+
+template<typename Arg1, typename Arg2>
+void test_eq(Test_Module *mod, const char *test_name, const char *function_name,
+        const char *arg1_name, const char *arg2_name,
+        Arg1 arg1, Arg2 arg2, bool broken) 
 {
-    std::cout << RED << "    TEST FAIL! " << NC << "[ FunctionName: " << function_name << " ], TestName \"" << test_name << "\":\n        " \
-    << name1 << ' ' << op << ' ' << name2 << ", " << name1 << " = " << val1 \
-    << ", " << name2 << " = " << val2 << '\n';
+    if (broken) {
+        TEST_MSG_BROKEN(test_name);
+        Heap_String_Buffer *tmp = append_to_dyn_array<Heap_String_Buffer>(&mod->broken_test_names);
+        *tmp = build_heap_string_buffer(1, &test_name);
+        return;
+    }
+
+    // @Todo more efficient to use copy heres rather than build
+    if (mod->skipped) {
+        if (broken) {
+            Heap_String_Buffer *tmp = append_to_dyn_array<Heap_String_Buffer>(&mod->skipped_broken_test_names);
+            *tmp = build_heap_string_buffer(1, &test_name); // a build (not a copy here - see above)
+        }
+        TEST_MSG_SKIPPED(test_name);
+        Heap_String_Buffer *tmp = append_to_dyn_array<Heap_String_Buffer>(&mod->skipped_test_names);
+        *tmp = build_heap_string_buffer(1, &test_name);
+        return;
+    }
+
+    if (arg1 == arg2)
+        return;
+
+    Heap_String_Buffer *tmp = append_to_dyn_array<Heap_String_Buffer>(&mod->failed_test_names);
+    *tmp = build_heap_string_buffer(1, &test_name);
+    return;
 }
-void test_skipped(const char* test_name);
 
-struct TestClass {
-    virtual void run() = 0;
-};
-struct StringBuffer {
-    char* data = nullptr;
-    static StringBuffer get(const char* str);
-    void kill();
-    const char* cstr();
-};
-struct Module {
-    StringBuffer module_name;
-    StringBuffer file_name;
-    bool skippable = true;
-    bool skip_module = false;
-    bool skipped = true;
-    bool ok = true;
-    uint32_t test_index = 0;
+#define BEGIN_TEST_MODULE(name, broken, skipped) \
+    Test_Module *test_module = append_to_dyn_array(&get_test_tracker_instance()->modules); \
+    begin_test_module(name, test_module, __FUNCTION__, __FILE__, broken, skipped);
 
-    static void begin(const char* name, const char* file_name, const char* function_name, bool skippable = true, bool skip_module = false);
-    static void end();
-    void kill();
+// @Todo see if this needs to do anything... (currently does nothing)
+#define END_TEST_MODULE() \
+    end_test_module(test_module);
 
-    template<typename T>
-    void test_eq(const char* test_name, T arg1, T arg2, const char* arg1_name, const char* arg2_name, const char* file_name, const char* function_name, bool skip) {
-        if (skip_module)
-            return;
+#define TEST_EQ(test_name, arg1, arg2, broken) \
+    test_eq(test_module, test_name, __FUNCTION__, #arg1, #arg2, arg1, arg2, broken);
 
-        test_name = strcmp(test_name, "") == 0 ? "unnamed" : test_name;
-        ++test_index;
-        if (skippable && skip) {
-            test_skipped(test_name);
-            return;
-        } else 
-            skipped = false;
 
-        if (arg1 == arg2)
-            return;
-        ok = false;
-        test_fail(test_name, arg1, arg2, arg1_name, arg2_name, "!=", file_name, function_name);
-    }
-    template<typename T>
-    void test_neq(const char* test_name, T arg1, T arg2, const char* arg1_name, const char* arg2_name, const char* file_name, const char* function_name, bool skip) {
-        if (skip_module)
-            return;
-
-        test_name = strcmp(test_name, "") == 0 ? "unnamed" : test_name;
-        ++test_index;
-        if (skippable && skip) {
-            test_skipped(test_name);
-            return;
-        } else 
-            skipped = false;
-
-        if (arg1 != arg2)
-            return;
-        ok = false;
-        test_fail(test_name, arg1, arg2, arg1_name, arg2_name, "==", file_name, function_name);
-    }
-    template<typename T>
-    void test_str_eq(const char* test_name, T arg1, T arg2, const char* arg1_name, const char* arg2_name, const char* file_name, const char* function_name, bool skip) {
-        if (skip_module)
-            return;
-
-        test_name = strcmp(test_name, "") == 0 ? "unnamed" : test_name;
-        ++test_index;
-        if (skippable && skip) {
-            test_skipped(test_name);
-            return;
-        } else 
-            skipped = false;
-
-        if (strcmp(arg1, arg2) == 0)
-            return;
-        ok = false;
-        test_fail(test_name, arg1, arg2, arg1_name, arg2_name, "==", file_name, function_name);
-    }
-
-};
-struct List {
-    size_t len = 0;
-    size_t cap = 0;
-    Module* data = nullptr;
-    void init();
-    void kill();
-    void push(Module &module);
-    void grow();
-    Module* new_last();
-    Module* last();
-};
-struct Suite {
-    List modules;
-    bool enable_skips = false;
-    static Suite* instance();
-    void init(bool skippable);
-    void kill();
-};
-} // namespace Sol::Test
-#define TEST_MODULE_BEGIN(name, skippable, skip_module) \
-    Sol::Test::Module::begin(name, __FILE__, __FUNCTION__, skippable, skip_module);
-#define TEST_MODULE_END() \
-    Sol::Test::Module::end();
-#define TEST_EQ(test_name, arg1, arg2, skip) \
-    Sol::Test::Suite::instance()->modules.last()->test_eq(test_name, arg1, arg2, #arg1, #arg2, __FILE__, __FUNCTION__, skip);
-#define TEST_NEQ(test_name, arg1, arg2, skip) \
-    Sol::Test::Suite::instance()->modules.last()->test_neq(test_name, arg1, arg2, #arg1, #arg2, __FILE__, __FUNCTION__, skip);
-#define TEST_STR_EQ(test_name, arg1, arg2, skip) \
-    Sol::Test::Suite::instance()->modules.last()->test_str_eq(test_name, arg1, arg2, #arg1, #arg2, __FILE__, __FUNCTION__, skip);
+#endif // include guard

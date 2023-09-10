@@ -1,5 +1,9 @@
 #include "spirv.hpp"
 
+#if TEST
+#include "file.hpp"
+#endif
+
 enum Decoration {
     SPEC_ID = 1,
     BLOCK = 2,
@@ -49,9 +53,9 @@ struct Id {
     Op_Type op_type;
 
     u8 decoration_flags;
-    u16 location;
     u16 binding;
     u16 descriptor_set;
+    //u16 location; i dont need this currently i dont think
 
     Image_Type image_type; 
     Storage_Type storage_type;
@@ -98,6 +102,7 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
 
     u32 id_bound = spirv[3];
     Id *ids = (Id*)memory_allocate_temp(sizeof(Id) * id_bound, 8);
+    memset(ids, 0, sizeof(Id) * id_bound);
 
     u32 *var_ids = (u32*)memory_allocate_temp(sizeof(u32) * id_bound, 8);
     u32 var_count = 0;
@@ -167,8 +172,8 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
         // OpVariable
         case 59:
         {
-            id = ids + instr[0];
-            id->result_id = instr[1];
+            id = ids + instr[1];
+            id->result_id = instr[0];
             id->storage_type = (Storage_Type)instr[2];
 
             break;
@@ -207,7 +212,7 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
             case LOCATION:
             {
                 id->decoration_flags |= (u8)LOCATION_BIT;
-                id->location = (u16)instr[2];
+                //id->location = (u16)instr[2];
                 break;
             }
             case BINDING:
@@ -224,7 +229,7 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
                 id->descriptor_set = (u16)instr[2];
 
                 if (id->descriptor_set >= set_count)
-                    set_count = id->descriptor_set;
+                    set_count = id->descriptor_set + 1;
 
                 var_ids[var_count] = instr[0];
                 var_count++;
@@ -297,6 +302,12 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
             id->length = instr[2];
             break;
         }
+        // OpConstant
+        case 43:
+        {
+            ids[instr[1]].length = instr[2];
+            break;
+        }
         // OpTypePointer
         case 32:
         {
@@ -312,33 +323,35 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
         offset += *instr_size;
     }
 
-    u64 layout_info_mem_size = sizeof(Descriptor_Set_Layout_Info) * set_count;
-    Descriptor_Set_Layout_Info *layout_infos = (Descriptor_Set_Layout_Info*)memory_allocate_temp(layout_info_mem_size, 8);
-    u64 binding_info_mem_size = sizeof(Descriptor_Set_Layout_Binding_Info) * binding_count;
+    ret.layout_infos = (Descriptor_Set_Layout_Info*)memory_allocate_temp(sizeof(Descriptor_Set_Layout_Info) * set_count, 8);
 
-    Descriptor_Set_Layout_Binding_Info* binding_infos = (Descriptor_Set_Layout_Binding_Info*)memory_allocate_temp(binding_info_mem_size, 8);
-    memset(layout_infos, 0, layout_info_mem_size + binding_info_mem_size * set_count);
+    Descriptor_Set_Layout_Binding_Info* binding_infos = (Descriptor_Set_Layout_Binding_Info*)memory_allocate_temp(sizeof(Descriptor_Set_Layout_Binding_Info) * binding_count, 8);
 
     // *1 note on sorting below
     sort_vars((int*)var_ids, ids, 0, var_count - 1);
 
-    u16 layout_index = 0;
     u16 binding_index = 0;
+    u16 previous_binding_index = 0;
+    Descriptor_Set_Layout_Binding_Info *binding_info = &binding_infos[binding_index];
+
+    u16 layout_index = 0;
+    ret.layout_infos[layout_index].binding_infos = binding_info;
+
     Id *var;
     Id *result_type;
-
-    Descriptor_Set_Layout_Info *layout_info;
-    Descriptor_Set_Layout_Binding_Info *binding_info;
-
     for(int i = 0; i < var_count; ++i) {
-        var = ids + var_ids[i];
-        if (layout_index != var->descriptor_set) {
-            layout_index++;
-            binding_index = 0;
-        }
 
-        layout_info  = layout_infos + layout_index;
-        binding_info = layout_info->binding_infos + binding_index;
+        var = ids + var_ids[i];
+        binding_info = &binding_infos[binding_index];
+
+        if (layout_index != var->descriptor_set) {
+            ret.layout_infos[layout_index].binding_count = binding_index - previous_binding_index;
+
+            layout_index++;
+            ret.layout_infos[layout_index].binding_infos = binding_info;
+
+            previous_binding_index = ret.layout_infos[layout_index - 1].binding_count;
+        }
 
         binding_info->binding = var->binding;
         result_type = ids + var->result_id;
@@ -346,25 +359,39 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
         result_type = ids + result_type->result_id;
 
         if (result_type->op_type == OP_TYPE_ARRAY) {
-            binding_info->descriptor_count = result_type->length;
+            binding_info->descriptor_count = ids[result_type->length].length;
             result_type = ids + result_type->result_id;
         } else {
             binding_info->descriptor_count = 1;
         }
 
-        if (var->decoration_flags & BLOCK_BIT) {
+        if (result_type->decoration_flags & BLOCK_BIT) {
             if (var->storage_type == STORAGE_STORAGE_BUFFER)
                 binding_info->descriptor_type = DESCRIPTOR_TYPE_STORAGE_BUFFER;
             else 
                 binding_info->descriptor_type = DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            continue;
+
+            goto increment_binding_index;
         }
-        if (var->decoration_flags & BUFFER_BLOCK_BIT) {
-            DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            continue;
+        if (result_type->decoration_flags & BUFFER_BLOCK_BIT) {
+            binding_info->descriptor_type = DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            goto increment_binding_index;
         }
 
+    begin_switch:
         switch(result_type->op_type) {
+        case OP_TYPE_POINTER:
+        {
+            ASSERT(false, "pointer to pointer? array of pointers?");
+            result_type = &ids[result_type->result_id];
+            goto begin_switch;
+        }
+        case OP_TYPE_ARRAY:
+        {
+            ASSERT(false, "array to array?");
+            result_type = &ids[result_type->result_id];
+            goto begin_switch;
+        }
         case OP_TYPE_SAMPLER:
         {
             binding_info->descriptor_type = DESCRIPTOR_TYPE_SAMPLER;
@@ -411,18 +438,13 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
             } // switch image type
             break;
         }
-        case OP_TYPE_ARRAY:
-        {
-            ASSERT(false, "array to array?");
-            break;
-        }
-        case OP_TYPE_POINTER:
-        {
-            ASSERT(false, "pointer to pointer?");
-            break;
-        }
         } // switch result optype
+
+    increment_binding_index:
+        binding_index++;
     }
+    // The last layout info in the list will not have its binding count set
+    ret.layout_infos[layout_index].binding_count = binding_index - previous_binding_index;
 
     cut_diff_temp(mark);
     return ret;
@@ -441,3 +463,117 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
 // I have to allocate more space and leave big gaps to ensure that i have space for the possible number of bindings 
 // in each descriptor set. If i sort them, i know that as soon as i see a novel set index, i can just continue filling
 // knowing that i will not need to come back and add bindings to a previous set index
+
+#if 0
+void test_spirv() {
+    TEST_MODULE_BEGIN("Spirv", true, false);
+    u64 byte_count;
+    const u32 *spirv = (const u32*)file_read_bin_temp("spirv_2.vert.spv", &byte_count);
+    Parsed_Spirv p = parse_spirv(byte_count, spirv);
+
+    Descriptor_Set_Layout_Info info;
+
+    info = p.layout_infos[0];
+    for(int j = 0; j < info.binding_count; ++j) {
+        Descriptor_Set_Layout_Binding_Info bind = info.binding_infos[j];
+        int count = bind.descriptor_count;
+        int type = bind.descriptor_type;
+        switch(bind.binding) {
+        case 0:
+        {
+            TEST_EQ("Set_0_Binding_0", count, 2, false);
+            TEST_EQ("Set_0_Binding_0", type, 6, false);
+            break;
+        }
+        case 1:
+        {
+            TEST_EQ("Set_0_Binding_1", count, 4, false);
+            TEST_EQ("Set_0_Binding_1", type, 6, false);
+            break;
+        }
+        }
+    }
+    info = p.layout_infos[1];
+    for(int j = 0; j < info.binding_count; ++j) {
+        Descriptor_Set_Layout_Binding_Info bind = info.binding_infos[j];
+        int count = bind.descriptor_count;
+        int type = bind.descriptor_type;
+        switch(bind.binding) {
+        case 0:
+        {
+            TEST_EQ("Set_1_Binding_0", count, 3, false);
+            TEST_EQ("Set_1_Binding_0", type, 6, false);
+            break;
+        }
+        case 1:
+        {
+            TEST_EQ("Set_1_Binding_1", count, 1, false);
+            TEST_EQ("Set_1_Binding_1", type, 6, false);
+            break;
+        }
+        }
+    }
+
+    info = p.layout_infos[2];
+    for(int j = 0; j < info.binding_count; ++j) {
+        Descriptor_Set_Layout_Binding_Info bind = info.binding_infos[j];
+        int count = bind.descriptor_count;
+        int type = bind.descriptor_type;
+        switch(bind.binding) {
+        case 0:
+        {
+            TEST_EQ("Set_2_Binding_0", count, 7, false);
+            TEST_EQ("Set_2_Binding_0", type, 6, false);
+            break;
+        }
+        case 1:
+        {
+            TEST_EQ("Set_2_Binding_1", count, 1, false);
+            TEST_EQ("Set_2_Binding_1", type, 6, false);
+            break;
+        }
+        case 2:
+        {
+            TEST_EQ("Set_2_Binding_2", count, 2, false);
+            TEST_EQ("Set_2_Binding_2", type, 6, false);
+            break;
+        }
+        }
+    }
+
+    info = p.layout_infos[3];
+    /*for(int j = 0; j < info.binding_count; ++j) {
+        Descriptor_Set_Layout_Binding_Info bind = info.binding_infos[j];
+        int count = bind.descriptor_count;
+        int type = bind.descriptor_type;
+        switch(bind.binding) {
+        case 0:
+        {
+            TEST_EQ("Set_3_Binding_0", count, 4, false);
+            TEST_EQ("Set_3_Binding_0", type, 1, false);
+            break;
+        }
+        case 1:
+        {
+            TEST_EQ("Set_3_Binding_1", count, 3, false);
+            TEST_EQ("Set_3_Binding_1", type, 1, false);
+            break;
+        }
+        case 2:
+        {
+            TEST_EQ("Set_3_Binding_2", count, 2, false);
+            TEST_EQ("Set_3_Binding_2", type, 1, false);
+            break;
+        }
+        case 3:
+        {
+            TEST_EQ("Set_3_Binding_3", count, 1, false);
+            TEST_EQ("Set_3_Binding_3", type, 1, false);
+            break;
+        }
+        }
+    }*/
+
+    TEST_MODULE_END();
+}
+#endif // #if TEST
