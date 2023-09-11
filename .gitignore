@@ -5,6 +5,9 @@ build/
 *.swp
 shaders/*.spv
 external/glfw-win64-bin/docs/
+external/glfw-shared-linux/docs/
+external/glfw-shared-linux/tests/
+external/glfw-shared-linux/examples/
 !external/glfw-win64-bin/include/
 !external/glfw-win64-bin/lib-vc2022/
 makefile
