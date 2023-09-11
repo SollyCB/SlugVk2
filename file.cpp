@@ -19,7 +19,7 @@ const u8* file_read_bin_temp(const char *file_name, u64 *size) {
     size_t read = fread(contents, 1, *size, file);
 
     if (*size != read)
-        println("Failed to read entire file: read %i, file_len %i", read, *size);
+        println("Failed to read entire file");
 
     //ASSERT(read == *byte_count, "Failed to read entire file: read = %i, file_len = %i", read, *byte_count);
     fclose(file);

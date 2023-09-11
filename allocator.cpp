@@ -15,10 +15,10 @@ Linear_Allocator *get_instance_temp() {
 
 void init_allocators() {
     println("\nInitializing Allocators:");
-    println("    Initial Capacity (Heap Allocator): %i ", DEFAULT_CAP_HEAP_ALLOCATOR);
-    println("    Initial Capacity (Temp Allocator): %i ", DEFAULT_CAP_TEMP_ALLOCATOR);
-    println("");
+    std::cout << "    Initial Capacity (Heap Allocator): " <<  DEFAULT_CAP_HEAP_ALLOCATOR << '\n';
+    std::cout << "    Initial Capacity (Temp Allocator): " <<  DEFAULT_CAP_TEMP_ALLOCATOR << '\n';
 
+    std::cout << '\n';
     init_heap_allocator(DEFAULT_CAP_HEAP_ALLOCATOR);
     init_temp_allocator(DEFAULT_CAP_TEMP_ALLOCATOR);
 }
@@ -26,7 +26,7 @@ void kill_allocators() {
     println("\nShutting Down Allocators...");
     kill_heap_allocator();
     kill_temp_allocator();
-    println("");
+    std::cout << '\n';
 }
 
 void init_heap_allocator(u64 size) {

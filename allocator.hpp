@@ -37,7 +37,7 @@ inline void memory_free_heap(void *ptr) {
     u64 size = tlsf_block_size(ptr);
 
     Heap_Allocator *allocator = get_instance_heap();
-    ASSERT(size <= allocator->used, "Heap Allocator Underflow, size = %i used = %i", size, allocator->used);
+    ASSERT(size <= allocator->used, "Heap Allocator Underflow");
     allocator->used -= size;
     tlsf_free(allocator->tlsf_handle, ptr);
 }

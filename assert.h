@@ -11,9 +11,8 @@
 #endif
 
 #if DEBUG 
-#define ASSERT(predicate, fmt, ...) if (!(predicate)) { \
+#define ASSERT(predicate, fmt) if (!(predicate)) { \
     std::cout << "ASSERT FAILED IN " << __FILE__ << ", " << __LINE__ << ": " << #predicate << '\n'; \
-    println(fmt, __VA_ARGS__); \
     HALT_EXECUTION(); \
 }
 #else

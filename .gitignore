@@ -1,6 +1,5 @@
 build/
-make.bat
-run.bat
+*.bat
 .cache/
 *~
 *.swp
@@ -8,3 +7,4 @@ shaders/*.spv
 external/glfw-win64-bin/docs/
 !external/glfw-win64-bin/include/
 !external/glfw-win64-bin/lib-vc2022/
+makefile

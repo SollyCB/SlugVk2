@@ -16,7 +16,7 @@ int main() {
     run_tests(); 
 #endif
     
-#if 0
+#if 1
     init_glfw(); 
     Glfw *glfw = get_glfw_instance();
 

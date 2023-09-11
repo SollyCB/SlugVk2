@@ -33,7 +33,7 @@ if (BUILD_TESTS)
     add_compile_definitions(TEST=true)
 else()
     set(TEST_FILES)
-    #add_compile_definitions(TEST=FASE)
+    add_compile_definitions(TEST=false)
 endif()
 
 # Source
@@ -47,6 +47,8 @@ add_executable(Slug
      file.cpp
      spirv.cpp
 
+     ${TEST_FILES}
+
      #clock.cpp
      #camera.cpp
      #gltf.cpp
@@ -56,24 +58,32 @@ add_executable(Slug
      external/stb_sprintf.cpp
      #external/vk_mem_alloc.cpp
      #external/stb_image.cpp
-
-     ${TEST_FILES}
 )
 target_include_directories(Slug PUBLIC external)
 
     ## External libs ##
 # Vulkan
-find_package(Vulkan REQUIRED)
-target_include_directories(Slug PUBLIC "C:/VulkanSDK/1.3.261.0/Include")
-target_link_libraries(Slug PUBLIC  "C:/VulkanSDK/1.3.261.0/Lib/vulkan-1.lib")
+if (WIN32)
+    find_package(Vulkan REQUIRED)
+    target_include_directories(Slug PUBLIC "C:/VulkanSDK/1.3.261.0/Include")
+    target_link_libraries(Slug PUBLIC  "C:/VulkanSDK/1.3.261.0/Lib/vulkan-1.lib")
+else()
+    #find_package(Vulkan REQUIRED)
+    target_include_directories(Slug PUBLIC  "/home/solly/vulkan/1.3.261.1/x86_64/include/")
+    target_link_libraries(Slug PUBLIC  "/home/solly/vulkan/1.3.261.1/x86_64/lib/libvulkan.so")
+endif()
 
 # GLFW
-target_link_libraries(Slug PUBLIC "${CMAKE_CURRENT_LIST_DIR}/external/glfw-win64-bin/lib-vc2022/glfw3.lib")
-target_include_directories(Slug PUBLIC "${CMAKE_CURRENT_LIST_DIR}/external/glfw-win64-bin/include")
+if(WIN32)
+    target_link_libraries(Slug PUBLIC "${CMAKE_CURRENT_LIST_DIR}/external/glfw-win64-bin/lib-vc2022/glfw3.lib")
+    target_include_directories(Slug PUBLIC "${CMAKE_CURRENT_LIST_DIR}/external/glfw-win64-bin/include")
+else()
+    target_link_libraries(Slug PUBLIC "${CMAKE_CURRENT_LIST_DIR}/external/glfw-shared-linux/build/src/libglfw.so")
+    target_include_directories(Slug PUBLIC "${CMAKE_CURRENT_LIST_DIR}/external/glfw-shared-linux/include/")
+endif()
 
 # GLM
 #set(BUILD_STATIC_LIBS ON CACHE BOOL "Build GLM static libs...")
 #add_subdirectory(external/glm)
-#target_link_libraries(WinSlug PUBLIC glm_static)
-#target_include_directories(WinSlug PUBLIC external/glm)
-#
+#target_link_libraries(Slug PUBLIC glm_static)
+#target_include_directories(Slug PUBLIC external/glm)

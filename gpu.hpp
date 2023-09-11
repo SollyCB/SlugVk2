@@ -48,10 +48,11 @@ void destroy_vk_queue(Gpu *gpu);
 
 // Surface and Swapchain
 struct Window {
-    VkSwapchainKHR vk_swapchain;
-    VkSwapchainCreateInfoKHR *swapchain_info;
+    VkSwapchainCreateInfoKHR swapchain_info;
 
-    VkImage *vk_images; // 2 images for presentation
+    VkSwapchainKHR vk_swapchain;
+    u32 image_count;
+    VkImage *vk_images;
     VkImageView *vk_image_views;
 };
 Window* get_window_instance();
@@ -62,8 +63,9 @@ void kill_window(Gpu *gpu, Window *window);
 VkSurfaceKHR create_vk_surface(VkInstance vk_instance, Glfw *glfw);
 void destroy_vk_surface(VkInstance vk_instance, VkSurfaceKHR vk_surface);
 
-VkSwapchainKHR create_vk_swapchain(Gpu *gpu, Window *window); // also creates images and views and adds them to window struct
+VkSwapchainKHR create_vk_swapchain(Gpu *gpu, VkSurfaceKHR vk_surface); // This function is a little weird, because it does a lot, but at the same time the swapchain basically is the window, so it makes sense that it such a big function
 void destroy_vk_swapchain(VkDevice vk_device, Window *window); // also destroys image views
+VkSwapchainKHR recreate_vk_swapchain(Gpu *gpu, Window *window);
 
 // CommandPools and CommandBuffers
 struct Create_Vk_Command_Pool_Info {

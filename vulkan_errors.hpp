@@ -67,7 +67,7 @@ const char* match_vk_error(Vulkan_Result error);
 
 #ifndef _WIN32
 #define DEBUG_OBJ_CREATION(creation_func, err_code)  \
-  if (err_code != VULKAN_SUCCESS) { \
+  if (err_code != (VkResult)VULKAN_SUCCESS) { \
     const char* err_msg = (match_vk_error((Vulkan_Result)err_code)); \
     std::cerr << "OBJ CREATION ERROR: " << #creation_func << \
     " returned " << err_msg << ", (" << __FILE__ << ", " << __LINE__ << ")\n";  \
@@ -77,7 +77,7 @@ const char* match_vk_error(Vulkan_Result error);
 #else
 
 #define DEBUG_OBJ_CREATION(creation_func, err_code)  \
-  if (err_code != VULKAN_SUCCESS) { \
+  if (err_code != (VkResult)VULKAN_SUCCESS) { \
     const char* err_msg = (match_vk_error((Vulkan_Result)err_code)); \
     std::cerr << "OBJ CREATION ERROR: " << #creation_func << \
     " returned " << err_msg << ", (" << __FILE__ << ", " << __LINE__ << ")\n";  \
