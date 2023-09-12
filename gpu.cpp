@@ -931,32 +931,6 @@ VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, Pars
     cut_diff_temp(mark);
     return layouts;
 }
-#if 0
-VkDescriptorSetLayout create_vk_descriptor_set_layout(VkDevice vk_device, Create_Vk_Descriptor_Set_Layout_Info *info) {
-    VkDescriptorSetLayoutCreateInfo create_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    create_info.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
-    create_info.bindingCount = info->count;
-
-    u64 mark = get_mark_temp();
-    VkDescriptorSetLayoutBinding *layout_bindings = (VkDescriptorSetLayoutBinding*)memory_allocate_temp(info->count * sizeof(VkDescriptorSetLayoutBinding), 8);
-    for(int i = 0; i < info->count; ++i) {
-        layout_bindings[i] = {
-            info->bindings[i],
-            info->descriptor_types[i],
-            info->descriptor_counts[i],
-            info->shader_access_flags[i],
-            info->immutable_samplers[i],
-        };
-    }
-    create_info.pBindings = layout_bindings;
-
-
-    cut_diff_temp(mark);
-
-    VkDescriptorSetLayout layout;
-    return layout;
-}
-#endif
 
 void destroy_vk_descriptor_set_layouts(VkDevice vk_device, u32 count, VkDescriptorSetLayout *layouts) {
     for(int i = 0; i < count; ++i)
