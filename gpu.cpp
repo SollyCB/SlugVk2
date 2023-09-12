@@ -18,7 +18,7 @@ static Gpu *s_Gpu;
 Gpu* get_gpu_instance() { return s_Gpu; }
 
 void init_gpu() {
-    // This is ugly but sometimes ugly is best
+    // keep struct data together (not pointing to random heap addresses)
     s_Gpu = (Gpu*)memory_allocate_heap(
             sizeof(Gpu) +
             sizeof(GpuInfo) +
@@ -655,8 +655,8 @@ VkSwapchainKHR create_vk_swapchain(Gpu *gpu, VkSurfaceKHR vk_surface) {
 
     // Image setup
     u32 image_count = surface_capabilities.minImageCount < 2 ? 2 : surface_capabilities.minImageCount;
-    // Ugly but sometimes ugly works best (this keeps the window struct fields all grouped, 
-    // the pointers wont just point to random places on the heap)
+
+    // keep struct data together (not pointing to random heap addresses)
     s_Window = (Window*)memory_allocate_heap(
             sizeof(Window)                   +
             sizeof(VkSwapchainCreateInfoKHR) +
@@ -938,7 +938,7 @@ void destroy_vk_descriptor_set_layouts(VkDevice vk_device, u32 count, VkDescript
     memory_free_heap((void*)layouts);
 }
 
-// @Todo pipeline: increase use of dyn states, eg. vertex input, raster states etc.
+// @Todo pipeline: increase possible use of dyn states, eg. vertex input, raster states etc.
 // `Pipeline
 
 // `ShaderStages
@@ -967,7 +967,7 @@ void create_vk_pipeline_shader_stages(u32 count, Create_Vk_Pipeline_Shader_Stage
 }
 
 // `VertexInputState
-// @Todo pack struct
+// @StructPacking pack struct
 struct Create_Vk_Vertex_Input_Binding_Description_Info {
     u32 binding;
     u32 stride;
@@ -1243,7 +1243,7 @@ VkPipelineLayout create_vk_pipeline_layout(Create_Vk_Pipeline_Layout_Info *info)
 
 // `DynamicState
 void create_vk_pipeline_dyn_state(VkPipelineDynamicStateCreateInfo *state) {
-    // @Todo list of possible other dyn states
+    // @Todo @DynState list of possible other dyn states
     //      vertex input
     //      multisampling
 

@@ -61,7 +61,7 @@ void kill_temp_allocator() {
 #endif
 }
 
-// @Todo add array for active allocations?
+// @DebugInfo add array for active allocations?
 u8 *memory_allocate_heap(u64 size, u64 alignment) {
     void *ret;
 
