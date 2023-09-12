@@ -11,6 +11,7 @@ static const u64 PRINT_FORMATTER_BUF_LEN = 1024;
 
 static inline s32 print_parse_signed_int(const char *str, u32 len, char *buf, s64 num) {
     u32 end = 0;
+
     if (num < 0) {
         buf[0] = '-';
         buf++;
@@ -86,7 +87,7 @@ static inline s32 print_parse_signed_int(const char *str, u32 len, char *buf, s6
         buf[i] = rev[(end - 1) - i];
     }
     
-    return end;
+    return end + 1;
 }
 static inline s32 print_parse_unsigned_int(const char *str, u32 len, char *buf, u64 num) {
     u32 end = 0;
@@ -188,6 +189,82 @@ static void println(const char* str, ...) {
 
         if (str[i] == '\\' && skip) {
             buf[buf_index] = '\\';
+            buf_index++;
+            skip = false;
+            continue;
+        }
+        if (str[i] == '\\') {
+            skip = true;
+            //buf_index++;
+            continue;
+        }
+        if (str[i] == '%' && skip) {
+            buf[buf_index] = str[i];
+            buf_index++;
+            skip = false;
+            continue;
+        }
+        if (str[i] != '%') {
+            buf[buf_index] = str[i];
+            buf_index++;
+            skip = false;
+            continue;
+        }
+        skip = false;
+        
+        i++;
+        switch(str[i]) {
+        case 's':
+        {
+            s = va_arg(args, s64);
+            size = print_parse_signed_int(str + i, len - i, buf + buf_index, s);
+            buf_index += size;
+            break;
+        }
+        case 'u':
+        {
+            u = va_arg(args, u64);
+            size = print_parse_unsigned_int(str + i, len - i, buf + buf_index, u);
+            buf_index += size;
+            break;
+        }
+        case 'c':
+        {
+            cstr = va_arg(args, const char*);
+            size = print_parse_string(str + i, len - i, buf + buf_index, cstr);
+            buf_index += size;
+            break;
+        }
+        default:
+            assert(false && "Cannot understand print statement");
+        } // switch str[i]
+    }
+
+    va_end(args);
+
+    buf[buf_index] = '\0';
+    std::cout << buf << '\n';
+}
+
+static void print(const char* str, ...) {
+    va_list args;
+    va_start(args, str);
+
+    char buf[PRINT_FORMATTER_BUF_LEN];
+    u32 buf_index = 0;
+
+    u64 len = strlen(str);
+    s32 size;
+    
+    s64 s;
+    u64 u;
+    const char *cstr;
+
+    bool skip = false;
+    for(int i = 0; i < len; ++i) {
+
+        if (str[i] == '\\' && skip) {
+            buf[buf_index] = '\\';
             skip = false;
             buf_index++;
             continue;
@@ -242,7 +319,7 @@ static void println(const char* str, ...) {
     va_end(args);
 
     buf[buf_index] = '\0';
-    std::cout << buf << '\n';
+    std::cout << buf;
 }
 
 #endif // include guard

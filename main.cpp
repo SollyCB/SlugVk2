@@ -112,6 +112,8 @@ int main() {
     kill_glfw(glfw);
 #endif
 
+    int x = -987;
+    println("Hey jenny %s", (s64)x);
 
     kill_allocators();
     return 0;
