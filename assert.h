@@ -2,7 +2,7 @@
 #define SOL_ASSERT_H_INCLUDE_GUARD_
 
 #include <iostream>
-#include "print.h"
+#include "print.hpp"
 
 #ifndef _WIN32
 #define HALT_EXECUTION() __builtin_trap()

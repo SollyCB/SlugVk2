@@ -53,7 +53,6 @@ add_executable(Slug
      #image.cpp
 
      external/tlsf.cpp
-     external/stb_sprintf.cpp
      #external/vk_mem_alloc.cpp
      #external/stb_image.cpp
 )
