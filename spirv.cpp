@@ -2,6 +2,7 @@
 
 #if TEST
 #include "file.hpp"
+#include "test.hpp"
 #endif
 
 enum Decoration {
@@ -350,7 +351,7 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
             layout_index++;
             ret.layout_infos[layout_index].binding_infos = binding_info;
 
-            previous_binding_index = ret.layout_infos[layout_index - 1].binding_count;
+            previous_binding_index = binding_index;
         }
 
         binding_info->binding = var->binding;
@@ -464,9 +465,9 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
 // in each descriptor set. If i sort them, i know that as soon as i see a novel set index, i can just continue filling
 // knowing that i will not need to come back and add bindings to a previous set index
 
-#if 0
+#if TEST 
 void test_spirv() {
-    TEST_MODULE_BEGIN("Spirv", true, false);
+    BEGIN_TEST_MODULE("Spirv", true, false);
     u64 byte_count;
     const u32 *spirv = (const u32*)file_read_bin_temp("spirv_2.vert.spv", &byte_count);
     Parsed_Spirv p = parse_spirv(byte_count, spirv);
@@ -542,7 +543,7 @@ void test_spirv() {
     }
 
     info = p.layout_infos[3];
-    /*for(int j = 0; j < info.binding_count; ++j) {
+    for(int j = 0; j < info.binding_count; ++j) {
         Descriptor_Set_Layout_Binding_Info bind = info.binding_infos[j];
         int count = bind.descriptor_count;
         int type = bind.descriptor_type;
@@ -572,8 +573,8 @@ void test_spirv() {
             break;
         }
         }
-    }*/
+    }
 
-    TEST_MODULE_END();
+    END_TEST_MODULE();
 }
 #endif // #if TEST

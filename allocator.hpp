@@ -1,9 +1,9 @@
 #ifndef SOL_ALLOCATOR_HPP_INCLUDE_GUARD_
 #define SOL_ALLOCATOR_HPP_INCLUDE_GUARD_
 
+#include "tlsf.h"
 #include "typedef.h"
 #include "assert.h"
-#include "tlsf.h"
 
 struct Heap_Allocator {
     u64 capacity;

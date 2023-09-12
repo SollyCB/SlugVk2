@@ -29,12 +29,11 @@ else()
 endif()
 
 if (BUILD_TESTS)
-    set(TEST_FILES test.cpp)
     add_compile_definitions(TEST=true)
 else()
-    set(TEST_FILES)
     add_compile_definitions(TEST=false)
 endif()
+
 
 # Source
 add_executable(Slug 
@@ -46,8 +45,7 @@ add_executable(Slug
      glfw.cpp
      file.cpp
      spirv.cpp
-
-     ${TEST_FILES}
+     test.cpp
 
      #clock.cpp
      #camera.cpp

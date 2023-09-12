@@ -1,3 +1,5 @@
+#if TEST
+
 #ifndef SOL_TEST_HPP_INCLUDE_GUARD_
 #define SOL_TEST_HPP_INCLUDE_GUARD_
 
@@ -40,7 +42,7 @@ void begin_test_module(const char *name,
         const char *file_name, bool broken, bool skipped);
 void end_test_module(Test_Module *mod);
 
-#define RED "\u001b[30;1m"
+#define RED "\u001b[31;1m"
 #define GREEN "\u001b[32;1m"
 #define YELLOW "\u001b[33;1m"
 #define BLUE "\u001b[34;1m"
@@ -67,7 +69,7 @@ void end_test_module(Test_Module *mod);
     std::cout << YELLOW << "Warning: Module Skips " << mod.skipped_broken_test_names.len <<  " Broken Tests...\n" << NC;
 
 #define TEST_MSG_FAIL(name, arg1_name, arg2_name, arg1_val, arg2_val) \
-    std::cout << RED << "FAILED TEST " << name << ": \n" << NC <<  \
+    std::cout << RED << "FAILED TEST " << name << ": \n" << NC  \
     << "    " << arg1_name << " = " << arg1_val << ", " << arg2_name << " = " << arg2_val << '\n';
 
 template<typename Arg1, typename Arg2>
@@ -99,6 +101,9 @@ void test_eq(Test_Module *mod, const char *test_name, const char *function_name,
 
     Heap_String_Buffer *tmp = append_to_dyn_array<Heap_String_Buffer>(&mod->failed_test_names);
     *tmp = build_heap_string_buffer(1, &test_name);
+
+    TEST_MSG_FAIL(test_name, arg1_name, arg2_name, arg1, arg2);
+
     return;
 }
 
@@ -115,3 +120,4 @@ void test_eq(Test_Module *mod, const char *test_name, const char *function_name,
 
 
 #endif // include guard
+#endif // #if TEST

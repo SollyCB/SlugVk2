@@ -1,3 +1,4 @@
+#if TEST
 #include "test.hpp"
 #include "string.hpp"
 
@@ -114,3 +115,4 @@ void begin_test_module(const char *name, Test_Module *mod, const char *function_
     init_dyn_array<Heap_String_Buffer>(&mod->skipped_broken_test_names, 10);
 }
 void end_test_module(Test_Module *mod) {}
+#endif // #if TEST

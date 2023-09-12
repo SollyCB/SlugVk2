@@ -16,7 +16,7 @@ int main() {
     run_tests(); 
 #endif
     
-#if 1
+#if 0
     init_glfw(); 
     Glfw *glfw = get_glfw_instance();
 
@@ -111,6 +111,10 @@ int main() {
 
 #if TEST
 void run_tests() {
+    load_tests();
+
     test_spirv();
+
+    end_tests();
 }
 #endif
