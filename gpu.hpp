@@ -116,7 +116,8 @@ struct Create_Vk_Descriptor_Set_Layout_Info {
     VkDescriptorSetLayoutBinding *bindings;
 };
 // add some helper function to fill in set layout bindings
-VkDescriptorSetLayout create_vk_descriptor_set_layout(VkDevice vk_device, Create_Vk_Descriptor_Set_Layout_Info *info);
+struct Parsed_Spirv;
+VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, Parsed_Spirv *parsed_spirv, u32 *count);
 void destroy_vk_descriptor_set_layouts(VkDevice vk_device, u32 count, VkDescriptorSetLayout *layouts);
 
 // Pipeline

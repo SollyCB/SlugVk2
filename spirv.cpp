@@ -359,6 +359,10 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
         ASSERT(result_type->op_type == OP_TYPE_POINTER, "vars must reference pointers");
         result_type = ids + result_type->result_id;
 
+        // @HeightMaps Assumes vertex shaders do not access samplers (more info below)
+        // Assumes fragma shaders do not access buffers
+        binding_info->access_flags = SHADER_STAGE_VERTEX_BIT;
+
         if (result_type->op_type == OP_TYPE_ARRAY) {
             binding_info->descriptor_count = ids[result_type->length].length;
             result_type = ids + result_type->result_id;
@@ -379,7 +383,13 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
             goto increment_binding_index;
         }
 
-    begin_switch:
+    begin_switch: // goto label
+
+        // resource must be an image, so assume that the access stage is the fragment shader.
+        // this needs refining: I need a way to change or override this behaviour for shit like 
+        // height maps and the like
+        binding_info->access_flags = SHADER_STAGE_FRAGMENT_BIT;
+
         switch(result_type->op_type) {
         case OP_TYPE_POINTER:
         {
@@ -441,11 +451,12 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
         }
         } // switch result optype
 
-    increment_binding_index:
+    increment_binding_index: // goto label
         binding_index++;
     }
     // The last layout info in the list will not have its binding count set
     ret.layout_infos[layout_index].binding_count = binding_index - previous_binding_index;
+    ret.group_count = layout_index + 1;
 
     cut_diff_temp(mark);
     return ret;

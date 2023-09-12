@@ -16,7 +16,7 @@ int main() {
     run_tests(); 
 #endif
     
-#if 0
+#if 1
     init_glfw(); 
     Glfw *glfw = get_glfw_instance();
 
@@ -82,7 +82,13 @@ int main() {
     vkWaitForFences(gpu->vk_device, 1, &vk_fence, true, 10e9);
     destroy_vk_fences(gpu->vk_device, 1, &vk_fence);
 
-    
+    u64 byte_count;
+    const u32 *spirv = (const u32*)file_read_bin_temp("spirv_2.vert.spv", &byte_count);
+    Parsed_Spirv p = parse_spirv(byte_count, spirv); 
+    reset_temp(); // just to clear the allocation from the file read
+
+    u32 layout_count;
+    VkDescriptorSetLayout *layouts = create_vk_descriptor_set_layouts(gpu->vk_device, &p, &layout_count);
 
     println("Beginning render loop...\n");
     while(!glfwWindowShouldClose(glfw->window)) {
@@ -90,6 +96,7 @@ int main() {
     }
 
     // Command Buffer shutdown
+    destroy_vk_descriptor_set_layouts(gpu->vk_device, layout_count, layouts);
     destroy_vk_command_pools(gpu->vk_device, 2, graphics_command_pools);
     memory_free_heap(graphics_command_pools);
     memory_free_heap(graphics_command_buffers);

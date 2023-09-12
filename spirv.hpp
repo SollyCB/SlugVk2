@@ -4,7 +4,7 @@
 #include "basic.h"
 
 // There redefinitions of vulkan types here in order to avoid including the vulkan headers 
-// wherever possible
+// @Compiletime
 
 enum Shader_Stage_Flags {
     SHADER_STAGE_VERTEX_BIT = 0x00000001,
@@ -88,6 +88,7 @@ struct Descriptor_Set_Layout_Binding_Info {
     u16 binding;
     u16 descriptor_count;
     Descriptor_Type descriptor_type;
+    Shader_Stage_Flags access_flags;
 };
 struct Descriptor_Set_Layout_Info {
     u16 binding_count;
