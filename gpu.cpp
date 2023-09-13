@@ -136,16 +136,10 @@ VkInstance create_vk_instance(Create_Vk_Instance_Info *info) {
 // `Device ///////////
 VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills in gpu.physical_device
 
-    uint32_t ext_count = 5;
+    uint32_t ext_count = 2;
     const char *ext_names[] = {
         "VK_KHR_swapchain",
-        "VK_KHR_dynamic_rendering",
         "VK_EXT_descriptor_buffer",
-        "VK_EXT_extended_dynamic_state3",
-        "VK_EXT_extended_dynamic_state2",
-
-        //"VK_EXT_vertex_input_dynamic_state", I think this is something that does not need to be dynamic
-        // but maybe i will be proven wrong??
     };
 
     VkPhysicalDeviceFeatures vk1_features = {
@@ -170,55 +164,9 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
         .descriptorBufferImageLayoutIgnored = VK_TRUE,
         .descriptorBufferPushDescriptors = VK_TRUE,
     };
-    VkPhysicalDeviceExtendedDynamicState2FeaturesEXT extended_dyn_state_2_features = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_2_FEATURES_EXT,
-        .pNext = &descriptor_buffer_features,
-        .extendedDynamicState2 = VK_TRUE,
-        .extendedDynamicState2LogicOp = VK_TRUE,
-    };
-
-    VkPhysicalDeviceExtendedDynamicState3FeaturesEXT extended_dyn_state_3_features = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
-        .pNext = &extended_dyn_state_2_features,
-    };
-
-    extended_dyn_state_3_features.extendedDynamicState3DepthClampEnable = VK_TRUE;
-    extended_dyn_state_3_features.extendedDynamicState3PolygonMode = VK_TRUE;
-    extended_dyn_state_3_features.extendedDynamicState3LogicOpEnable = VK_TRUE;
-    extended_dyn_state_3_features.extendedDynamicState3ColorBlendEnable = VK_TRUE;
-    extended_dyn_state_3_features.extendedDynamicState3ColorBlendEquation = VK_FALSE; // But the LLVM pipe device does support it ? Weird
-    extended_dyn_state_3_features.extendedDynamicState3ColorWriteMask = VK_TRUE;
-
-    // Undesired list
-    extended_dyn_state_3_features.extendedDynamicState3TessellationDomainOrigin = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3RasterizationSamples = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3SampleMask = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3AlphaToCoverageEnable = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3AlphaToOneEnable = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3RasterizationStream = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3ConservativeRasterizationMode = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3ExtraPrimitiveOverestimationSize = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3DepthClipEnable = VK_FALSE; 
-    extended_dyn_state_3_features.extendedDynamicState3SampleLocationsEnable = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3ColorBlendAdvanced = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3ProvokingVertexMode = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3LineRasterizationMode = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3LineStippleEnable = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3DepthClipNegativeOneToOne = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3ViewportWScalingEnable = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3ViewportSwizzle = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3CoverageToColorEnable = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3CoverageToColorLocation = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3CoverageModulationMode = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3CoverageModulationTableEnable = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3CoverageModulationTable = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3CoverageReductionMode = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3RepresentativeFragmentTestEnable = VK_FALSE;
-    extended_dyn_state_3_features.extendedDynamicState3ShadingRateImageEnable = VK_FALSE;
-
     VkPhysicalDeviceFeatures2 features_full = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext = &extended_dyn_state_3_features,
+        .pNext = &descriptor_buffer_features,
         .features = vk1_features,
     };
 
@@ -231,15 +179,8 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
     VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptor_buffer_features_unfilled =  descriptor_buffer_features;
     descriptor_buffer_features_unfilled.pNext = &vk13_features_unfilled;
 
-    VkPhysicalDeviceExtendedDynamicState2FeaturesEXT extended_dyn_state_2_features_unfilled = 
-        extended_dyn_state_2_features;
-    extended_dyn_state_2_features_unfilled.pNext = &descriptor_buffer_features_unfilled;
-
-    VkPhysicalDeviceExtendedDynamicState3FeaturesEXT extended_dyn_state_3_features_unfilled = extended_dyn_state_3_features;
-    extended_dyn_state_3_features_unfilled.pNext = &extended_dyn_state_2_features_unfilled;
-
     VkPhysicalDeviceFeatures2 features_full_unfilled = features_full;
-    features_full_unfilled.pNext = &extended_dyn_state_3_features_unfilled;
+    features_full_unfilled.pNext = &descriptor_buffer_features_unfilled;
  
     features_full_unfilled.features = vk1_features_unfilled;
 
@@ -276,138 +217,6 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
         vkGetPhysicalDeviceProperties2(physical_devices[i], &device_props_2);
 
         bool incompatible = false;
-        if (extended_dyn_state_3_features.extendedDynamicState3DepthClampEnable                 != VK_TRUE) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3DepthClampEnable" << '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3PolygonMode                      != VK_TRUE) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3PolygonMode"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3LogicOpEnable                    != VK_TRUE) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3LogicOpEnable"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3ColorBlendEnable                 != VK_TRUE) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3ColorBlendEnable"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3ColorBlendEquation               != VK_FALSE) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3ColorBlendEquation"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3ColorWriteMask                   != VK_TRUE) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3ColorWriteMask"<< '\n';
-            incompatible = true;
-        }
-        /*
-        if (dyn_state_3_props.dynamicPrimitiveTopologyUnrestricted == VK_FALSE) {
-            std::cerr << "Device Index " << i << " does not support dynamicPrimitiveTopologyUnrestricted\n";
-            incompatible = true;
-        }
-
-        if (extended_dyn_state_3_features.extendedDynamicState3TessellationDomainOrigin         != extended_dyn_state_3_features_unfilled.extendedDynamicState3TessellationDomainOrigin) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3TessellationDomainOrigin" << '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3RasterizationSamples             != extended_dyn_state_3_features_unfilled.extendedDynamicState3RasterizationSamples) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3RasterizationSamples"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3SampleMask                       != extended_dyn_state_3_features_unfilled.extendedDynamicState3SampleMask) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3SampleMask"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3AlphaToCoverageEnable            != extended_dyn_state_3_features_unfilled.extendedDynamicState3AlphaToCoverageEnable) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3AlphaToCoverageEnable"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3AlphaToOneEnable                 != extended_dyn_state_3_features_unfilled.extendedDynamicState3AlphaToOneEnable) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3AlphaToOneEnable"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3RasterizationStream              != extended_dyn_state_3_features_unfilled.extendedDynamicState3RasterizationStream) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3RasterizationStream"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3ConservativeRasterizationMode    != extended_dyn_state_3_features_unfilled.extendedDynamicState3ConservativeRasterizationMode) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3ConservativeRasterizationMode"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3ExtraPrimitiveOverestimationSize != extended_dyn_state_3_features_unfilled.extendedDynamicState3ExtraPrimitiveOverestimationSize) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3ExtraPrimitiveOverestimationSize"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3DepthClipEnable                  != extended_dyn_state_3_features_unfilled.extendedDynamicState3DepthClipEnable) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3DepthClipEnable"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3SampleLocationsEnable            != extended_dyn_state_3_features_unfilled.extendedDynamicState3SampleLocationsEnable) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3SampleLocationsEnable"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3ColorBlendAdvanced               != extended_dyn_state_3_features_unfilled.extendedDynamicState3ColorBlendAdvanced) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3ColorBlendAdvanced"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3ProvokingVertexMode              != extended_dyn_state_3_features_unfilled.extendedDynamicState3ProvokingVertexMode) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3ProvokingVertexMode"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3LineRasterizationMode            != extended_dyn_state_3_features_unfilled.extendedDynamicState3LineRasterizationMode) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3LineRasterizationMode"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3LineStippleEnable                != extended_dyn_state_3_features_unfilled.extendedDynamicState3LineStippleEnable) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3LineStippleEnable"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3DepthClipNegativeOneToOne        != extended_dyn_state_3_features_unfilled.extendedDynamicState3DepthClipNegativeOneToOne) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3DepthClipNegativeOneToOne"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3ViewportWScalingEnable           != extended_dyn_state_3_features_unfilled.extendedDynamicState3ViewportWScalingEnable) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3ViewportWScalingEnable"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3ViewportSwizzle                  != extended_dyn_state_3_features_unfilled.extendedDynamicState3ViewportSwizzle) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3ViewportSwizzle"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3CoverageToColorEnable            != extended_dyn_state_3_features_unfilled.extendedDynamicState3CoverageToColorEnable) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3CoverageToColorEnable"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3CoverageToColorLocation          != extended_dyn_state_3_features_unfilled.extendedDynamicState3CoverageToColorLocation) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3CoverageToColorLocation"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3CoverageModulationMode           != extended_dyn_state_3_features_unfilled.extendedDynamicState3CoverageModulationMode) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3CoverageModulationMode"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3CoverageModulationTableEnable    != extended_dyn_state_3_features_unfilled.extendedDynamicState3CoverageModulationTableEnable) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3CoverageModulationTableEnable"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3CoverageModulationTable          != extended_dyn_state_3_features_unfilled.extendedDynamicState3CoverageModulationTable) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3CoverageModulationTable"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3CoverageReductionMode            != extended_dyn_state_3_features_unfilled.extendedDynamicState3CoverageReductionMode) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3CoverageReductionMode"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3RepresentativeFragmentTestEnable != extended_dyn_state_3_features_unfilled.extendedDynamicState3RepresentativeFragmentTestEnable) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3RepresentativeFragmentTestEnable"<< '\n';
-            incompatible = true;
-        }
-        if (extended_dyn_state_3_features.extendedDynamicState3ShadingRateImageEnable           != extended_dyn_state_3_features_unfilled.extendedDynamicState3ShadingRateImageEnable) {
-            std::cerr << "Device Index " << i << " does not support extendedDynamicState3ShadingRateImageEnable"<< '\n';
-            incompatible = true;
-        }
-        */
-
         if (descriptor_buffer_features.descriptorBuffer == VK_FALSE) {
             std::cerr << "Device Index " << i << " does not support descriptorBuffer\n";
             incompatible = true;
@@ -733,23 +542,27 @@ void destroy_vk_swapchain(VkDevice device, Window *window) {
 }
 
 // `Commands
-void create_vk_command_pools(VkDevice vk_device, Create_Vk_Command_Pool_Info *info, u32 count, VkCommandPool *vk_command_pools) {
-    VkCommandPoolCreateInfo create_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};;
+VkCommandPool* create_vk_command_pools(VkDevice vk_device, Create_Vk_Command_Pool_Info *info, u32 count) {
+    VkCommandPoolCreateInfo create_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
 
     create_info.flags |= info->transient ? VK_COMMAND_POOL_CREATE_TRANSIENT_BIT : 0x0;
     create_info.flags |= info->reset_buffers ? VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT : 0x0;
     create_info.queueFamilyIndex = info->queue_family_index;
 
+    // @AllocationType pools will likely be persistent
+    VkCommandPool *vk_command_pools = (VkCommandPool*)memory_allocate_heap(sizeof(VkCommandPool) * count, 8);
     VkResult check;
     for(int i = 0; i < count; ++i) {
         check = vkCreateCommandPool(vk_device, &create_info, ALLOCATION_CALLBACKS, &vk_command_pools[i]);
         DEBUG_OBJ_CREATION(vkCreateCommandPool, check);
     }
+    return vk_command_pools;
 }
 void destroy_vk_command_pools(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools) {
     for(int i = 0; i < count; ++i) {
         vkDestroyCommandPool(vk_device, vk_command_pools[i], ALLOCATION_CALLBACKS);
     }
+    memory_free_heap((void*)vk_command_pools);
 }
 void reset_vk_command_pools(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools) {
     for(int i = 0; i < count; ++i) {
@@ -762,16 +575,23 @@ void reset_vk_command_pools_and_release_resources(VkDevice vk_device, u32 count,
     }
 }
 
-void allocate_vk_command_buffers(VkDevice vk_device, Allocate_Vk_Command_Buffer_Info *info, VkCommandBuffer *vk_command_buffers) {
-
+VkCommandBuffer* allocate_vk_command_buffers(VkDevice vk_device, Allocate_Vk_Command_Buffer_Info *info) {
     VkCommandBufferAllocateInfo allocate_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     allocate_info.commandPool = info->pool;
     allocate_info.commandBufferCount = info->count;
-    allocate_info.level = info->secondary ? VK_COMMAND_BUFFER_LEVEL_SECONDARY :
-                                             VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+    // @Branch remove this, make separate function for primary vs secondary
+    allocate_info.level = info->secondary ? VK_COMMAND_BUFFER_LEVEL_SECONDARY : 
+                                            VK_COMMAND_BUFFER_LEVEL_PRIMARY;    
+
+    // @AllocationType these will likely also be persistent
+    VkCommandBuffer *vk_command_buffers =
+        (VkCommandBuffer*)memory_allocate_heap(sizeof(VkCommandBuffer) * info->count, 8);
 
     auto check = vkAllocateCommandBuffers(vk_device, &allocate_info, vk_command_buffers);
     DEBUG_OBJ_CREATION(vkAllocateCommandBuffers, check);
+
+    return vk_command_buffers;
 }
 
 void begin_vk_command_buffer_primary(VkCommandBuffer vk_command_buffer) {
@@ -829,39 +649,51 @@ void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Sub
 }
 
 // `Sync
-void create_vk_fences_unsignalled(VkDevice vk_device, u32 count, VkFence *vk_fences) {
+VkFence* create_vk_fences_unsignalled(VkDevice vk_device, u32 count) {
     VkFenceCreateInfo info = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    // @AllocationType these will be persistent because they will be in a pool
+    VkFence *vk_fences = (VkFence*)memory_allocate_heap(sizeof(VkFence) * count, 8);
+
     VkResult check;
     for(int i = 0; i < count; ++i) {
         check = vkCreateFence(vk_device, &info, ALLOCATION_CALLBACKS, &vk_fences[i]); 
         DEBUG_OBJ_CREATION(vkCreateFence, check);
     }
+    return vk_fences;
 }
-void create_vk_fences_signalled(VkDevice vk_device, u32 count, VkFence *vk_fences) {
+VkFence* create_vk_fences_signalled(VkDevice vk_device, u32 count) {
     VkFenceCreateInfo info = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    // @AllocationType these will be persistent because they will be in a pool (@Todo create the pooling system)
+    VkFence *vk_fences = (VkFence*)memory_allocate_heap(sizeof(VkFence) * count, 8);
+
     VkResult check;
     for(int i = 0; i < count; ++i) {
         check = vkCreateFence(vk_device, &info, ALLOCATION_CALLBACKS, &vk_fences[i]); 
         DEBUG_OBJ_CREATION(vkCreateFence, check);
     }
+    return vk_fences;
 }
 void destroy_vk_fences(VkDevice vk_device, u32 count, VkFence *vk_fences) {
     for(int i = 0; i < count; ++i) {
         vkDestroyFence(vk_device, vk_fences[i], ALLOCATION_CALLBACKS);
     }
+    memory_free_heap((void*)vk_fences);
 }
 
-void create_vk_semaphores_binary(VkDevice vk_device, u64 initial_value, u32 count, VkSemaphore *vk_semaphores) {
+VkSemaphore* create_vk_semaphores_binary(VkDevice vk_device, u32 count) {
     VkSemaphoreCreateInfo info = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
 
+    VkSemaphore *vk_semaphores = (VkSemaphore*)memory_allocate_heap(sizeof(VkSemaphore) * count, 8);
     VkResult check;
     for(int i = 0; i < count; ++i) {
         check = vkCreateSemaphore(vk_device, &info, ALLOCATION_CALLBACKS, &vk_semaphores[i]);
         DEBUG_OBJ_CREATION(vkCreateSemaphore, check);
     }
+
+    return vk_semaphores;
 }
-void create_vk_semaphores_timeline(VkDevice vk_device, u64 initial_value, u32 count, VkSemaphore *vk_semaphores) {
+VkSemaphore* create_vk_semaphores_timeline(VkDevice vk_device, u64 initial_value, u32 count) {
     VkSemaphoreTypeCreateInfo type_info = {
         VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
         NULL,
@@ -872,16 +704,21 @@ void create_vk_semaphores_timeline(VkDevice vk_device, u64 initial_value, u32 co
     VkSemaphoreCreateInfo info = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     info.pNext = &type_info;
 
+    VkSemaphore *vk_semaphores = (VkSemaphore*)memory_allocate_heap(sizeof(VkSemaphore) * count, 8);
+
     VkResult check;
     for(int i = 0; i < count; ++i) {
         check = vkCreateSemaphore(vk_device, &info, ALLOCATION_CALLBACKS, &vk_semaphores[i]);
         DEBUG_OBJ_CREATION(vkCreateSemaphore, check);
     }
+
+    return vk_semaphores;
 }
-void destroy_vk_semaphores(VkDevice vk_device, u32 count, VkSemaphore *vk_semaphore) {
+void destroy_vk_semaphores(VkDevice vk_device, u32 count, VkSemaphore *vk_semaphores) {
     for(int i = 0; i < count; ++i) {
-        vkDestroySemaphore(vk_device, vk_semaphore[i], ALLOCATION_CALLBACKS);
+        vkDestroySemaphore(vk_device, vk_semaphores[i], ALLOCATION_CALLBACKS);
     }
+    memory_free_heap((void*)vk_semaphores);
 }
 
 // `Descriptors
@@ -1058,16 +895,27 @@ VkPipelineInputAssemblyStateCreateInfo* create_vk_pipeline_input_assembly_states
 // @Todo support Tessellation
 
 // `Viewport
-static inline void cmd_vk_set_viewports(u32 count, VkCommandBuffer *vk_command_buffers) {
-    VkSwapchainCreateInfoKHR info = get_window_instance()->swapchain_info;
+VkPipelineViewportStateCreateInfo create_vk_pl_viewport_state(Window *window) {
     VkViewport viewport = {
         0.0f, 0.0f, // x, y
-        (float)info.imageExtent.width,
-        (float)info.imageExtent.height,
+        (float)window->swapchain_info.imageExtent.width,
+        (float)window->swapchain_info.imageExtent.height,
         0.0f, 1.0f, // mindepth, maxdepth
     };
-    for(int i = 0; i < count; ++i)
-        vkCmdSetViewportWithCount(vk_command_buffers[i], 1, &viewport);
+    VkRect2D scissor = {
+        {0, 0}, // offsets
+        {
+            window->swapchain_info.imageExtent.width,
+            window->swapchain_info.imageExtent.height,
+        },
+    };
+    VkPipelineViewportStateCreateInfo viewport_info = {VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+    viewport_info.viewportCount = 0; // must be zero if dyn state set viewport with count is set
+    /*viewport_info.pViewports = &viewport;
+    viewport_info.scissorCount = 1;
+    viewport_info.pScissors = &scissor;*/
+
+    return viewport_info;
 }
 
 // `RasterizationState
@@ -1090,12 +938,32 @@ void vkCmdSetPolygonModeEXT(VkCommandBuffer commandBuffer, VkPolygonMode polygon
 VkPipelineMultisampleStateCreateInfo create_vk_pipeline_multisample_state() {
     VkPipelineMultisampleStateCreateInfo state = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO}; 
     state.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT; 
+    state.sampleShadingEnable = VK_FALSE;
     return state;
 }
 
 // `DepthStencilState - All inlined dyn state functions
 
 // `BlendState - Lots of inlined dyn states
+VkPipelineColorBlendStateCreateInfo create_vk_pl_color_blend_state(Create_Vk_Pl_Color_Blend_State_Info *info) {
+    // @PipelineAllocations I think this state is one that contrasts to the others, these will likely be super 
+    // ephemeral. I do not know to what extent I can effect color blending. Not very much I assume without 
+    // extended dyn state 3... so I think this will require recompilations or state explosion...
+    VkPipelineColorBlendStateCreateInfo blend_state = {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+    blend_state.logicOpEnable   = info->logic_op_enable;
+    blend_state.logicOp         = info->logic_op;
+    blend_state.attachmentCount = info->attachment_count;
+    blend_state.pAttachments    = info->attachment_states;
+
+    // just set to whatever cos this can be set dyn
+    blend_state.blendConstants[0] = 1;
+    blend_state.blendConstants[1] = 1;
+    blend_state.blendConstants[2] = 1;
+    blend_state.blendConstants[3] = 1;
+
+    return blend_state;
+}
+
 void vkCmdSetLogicOpEnableEXT(VkCommandBuffer commandBuffer, VkBool32 logicOpEnable) {
     VkDevice device = get_gpu_instance()->vk_device;
     auto func = (PFN_vkCmdSetLogicOpEnableEXT) vkGetDeviceProcAddr(device, "vkCmdSetLogicOpEnableEXT");
@@ -1126,31 +994,31 @@ void vkCmdSetColorWriteMaskEXT(VkCommandBuffer commandBuffer, u32 firstAttachmen
 }
 // `DynamicState
 const VkDynamicState dyn_state_list[] = {
-    VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
-    VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
-    VK_DYNAMIC_STATE_DEPTH_CLAMP_ENABLE_EXT,
-    VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE,
-    VK_DYNAMIC_STATE_POLYGON_MODE_EXT,
+    VK_DYNAMIC_STATE_LINE_WIDTH,
+    VK_DYNAMIC_STATE_DEPTH_BIAS,
+    VK_DYNAMIC_STATE_BLEND_CONSTANTS,
+    VK_DYNAMIC_STATE_DEPTH_BOUNDS,
+    VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK,
+    VK_DYNAMIC_STATE_STENCIL_WRITE_MASK,
+    VK_DYNAMIC_STATE_STENCIL_REFERENCE,
+
+    // Provided by VK_VERSION_1_3 (all below this point)
     VK_DYNAMIC_STATE_CULL_MODE,
     VK_DYNAMIC_STATE_FRONT_FACE,
-    VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE,
-    VK_DYNAMIC_STATE_DEPTH_BIAS,
-    VK_DYNAMIC_STATE_LINE_WIDTH,
+    VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY,
+    VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
+    VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
+    VK_DYNAMIC_STATE_VERTEX_INPUT_BINDING_STRIDE,
     VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE,
     VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE,
     VK_DYNAMIC_STATE_DEPTH_COMPARE_OP,
     VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE,
     VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE,
     VK_DYNAMIC_STATE_STENCIL_OP,
-    VK_DYNAMIC_STATE_DEPTH_BOUNDS,
-    VK_DYNAMIC_STATE_LOGIC_OP_ENABLE_EXT,
-    VK_DYNAMIC_STATE_LOGIC_OP_EXT,
-    VK_DYNAMIC_STATE_COLOR_BLEND_ENABLE_EXT,
-    VK_DYNAMIC_STATE_COLOR_BLEND_EQUATION_EXT,
-    VK_DYNAMIC_STATE_COLOR_WRITE_MASK_EXT,
-    VK_DYNAMIC_STATE_BLEND_CONSTANTS,
+    VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE,
+    VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE
 }; 
-const u32 dyn_state_count = 23; //  This list is 23 last time I counted
+const u32 dyn_state_count = 21; //  This list is 23 last time I counted
     // @Todo @DynState list of possible other dyn states
     //      vertex input
     //      multisampling
@@ -1190,7 +1058,14 @@ VkPipelineLayout* create_vk_pipeline_layouts(VkDevice vk_device, u32 count, Crea
     }
     return layouts;
 }
+void destroy_vk_pl_layouts(VkDevice vk_device, u32 count, VkPipelineLayout *pl_layouts) {
+    for(int i = 0; i < count; ++i) {
+        vkDestroyPipelineLayout(vk_device, pl_layouts[i], ALLOCATION_CALLBACKS);
+    }
+    memory_free_heap((void*)pl_layouts);
+}
 
+// RenderingInfo
 VkPipelineRenderingCreateInfo create_vk_rendering_info(Create_Vk_Rendering_Info_Info *info) {
     VkPipelineRenderingCreateInfo create_info = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
     create_info.viewMask = info->view_mask;

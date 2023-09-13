@@ -73,7 +73,7 @@ struct Create_Vk_Command_Pool_Info {
     bool transient = false;
     bool reset_buffers = false;
 };
-void create_vk_command_pools(VkDevice vk_device, Create_Vk_Command_Pool_Info *info, u32 count, VkCommandPool *vk_command_pools);
+VkCommandPool* create_vk_command_pools(VkDevice vk_device, Create_Vk_Command_Pool_Info *info, u32 count);
 void destroy_vk_command_pools(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools);
 
 void reset_vk_command_pools(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools);
@@ -84,7 +84,7 @@ struct Allocate_Vk_Command_Buffer_Info {
     u32 count;
     bool secondary = false;
 };
-void allocate_vk_command_buffers(VkDevice vk_device, Allocate_Vk_Command_Buffer_Info *info, VkCommandBuffer *vk_command_buffers);
+VkCommandBuffer* allocate_vk_command_buffers(VkDevice vk_device, Allocate_Vk_Command_Buffer_Info *info);
 
 void begin_vk_command_buffer_primary(VkCommandBuffer vk_command_buffer);
 void begin_vk_command_buffer_primary_onetime(VkCommandBuffer vk_command_buffer);
@@ -101,12 +101,12 @@ struct Submit_Vk_Command_Buffer_Info {
 void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Submit_Vk_Command_Buffer_Info *infos);
 
 // Sync
-void create_vk_fences_unsignalled(VkDevice vk_device, u32 count, VkFence *vk_fences);
-void create_vk_fences_signalled(VkDevice vk_device, u32 count, VkFence *vk_fences);
+VkFence* create_vk_fences_unsignalled(VkDevice vk_device, u32 count);
+VkFence* create_vk_fences_signalled(VkDevice vk_device, u32 count);
 void destroy_vk_fences(VkDevice vk_device, u32 count, VkFence *vk_fences);
 
-void create_vk_semaphores_binary(VkDevice vk_device, u64 initial_value, u32 count, VkSemaphore *vk_semaphores);
-void create_vk_semaphores_timeline(VkDevice vk_device, u64 initial_value, u32 count, VkSemaphore *vk_semaphores);
+VkSemaphore* create_vk_semaphores_binary(VkDevice vk_device, u32 count);
+VkSemaphore* create_vk_semaphores_timeline(VkDevice vk_device, u64 initial_value, u32 count);
 void destroy_vk_semaphores(VkDevice vk_device, u32 count, VkSemaphore *vk_semaphore);
 
 // Descriptors
@@ -156,6 +156,20 @@ VkPipelineInputAssemblyStateCreateInfo* create_vk_pipeline_input_assembly_states
 
 // `TessellationState
 // @Todo support Tessellation
+
+// Viewport
+VkPipelineViewportStateCreateInfo create_vk_pl_viewport_state(Window *window);
+static inline void cmd_vk_set_viewports(u32 count, VkCommandBuffer *vk_command_buffers) {
+    VkSwapchainCreateInfoKHR info = get_window_instance()->swapchain_info;
+    VkViewport viewport = {
+        0.0f, 0.0f, // x, y
+        (float)info.imageExtent.width,
+        (float)info.imageExtent.height,
+        0.0f, 1.0f, // mindepth, maxdepth
+    };
+    for(int i = 0; i < count; ++i)
+        vkCmdSetViewportWithCount(vk_command_buffers[i], 1, &viewport);
+}
 
 // `RasterizationState
 void vkCmdSetDepthClampEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthClampEnable);
@@ -319,6 +333,15 @@ static inline void cmd_vk_blend_constants(VkCommandBuffer vk_command_buffer, con
     vkCmdSetBlendConstants(vk_command_buffer, blend_constants);
 }
 
+// `BlendState - Lots of inlined dyn states
+struct Create_Vk_Pl_Color_Blend_State_Info {
+    VkBool32  logic_op_enable; // @BoolsInStruct
+    VkLogicOp logic_op;
+    u32 attachment_count;
+    VkPipelineColorBlendAttachmentState *attachment_states;
+};
+VkPipelineColorBlendStateCreateInfo create_vk_pl_color_blend_state(Create_Vk_Pl_Color_Blend_State_Info *info);
+
 // `DynamicState
 VkPipelineDynamicStateCreateInfo create_vk_pipeline_dyn_state();
 
@@ -330,6 +353,7 @@ struct Create_Vk_Pipeline_Layout_Info {
     VkPushConstantRange *push_constant_ranges;
 };
 VkPipelineLayout* create_vk_pipeline_layouts(VkDevice vk_device, u32 count, Create_Vk_Pipeline_Layout_Info *infos);
+void destroy_vk_pl_layouts(VkDevice vk_device, u32 count, VkPipelineLayout *pl_layouts);
 
 struct Create_Vk_Rendering_Info_Info {
     u32 view_mask;
@@ -354,7 +378,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_messenger_callback(
         void* pUserData) 
 {
     if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
-        std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+        std::cerr << "validation layer: " << pCallbackData->pMessage << "\n\n";
 
     return VK_FALSE;
 }
