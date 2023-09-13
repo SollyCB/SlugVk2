@@ -14,6 +14,13 @@ VkDebugUtilsMessengerEXT* get_vk_debug_messenger_instance() { return &s_vk_debug
 #define ALLOCATION_CALLBACKS NULL
 #endif
 
+//
+// @PipelineAllocation
+// Best idea really is to calculate how big all the unchanging state settings are upfront, then make one 
+// allocation at load time large enough to hold everything, and just allocate everything into that.
+// Just need to find a good way to count all this size...
+//
+
 static Gpu *s_Gpu;
 Gpu* get_gpu_instance() { return s_Gpu; }
 
@@ -29,7 +36,7 @@ void init_gpu() {
     Gpu *gpu = get_gpu_instance();
     gpu->vk_queues = (VkQueue*)(gpu + 1);
     gpu->vk_queue_indices = (u32*)(gpu->vk_queues + 3);
-    gpu->info = (GpuInfo*)(gpu->vk_queue_indices + 3);
+    //gpu->info = (GpuInfo*)(gpu->vk_queue_indices + 3);
 
     Create_Vk_Instance_Info create_instance_info = {};
     gpu->vk_instance = create_vk_instance(&create_instance_info);
@@ -96,7 +103,7 @@ VkInstance create_vk_instance(Create_Vk_Instance_Info *info) {
 
     u8 char_index = 0;
     u8 name_index = 0;
-    char ext_name_buffer[250]; // Assume char total in ext names < 251
+    char ext_name_buffer[250]; // Assume char total in ext names < 250
     char *ext_names_final[20]; // Assume fewer than 20 ext names
 
     char *name;
@@ -129,12 +136,13 @@ VkInstance create_vk_instance(Create_Vk_Instance_Info *info) {
 // `Device ///////////
 VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills in gpu.physical_device
 
-    uint32_t ext_count = 4;
+    uint32_t ext_count = 5;
     const char *ext_names[] = {
         "VK_KHR_swapchain",
         "VK_KHR_dynamic_rendering",
         "VK_EXT_descriptor_buffer",
         "VK_EXT_extended_dynamic_state3",
+        "VK_EXT_extended_dynamic_state2",
 
         //"VK_EXT_vertex_input_dynamic_state", I think this is something that does not need to be dynamic
         // but maybe i will be proven wrong??
@@ -162,10 +170,18 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
         .descriptorBufferImageLayoutIgnored = VK_TRUE,
         .descriptorBufferPushDescriptors = VK_TRUE,
     };
+    VkPhysicalDeviceExtendedDynamicState2FeaturesEXT extended_dyn_state_2_features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_2_FEATURES_EXT,
+        .pNext = &descriptor_buffer_features,
+        .extendedDynamicState2 = VK_TRUE,
+        .extendedDynamicState2LogicOp = VK_TRUE,
+    };
+
     VkPhysicalDeviceExtendedDynamicState3FeaturesEXT extended_dyn_state_3_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
-        .pNext = &descriptor_buffer_features,
+        .pNext = &extended_dyn_state_2_features,
     };
+
     extended_dyn_state_3_features.extendedDynamicState3DepthClampEnable = VK_TRUE;
     extended_dyn_state_3_features.extendedDynamicState3PolygonMode = VK_TRUE;
     extended_dyn_state_3_features.extendedDynamicState3LogicOpEnable = VK_TRUE;
@@ -215,8 +231,12 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
     VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptor_buffer_features_unfilled =  descriptor_buffer_features;
     descriptor_buffer_features_unfilled.pNext = &vk13_features_unfilled;
 
+    VkPhysicalDeviceExtendedDynamicState2FeaturesEXT extended_dyn_state_2_features_unfilled = 
+        extended_dyn_state_2_features;
+    extended_dyn_state_2_features_unfilled.pNext = &descriptor_buffer_features_unfilled;
+
     VkPhysicalDeviceExtendedDynamicState3FeaturesEXT extended_dyn_state_3_features_unfilled = extended_dyn_state_3_features;
-    extended_dyn_state_3_features_unfilled.pNext = &descriptor_buffer_features_unfilled;
+    extended_dyn_state_3_features_unfilled.pNext = &extended_dyn_state_2_features_unfilled;
 
     VkPhysicalDeviceFeatures2 features_full_unfilled = features_full;
     features_full_unfilled.pNext = &extended_dyn_state_3_features_unfilled;
@@ -940,32 +960,61 @@ void destroy_vk_descriptor_set_layouts(VkDevice vk_device, u32 count, VkDescript
 
 // `PipelineSetup
 // `ShaderStages
-void create_vk_pipeline_shader_stages(u32 count, Create_Vk_Pipeline_Shader_Stage_Info *infos, VkPipelineShaderStageCreateInfo *stage_infos) {
+VkPipelineShaderStageCreateInfo* create_vk_pipeline_shader_stages(VkDevice vk_device, u32 count, Create_Vk_Pipeline_Shader_Stage_Info *infos) {
+    // @Todo like with other aspects of pipeline creation, I think that shader stage infos can all be allocated 
+    // and loaded at startup and the  not freed for the duration of the program as these are not changing state
+    u8 *memory_block = memory_allocate_heap(sizeof(VkPipelineShaderStageCreateInfo)  * count +
+                                            sizeof(VkShaderModuleCreateInfo) * count, 8);
+    VkPipelineShaderStageCreateInfo  *stage_info;
+    VkShaderModuleCreateInfo         *module_info;
     for(int i = 0; i < count; ++i) {
-        stage_infos[i] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-        VkShaderModuleCreateInfo module_info = {
+        module_info = (VkShaderModuleCreateInfo*)(memory_block + 
+                                                 (sizeof(VkPipelineShaderStageCreateInfo) * count) + 
+                                                 (sizeof(VkShaderModuleCreateInfo) * i));
+        *module_info = {
             VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, 
             NULL,
             0x0,
             infos[i].code_size,
             infos[i].shader_code,
         };
-        stage_infos[i].pNext = &module_info;
-        stage_infos[i].stage = infos[i].stage;
-        stage_infos[i].pName = "main";
+        VkShaderModule module;
+        vkCreateShaderModule(vk_device, module_info, ALLOCATION_CALLBACKS, &module);
+        stage_info        = (VkPipelineShaderStageCreateInfo*)(memory_block +
+                                                              (sizeof(VkPipelineShaderStageCreateInfo) * i));
+       *stage_info        = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        stage_info->pNext = NULL;
+        stage_info->stage = infos[i].stage;
+        stage_info->module = module;
+        stage_info->pName = "main";
         // @Todo add specialization support
-        stage_infos[i].pSpecializationInfo = NULL;
+        stage_info->pSpecializationInfo = NULL;
+    }
+    return (VkPipelineShaderStageCreateInfo*)memory_block;
+}
+void destroy_vk_pipeline_shader_stages(VkDevice vk_device, u32 count, VkShaderModule *modules) {
+    for(int i = 0; i < count; ++i) {
+        vkDestroyShaderModule(vk_device, modules[i], ALLOCATION_CALLBACKS);
     }
 }
 
 // `VertexInputState
-void create_vk_vertex_binding_description(u32 count, Create_Vk_Vertex_Input_Binding_Description_Info *infos, VkVertexInputBindingDescription *binding_descriptions) {
+VkVertexInputBindingDescription* create_vk_vertex_binding_description(u32 count, Create_Vk_Vertex_Input_Binding_Description_Info *infos) {
+    // @Todo @PipelineAllocation I think this is another pipeline state which will not change, as I will just have 
+    // these created for every mesh/model. Or I can just make this dynamic, but it seems like something which 
+    // can be stored for program lifetime. Idk what memory footprints are going to look like for each pipeline state...
+    VkVertexInputBindingDescription *binding_descriptions = 
+        (VkVertexInputBindingDescription*)memory_allocate_heap(sizeof(VkVertexInputBindingDescription) * count, 8);
     for(int i = 0; i < count; ++i) {
         binding_descriptions[i] = { infos[i].binding, infos[i].stride }; 
     }
+    return binding_descriptions;
 }
 
-void create_vk_vertex_attribute_description(u32 count, Create_Vk_Vertex_Input_Attribute_Description_Info *infos, VkVertexInputAttributeDescription *attribute_descriptions) {
+VkVertexInputAttributeDescription* create_vk_vertex_attribute_description(u32 count, Create_Vk_Vertex_Input_Attribute_Description_Info *infos) {
+    // @Todo @PipelineAllocation same as above ^^
+    VkVertexInputAttributeDescription *attribute_descriptions = 
+        (VkVertexInputAttributeDescription*)memory_allocate_heap(sizeof(VkVertexInputAttributeDescription) * count, 8);
     for(int i = 0; i < count; ++i) {
         attribute_descriptions[i] = {
             infos[i].location,
@@ -974,24 +1023,35 @@ void create_vk_vertex_attribute_description(u32 count, Create_Vk_Vertex_Input_At
             infos[i].offset,
         };
     }
+    return attribute_descriptions;
 }
-void create_vk_pipeline_vertex_input_states(u32 count, Create_Vk_Pipeline_Vertex_Input_State_Info *infos, VkPipelineVertexInputStateCreateInfo *state_infos) {
+VkPipelineVertexInputStateCreateInfo* create_vk_pipeline_vertex_input_states(u32 count, Create_Vk_Pipeline_Vertex_Input_State_Info *infos) {
+    // @Todo @PipelineAllocation same as above ^^
+    VkPipelineVertexInputStateCreateInfo *input_state_infos = 
+        (VkPipelineVertexInputStateCreateInfo*)memory_allocate_heap(
+            sizeof(VkPipelineVertexInputStateCreateInfo) * count, 8);
     for(int i = 0; i < count; ++i) {
-        state_infos[i] = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-        state_infos[i].vertexBindingDescriptionCount = infos[i].binding_count;
-        state_infos[i].pVertexBindingDescriptions = infos[i].binding_descriptions;
-        state_infos[i].vertexAttributeDescriptionCount = infos[i].attribute_count;
-        state_infos[i].pVertexAttributeDescriptions = infos[i].attribute_descriptions;
+        input_state_infos[i] = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+        input_state_infos[i].vertexBindingDescriptionCount   = infos[i].binding_count;
+        input_state_infos[i].pVertexBindingDescriptions      = infos[i].binding_descriptions;
+        input_state_infos[i].vertexAttributeDescriptionCount = infos[i].attribute_count;
+        input_state_infos[i].pVertexAttributeDescriptions    = infos[i].attribute_descriptions;
     }
+    return input_state_infos;
 }
 
 // `InputAssemblyState
-void create_vk_pipeline_input_assembly_states(u32 count, VkPrimitiveTopology *topologies, VkBool32 *primitive_restart, VkPipelineInputAssemblyStateCreateInfo *state_infos) {
+VkPipelineInputAssemblyStateCreateInfo* create_vk_pipeline_input_assembly_states(u32 count, VkPrimitiveTopology *topologies, VkBool32 *primitive_restart) {
+    // @Todo @PipelineAllocation same as above ^^
+    VkPipelineInputAssemblyStateCreateInfo *assembly_state_infos = 
+        (VkPipelineInputAssemblyStateCreateInfo*)memory_allocate_heap(
+            sizeof(VkPipelineInputAssemblyStateCreateInfo) * count, 8);
     for(int i = 0; i < count; ++i) {
-        state_infos[i] = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-        state_infos[i].topology = topologies[i];
-        state_infos[i].primitiveRestartEnable = primitive_restart[i];
+        assembly_state_infos[i] = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+        assembly_state_infos[i].topology = topologies[i];
+        assembly_state_infos[i].primitiveRestartEnable = primitive_restart[i];
     }
+    return assembly_state_infos;
 }
 
 // `TessellationState
@@ -1027,9 +1087,10 @@ void vkCmdSetPolygonModeEXT(VkCommandBuffer commandBuffer, VkPolygonMode polygon
 }
 
 // `MultisampleState // @Todo actually support setting multisampling functions
-void create_vk_pipeline_multisample_state(VkPipelineMultisampleStateCreateInfo *state) {
-    *state = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO}; 
-    state->rasterizationSamples = VK_SAMPLE_COUNT_1_BIT; 
+VkPipelineMultisampleStateCreateInfo create_vk_pipeline_multisample_state() {
+    VkPipelineMultisampleStateCreateInfo state = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO}; 
+    state.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT; 
+    return state;
 }
 
 // `DepthStencilState - All inlined dyn state functions
@@ -1064,43 +1125,44 @@ void vkCmdSetColorWriteMaskEXT(VkCommandBuffer commandBuffer, u32 firstAttachmen
     return func(commandBuffer, firstAttachment, attachmentCount, pColorWriteMasks);
 }
 // `DynamicState
-void create_vk_pipeline_dyn_state(VkPipelineDynamicStateCreateInfo *state) {
+const VkDynamicState dyn_state_list[] = {
+    VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
+    VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
+    VK_DYNAMIC_STATE_DEPTH_CLAMP_ENABLE_EXT,
+    VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE,
+    VK_DYNAMIC_STATE_POLYGON_MODE_EXT,
+    VK_DYNAMIC_STATE_CULL_MODE,
+    VK_DYNAMIC_STATE_FRONT_FACE,
+    VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE,
+    VK_DYNAMIC_STATE_DEPTH_BIAS,
+    VK_DYNAMIC_STATE_LINE_WIDTH,
+    VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE,
+    VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE,
+    VK_DYNAMIC_STATE_DEPTH_COMPARE_OP,
+    VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE,
+    VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE,
+    VK_DYNAMIC_STATE_STENCIL_OP,
+    VK_DYNAMIC_STATE_DEPTH_BOUNDS,
+    VK_DYNAMIC_STATE_LOGIC_OP_ENABLE_EXT,
+    VK_DYNAMIC_STATE_LOGIC_OP_EXT,
+    VK_DYNAMIC_STATE_COLOR_BLEND_ENABLE_EXT,
+    VK_DYNAMIC_STATE_COLOR_BLEND_EQUATION_EXT,
+    VK_DYNAMIC_STATE_COLOR_WRITE_MASK_EXT,
+    VK_DYNAMIC_STATE_BLEND_CONSTANTS,
+}; 
+const u32 dyn_state_count = 23; //  This list is 23 last time I counted
     // @Todo @DynState list of possible other dyn states
     //      vertex input
     //      multisampling
-
-    VkDynamicState dyn_state_list[] = {
-        VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
-        VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
-        VK_DYNAMIC_STATE_DEPTH_CLAMP_ENABLE_EXT,
-        VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE,
-        VK_DYNAMIC_STATE_POLYGON_MODE_EXT,
-        VK_DYNAMIC_STATE_CULL_MODE,
-        VK_DYNAMIC_STATE_FRONT_FACE,
-        VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE,
-        VK_DYNAMIC_STATE_DEPTH_BIAS,
-        VK_DYNAMIC_STATE_LINE_WIDTH,
-        VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE,
-        VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE,
-        VK_DYNAMIC_STATE_DEPTH_COMPARE_OP,
-        VK_DYNAMIC_STATE_DEPTH_BOUNDS_TEST_ENABLE,
-        VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE,
-        VK_DYNAMIC_STATE_STENCIL_OP,
-        VK_DYNAMIC_STATE_DEPTH_BOUNDS,
-        VK_DYNAMIC_STATE_LOGIC_OP_ENABLE_EXT,
-        VK_DYNAMIC_STATE_LOGIC_OP_EXT,
-        VK_DYNAMIC_STATE_COLOR_BLEND_ENABLE_EXT,
-        VK_DYNAMIC_STATE_COLOR_BLEND_EQUATION_EXT,
-        VK_DYNAMIC_STATE_COLOR_WRITE_MASK_EXT,
-        VK_DYNAMIC_STATE_BLEND_CONSTANTS,
-    }; //  This list is 23 last time I counted
-    u32 dyn_state_count = 23;
-
-    VkDynamicState *dyn_states = (VkDynamicState*)memory_allocate_temp(sizeof(VkDynamicState) * dyn_state_count, 8);
-    memcpy(dyn_states, dyn_state_list, dyn_state_count * sizeof(VkDynamicState));
-
-    state->dynamicStateCount = dyn_state_count;
-    state->pDynamicStates    = dyn_states;
+VkPipelineDynamicStateCreateInfo create_vk_pipeline_dyn_state() {
+    VkPipelineDynamicStateCreateInfo dyn_state = {
+        VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        NULL,
+        0x0,
+        dyn_state_count,
+        dyn_state_list,
+    };
+    return dyn_state;
 }
 
 // `PipelineLayout
@@ -1164,7 +1226,7 @@ VkPipeline* create_vk_graphics_pipelines_heap(VkDevice vk_device, VkPipelineCach
     return pipelines;
 }
 
-void destroy_vk_heap_pipelines(VkDevice vk_device, u32 count, VkPipeline *pipelines) {
+void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipelines) {
     for(int i = 0; i < count; ++i) {
         vkDestroyPipeline(vk_device, pipelines[i], ALLOCATION_CALLBACKS);
     }

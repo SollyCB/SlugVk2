@@ -82,21 +82,99 @@ int main() {
     vkWaitForFences(gpu->vk_device, 1, &vk_fence, true, 10e9);
     destroy_vk_fences(gpu->vk_device, 1, &vk_fence);
 
-    u64 byte_count;
-    const u32 *spirv = (const u32*)file_read_bin_temp("spirv_2.vert.spv", &byte_count);
-    Parsed_Spirv p = parse_spirv(byte_count, spirv); 
-    reset_temp(); // just to clear the allocation from the file read
+    // Descriptor setup
+    u64 byte_count_vert;
+    u64 byte_count_frag;
+    const u32 *spirv_vert = (const u32*)file_read_bin_temp("shaders/vertex_1.vert.spv",   &byte_count_vert);
+    const u32 *spirv_frag = (const u32*)file_read_bin_temp("shaders/fragment_1.frag.spv", &byte_count_frag);
 
-    u32 layout_count;
-    VkDescriptorSetLayout *layouts = create_vk_descriptor_set_layouts(gpu->vk_device, &p, &layout_count);
+    Parsed_Spirv parsed_spirv_vert = parse_spirv(byte_count_vert, spirv_vert); 
+
+    u32 descriptor_set_layout_count;
+    VkDescriptorSetLayout *descriptor_set_layouts = create_vk_descriptor_set_layouts(gpu->vk_device, &parsed_spirv_vert, &descriptor_set_layout_count);
+
+    Create_Vk_Pipeline_Layout_Info pl_layout_info = { 
+        descriptor_set_layout_count,
+        descriptor_set_layouts,
+        0,
+        NULL,
+    };
+    VkPipelineLayout *pl_layout = create_vk_pipeline_layouts(gpu->vk_device, 1, &pl_layout_info);
+
+    // Rendering info
+    Create_Vk_Rendering_Info_Info rendering_info = {};
+    rendering_info.color_attachment_count = 1;
+    rendering_info.color_attachment_formats = &window->swapchain_info.imageFormat;
+    VkPipelineRenderingCreateInfo rendering_create_info = create_vk_rendering_info(&rendering_info);
+
+    // Shader stages
+    Create_Vk_Pipeline_Shader_Stage_Info shader_stage_infos[] = {
+        {
+            byte_count_vert, spirv_vert, VK_SHADER_STAGE_VERTEX_BIT, NULL
+        }, 
+        {
+            byte_count_frag, spirv_frag, VK_SHADER_STAGE_FRAGMENT_BIT, NULL
+        } 
+    };
+    u32 shader_stage_count = 2;
+    VkPipelineShaderStageCreateInfo *shader_stages =
+        create_vk_pipeline_shader_stages(gpu->vk_device, shader_stage_count, shader_stage_infos);
+
+    // Input state - currently unused
+    Create_Vk_Vertex_Input_Binding_Description_Info vertex_binding_info     = {};
+    Create_Vk_Vertex_Input_Attribute_Description_Info vertex_attribute_info = {};
+
+    Create_Vk_Pipeline_Vertex_Input_State_Info vertex_input_state_info = { 0, NULL, 0, NULL };
+    VkPipelineVertexInputStateCreateInfo *vertex_input_state = 
+        create_vk_pipeline_vertex_input_states(1, &vertex_input_state_info);
+
+    // Assembly state
+    VkPrimitiveTopology topology       = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    VkBool32 primitive_restart_enabled = VK_FALSE;
+    VkPipelineInputAssemblyStateCreateInfo *vertex_assembly_state =
+        create_vk_pipeline_input_assembly_states(1, &topology, &primitive_restart_enabled);
+
+    // Multisample state   - just plain default, but should be set dynamically
+    VkPipelineMultisampleStateCreateInfo multi_sample_state = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};//}create_vk_pipeline_multisample_state();
+
+    // Dynamic state
+    VkPipelineDynamicStateCreateInfo dyn_state = create_vk_pipeline_dyn_state();
+
+    // Viewport state      - set dynamically
+    // Rasterization state - set dynamically
+    // DepthStencil state  - set dynamically
+    // ColorBlend state    - we will see if this can all be supported on my device (blend equation seems not to be)
+    // maybe can be dyn idk the full rules
+
+    // Pipeline setup
+    VkGraphicsPipelineCreateInfo pl_create_info = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+    pl_create_info.flags               = VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+    pl_create_info.pNext               = &rendering_create_info;
+    pl_create_info.stageCount          = shader_stage_count;
+    pl_create_info.pStages             = shader_stages;
+    pl_create_info.pVertexInputState   = vertex_input_state;
+    pl_create_info.pInputAssemblyState = vertex_assembly_state;
+    pl_create_info.pViewportState      = NULL;
+    pl_create_info.pRasterizationState = NULL;
+    pl_create_info.pMultisampleState   = &multi_sample_state;
+    pl_create_info.pDepthStencilState  = NULL;
+    pl_create_info.pColorBlendState    = NULL;
+    pl_create_info.pDynamicState       = &dyn_state;
+    pl_create_info.layout              = *pl_layout;
+    pl_create_info.renderPass          = VK_NULL_HANDLE;
+
+    VkPipeline *pipelines =
+        create_vk_graphics_pipelines_heap(gpu->vk_device, VK_NULL_HANDLE, 1, &pl_create_info);
 
     println("Beginning render loop...\n");
     while(!glfwWindowShouldClose(glfw->window)) {
         poll_and_get_input_glfw(glfw);
     }
 
-    // Command Buffer shutdown
-    destroy_vk_descriptor_set_layouts(gpu->vk_device, layout_count, layouts);
+    // Shutdown
+    reset_temp(); // just to clear the allocation from the file read
+    //destroy_vk_pipelines_heap(gpu->vk_device, 1, pipelines);
+    destroy_vk_descriptor_set_layouts(gpu->vk_device, descriptor_set_layout_count, descriptor_set_layouts);
     destroy_vk_command_pools(gpu->vk_device, 2, graphics_command_pools);
     memory_free_heap(graphics_command_pools);
     memory_free_heap(graphics_command_buffers);

@@ -1,0 +1,10 @@
+#!/usr/bin/bash
+
+set -xe
+
+if [[ $1 == "" ]]; then
+    echo "Invalid argument $1";
+fi
+
+glslangValidator -V vertex_$1.vert -o vertex_$1.vert.spv
+glslangValidator -V fragment_$1.frag -o fragment_$1.frag.spv

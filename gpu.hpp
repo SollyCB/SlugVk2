@@ -6,8 +6,7 @@
 #include "basic.h"
 #include "glfw.hpp"
 
-struct GpuInfo {
-};
+struct GpuInfo {};
 struct Gpu {
     VkInstance vk_instance;
     //VmaAllocator allocator
@@ -127,7 +126,7 @@ struct Create_Vk_Pipeline_Shader_Stage_Info {
     VkShaderStageFlagBits stage;
     VkSpecializationInfo *spec_info = NULL;
 };
-void create_vk_pipeline_shader_stages(u32 count, Create_Vk_Pipeline_Shader_Stage_Info *infos, VkPipelineShaderStageCreateInfo *stage_infos);
+VkPipelineShaderStageCreateInfo* create_vk_pipeline_shader_stages(VkDevice vk_device, u32 count, Create_Vk_Pipeline_Shader_Stage_Info *infos);
 
 // `VertexInputState
 // @StructPacking pack struct
@@ -136,24 +135,24 @@ struct Create_Vk_Vertex_Input_Binding_Description_Info {
     u32 stride;
     // @Todo support instance input rate
 };
-void create_vk_vertex_binding_description(u32 count, Create_Vk_Vertex_Input_Binding_Description_Info *infos, VkVertexInputBindingDescription *binding_descriptions);
+VkVertexInputBindingDescription* create_vk_vertex_binding_description(u32 count, Create_Vk_Vertex_Input_Binding_Description_Info *infos);
 struct Create_Vk_Vertex_Input_Attribute_Description_Info {
     u32 location;
     u32 binding;
     u32 offset;
     VkFormat format;
 };
-void create_vk_vertex_attribute_description(u32 count, Create_Vk_Vertex_Input_Attribute_Description_Info *infos, VkVertexInputAttributeDescription *attribute_descriptions);
+VkVertexInputAttributeDescription* create_vk_vertex_attribute_description(u32 count, Create_Vk_Vertex_Input_Attribute_Description_Info *infos);
 struct Create_Vk_Pipeline_Vertex_Input_State_Info {
     u32 binding_count;
     VkVertexInputBindingDescription *binding_descriptions;
     u32 attribute_count;
     VkVertexInputAttributeDescription *attribute_descriptions;
 };
-void create_vk_pipeline_vertex_input_states(u32 count, Create_Vk_Pipeline_Vertex_Input_State_Info *infos, VkPipelineVertexInputStateCreateInfo *state_infos);
+VkPipelineVertexInputStateCreateInfo* create_vk_pipeline_vertex_input_states(u32 count, Create_Vk_Pipeline_Vertex_Input_State_Info *infos);
 
 // `InputAssemblyState
-void create_vk_pipeline_input_assembly_states(u32 count, VkPrimitiveTopology *topologies, VkBool32 *primitive_restart, VkPipelineInputAssemblyStateCreateInfo *state_infos);
+VkPipelineInputAssemblyStateCreateInfo* create_vk_pipeline_input_assembly_states(u32 count, VkPrimitiveTopology *topologies, VkBool32 *primitive_restart);
 
 // `TessellationState
 // @Todo support Tessellation
@@ -219,7 +218,7 @@ static inline void cmd_vk_line_width(VkCommandBuffer vk_command_buffer, float wi
 
 // `MultisampleState // @Todo support setting multisampling functions
 //struct Create_Vk_Pipeline_Multisample_State_Info {};
-void create_vk_pipeline_multisample_state(VkPipelineMultisampleStateCreateInfo *state);
+VkPipelineMultisampleStateCreateInfo create_vk_pipeline_multisample_state();
 
 // `DepthStencilState
 static inline void cmd_vk_depth_test_enable(VkCommandBuffer vk_command_buffer) {
@@ -321,7 +320,7 @@ static inline void cmd_vk_blend_constants(VkCommandBuffer vk_command_buffer, con
 }
 
 // `DynamicState
-void create_vk_pipeline_dyn_state(VkPipelineDynamicStateCreateInfo *state);
+VkPipelineDynamicStateCreateInfo create_vk_pipeline_dyn_state();
 
 // `PipelineLayout
 struct Create_Vk_Pipeline_Layout_Info {
@@ -330,8 +329,7 @@ struct Create_Vk_Pipeline_Layout_Info {
     u32 push_constant_count;
     VkPushConstantRange *push_constant_ranges;
 };
-VkPipelineLayout* create_vk_pipeline_layouts(VkDevice vk_device, u32 count, 
-    Create_Vk_Pipeline_Layout_Info *infos);
+VkPipelineLayout* create_vk_pipeline_layouts(VkDevice vk_device, u32 count, Create_Vk_Pipeline_Layout_Info *infos);
 
 struct Create_Vk_Rendering_Info_Info {
     u32 view_mask;
@@ -346,7 +344,7 @@ VkPipelineRenderingCreateInfo create_vk_rendering_info(Create_Vk_Rendering_Info_
 // `Pipeline Final
 VkPipeline* create_vk_graphics_pipelines_heap(VkDevice vk_device, VkPipelineCache cache, 
     u32 count, VkGraphicsPipelineCreateInfo *create_infos);
-void destroy_vk_heap_pipelines(VkDevice vk_device, u32 count, VkPipeline *pipelines); // Also frees memory associated with the 'pipelines' pointer
+void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipelines); // Also frees memory associated with the 'pipelines' pointer
 
 #if DEBUG
 static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_messenger_callback(
