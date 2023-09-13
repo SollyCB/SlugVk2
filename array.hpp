@@ -103,14 +103,41 @@ inline void copy_to_dyn_array(Dyn_Array<T> *array, T *from, u64 item_count) {
 }
 
 template<typename T>
-inline T* index_static_array(Static_Array<T> *array, u64 index) {
+inline T* index_array(Static_Array<T> *array, u64 index) {
     ASSERT(index < array->len, "Static Array Out of Bounds Access");
     return array->data + index;
 }
 template<typename T>
-inline T* index_dyn_array(Dyn_Array<T> *array, u64 index) {
+inline T* index_array(Dyn_Array<T> *array, u64 index) {
     ASSERT(index < array->len, "Dyn Array Out of Bounds Access");
     return array->data + index;
 }
+
+// macro helpers
+#define INIT_STATIC_ARRAY(array, item_count) \
+    init_static_array(&array, item_count)
+#define INIT_DYN_ARRAY(array, item_count) \
+    init_dyn_array(&array, item_count);
+#define KILL_DYN_ARRAY(array) \
+    kill_dyn_array(&array);
+#define GET_STATIC_ARRAY(item_count) \
+    get_static_array(size);
+#define GET_DYN_ARRAY(item_count) \
+    get_dyn_array(size);
+#define GROW_DYN_ARRAY(array, item_count) \
+    grow_dyn_array(&array, item_count);
+#define APPEND_TO_STATIC_ARRAY(array) \
+    append_to_static_array(&array);
+#define APPEND_TO_DYN_ARRAY(array) \
+    append_to_dyn_array(&array);
+#define COPY_TO_STATIC_ARRAY(array, from, item_count) \
+    copy_to_static_array(&array, &from, item_count);
+#define COPY_TO_DYN_ARRAY(array, from, item_count) \
+    copy_to_dyn_array(&array, &from, item_count);
+#define INDEX_STATIC_ARRAY(array, index) \
+    index_static_array(&array, index);
+#define INDEX_DYN_ARRAY(array, index) \
+    index_dyn_array(&array, index);
+
 
 #endif

@@ -16,7 +16,7 @@ int main() {
     run_tests(); 
 #endif
     
-#if 0
+#if 1
     init_glfw(); 
     Glfw *glfw = get_glfw_instance();
 
@@ -111,9 +111,6 @@ int main() {
     kill_gpu(gpu);
     kill_glfw(glfw);
 #endif
-
-    int x = -987;
-    println("Hey jenny %s", (s64)x);
 
     kill_allocators();
     return 0;
