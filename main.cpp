@@ -81,6 +81,7 @@ int main() {
     u64 byte_count_frag;
     const u32 *spirv_vert = (const u32*)file_read_bin_temp("shaders/vertex_1.vert.spv",   &byte_count_vert);
     const u32 *spirv_frag = (const u32*)file_read_bin_temp("shaders/fragment_1.frag.spv", &byte_count_frag);
+    // CHECK THE SPIRV OUTPUT WITH ZERO STUFF IN THE SHADER!
 
     Parsed_Spirv parsed_spirv_vert = parse_spirv(byte_count_vert, spirv_vert); 
 
@@ -99,7 +100,7 @@ int main() {
     Create_Vk_Rendering_Info_Info rendering_info = {};
     rendering_info.color_attachment_count = 1;
     rendering_info.color_attachment_formats = &window->swapchain_info.imageFormat;
-    VkPipelineRenderingCreateInfo rendering_create_info = create_vk_rendering_info(&rendering_info);
+    VkPipelineRenderingCreateInfo rendering_create_info = create_vk_pipeline_rendering_info(&rendering_info);
 
     // Shader stages
     Create_Vk_Pipeline_Shader_Stage_Info shader_stage_infos[] = {
@@ -174,6 +175,40 @@ int main() {
 
     VkPipeline *pipelines =
         create_vk_graphics_pipelines_heap(gpu->vk_device, VK_NULL_HANDLE, 1, &pl_create_info);
+
+    Create_Vk_Rendering_Attachment_Info_Info render_attachment_info = {};
+    render_attachment_info.image_view = window->vk_image_views[0];
+    render_attachment_info.image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    render_attachment_info.load_op = VK_LOAD_OP_CLEAR;
+    render_attachment_info.store_op = VK_STORE_OP_STORE;
+
+    float clear_color_white[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    render_attachment.clear_value.float32 = {clear_color_white};
+
+    VkRenderingAttachmentInfo render_attachment =
+        create_vk_rendering_attachment_info(&render_attachment_info);
+
+    Create_Vk_Rendering_Info_Info rendering_info_info = {};
+    rendering_info_info.render_area = {
+        {
+            0, 0,
+        },
+        {
+            window->swapchain_info->extent.width,
+            window->swapchain_info->extent.height,
+        }
+    };
+    rendering_info_info.color_attachment_count = 1;
+    rendering_info_info.color_attachment_infos = render_attachment;
+    rendering_info_info.layer_count = 1;
+
+    VkRenderingInfo rendering_info = create_vk_rendering_info(&rendering_info_info);
+
+    // Before Rendering:
+    //     Set depth stencil state before rendering
+    //     Transition image
+    VkCommandBuffer graphics_cmd;
+    cmd_vk_depth_test_disable(graphics_cmd);
 
     println("Beginning render loop...\n");
     while(!glfwWindowShouldClose(glfw->window)) {

@@ -590,6 +590,10 @@ void reset_vk_command_pools_and_release_resources(VkDevice vk_device, u32 count,
     }
 }
 
+// @Todo use a free list and an in-use list and an in-use/free mask to avoid allocating new command buffers.
+// Use a bucket array for this? Or just swap stuff around to keep free stuff contiguous (if its in use it swapped 
+// with the first free implemented in a ring buffer?)
+// ^^ also applies to sync objects...
 VkCommandBuffer* allocate_vk_secondary_command_buffers(VkDevice vk_device, Command_Group_Vk *command_group, u32 count) {
     VkCommandBufferAllocateInfo allocate_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     allocate_info.commandPool = command_group->pool;
@@ -688,6 +692,10 @@ void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Sub
 }
 
 // `Sync
+// @Todo use a free list and an in-use list and an in-use/free mask to avoid allocating new command buffers.
+// Use a bucket array for this? Or just swap stuff around to keep free stuff contiguous (if its in use it swapped 
+// with the first free implemented in a ring buffer?)
+// ^^ also applies to sync objects... (this is pasted from the cmd buffer todo, same shit different name
 VkFence* create_vk_fences_unsignalled(VkDevice vk_device, u32 count) {
     VkFenceCreateInfo info = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     // @AllocationType these will be persistent because they will be in a pool
@@ -1105,8 +1113,8 @@ void destroy_vk_pipeline_layouts(VkDevice vk_device, u32 count, VkPipelineLayout
     memory_free_heap((void*)pl_layouts);
 }
 
-// RenderingInfo
-VkPipelineRenderingCreateInfo create_vk_rendering_info(Create_Vk_Rendering_Info_Info *info) {
+// PipelineRenderingInfo
+VkPipelineRenderingCreateInfo create_vk_pipeline_rendering_info(Create_Vk_Rendering_Info_Info *info) {
     VkPipelineRenderingCreateInfo create_info = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
     create_info.viewMask = info->view_mask;
     create_info.colorAttachmentCount    = info->color_attachment_count;
@@ -1146,6 +1154,55 @@ void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipeli
         vkDestroyPipeline(vk_device, pipelines[i], ALLOCATION_CALLBACKS);
     }
     memory_free_heap(pipelines);
+}
+
+// `Drawing and `Rendering
+// @Note the names on these sorts of functions might be misleading, as create implies the need to destroy...
+VkRenderingAttachmentInfo create_vk_rendering_attachment_info(Create_Vk_Rendering_Attachment_Info_Info *info) {
+    VkRenderingAttachmentInfo attachment_info = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+    attachment_info.imageView   = info->image_view;
+    attachment_info.imageLayout = info->image_layout;
+    attachment_info.loadOp      = info->image_view;
+    attachment_info.storeOp     = info->image_layout;
+    attachment_info.clearValue  = info->image_layout;
+
+    // for multisampling
+    attachment_info.resolveMode        = info->image_view;
+    attachment_info.resolveImageView   = info->image_layout;
+    attachment_info.resolveImageLayout = info->image_layout;
+
+    return attachment_info;
+}
+VkRenderingInfo create_vk_rendering_info(Create_Vk_Rendering_Info_Info *info) {
+    VkRenderingInfo rendering_info = {VK_STRUCTURE_TYPE_RENDERING_INFO};
+    rendering_info.renderArea           = info->render_area;
+    rendering_info.colorAttachmentCount = info->color_attachment_count;
+    rendering_info.pColorAttachments    = info->color_attachment_infos;
+    rendering_info.pDepth               = info->depth_attachment_infos;
+    rendering_info.pStencilAttachments  = info->stencil_attachment_infos;
+
+    // Layered images
+    rendering_info.layerCount = info->layer_count;
+    rendering_info.viewMask = info->view_mask;
+}
+
+// `Memory Dependencies
+VkDependencyInfo memdep_cao_to_present() {}
+VkDependencyInfo memdep_src_to_dst() {}
+VkDependencyInfo memdep_dst_to_cao() {}
+
+VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info) {
+    VkDependencyInfo dependency_info = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+
+    dependency_info.memoryBarrierCount       = info->memory_barrier_count;
+    dependency_info.bufferMemoryBarrierCount = info->buffer_barrier_count;
+    dependency_info.imageMemoryBarrierCount  = info->image_barrier_count;
+
+    dependency_info.pMemoryBarriers          = info->memory_barrier_count;
+    dependency_info.pBufferMemoryBarriers    = info->buffer_barrier_count;
+    dependency_info.pImageMemoryBarriers     = info->image_barrier_count;
+
+    return dependency_info;
 }
 
 #if DEBUG

@@ -351,6 +351,7 @@ struct Create_Vk_Pipeline_Layout_Info {
 VkPipelineLayout* create_vk_pipeline_layouts(VkDevice vk_device, u32 count, Create_Vk_Pipeline_Layout_Info *infos);
 void destroy_vk_pipeline_layouts(VkDevice vk_device, u32 count, VkPipelineLayout *pl_layouts);
 
+// PipelineRenderingInfo
 struct Create_Vk_Rendering_Info_Info {
     u32 view_mask;
     u32 color_attachment_count;
@@ -358,13 +359,79 @@ struct Create_Vk_Rendering_Info_Info {
     VkFormat  depth_attachment_format;
     VkFormat  stencil_attachment_format;
 };
-VkPipelineRenderingCreateInfo create_vk_rendering_info(Create_Vk_Rendering_Info_Info *info);
+VkPipelineRenderingCreateInfo create_vk_pipeline_rendering_info(Create_Vk_Rendering_Info_Info *info);
 
 // @Todo pipeline: increase possible use of dyn states, eg. vertex input, raster states etc.
 // `Pipeline Final
 VkPipeline* create_vk_graphics_pipelines_heap(VkDevice vk_device, VkPipelineCache cache, 
     u32 count, VkGraphicsPipelineCreateInfo *create_infos);
 void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipelines); // Also frees memory associated with the 'pipelines' pointer
+
+// `Rendering
+struct Create_Vk_Rendering_Attachment_Info_Info {
+    VkImageView image_view;
+    VkImageLayout image_layout;
+    VkAttachmentLoadOp load_op;
+    VkAttachmentStoreOp store_op;
+    VkClearValue clear_value;
+
+    // Pretty sure this is left null for now (no multisampling yet...)
+    VkResolveModeFlagBits resolve_mode;
+    VkImageView resolve_image_view;
+    VkImageLayout resolve_image_layout;
+};
+VkRenderingAttachmentInfo create_vk_rendering_attachment_info(Create_Vk_Rendering_Attachment_Info_Info *info);
+
+struct Create_Vk_Rendering_Info_Info {
+    // @Todo support:
+    //     flags for secondary command buffers,
+    //     layered attachments (layer count and view mask)
+    VkRect2D render_area; 
+    u32 color_attachment_count;
+    VkRenderingAttachmentInfo color_attachments_infos;
+    VkRenderingAttachmentInfo depth_attachments_info;
+    VkRenderingAttachmentInfo stencil_attachments_info;
+
+    u32 view_mask;
+    u32 layer_count = 1; // I think 1 is correct??...
+};
+// @Note the names on these sorts of functions might be misleading, as create implies the need to destroy...
+VkRenderingInfo create_vk_rendering_info(Create_Vk_Rendering_Info_Info *info);
+
+// `Memory Dependencies
+// @Todo add helper functions for:
+//    memory barrier
+//    buffer barrier
+
+// Here I want different functions to create typical types of memory barriers, like ownership 
+// transfers and image layout transitions. But as I do not have much experience with them yet 
+// this a complete WIP and will likely change greatly
+/*
+    *Plan:*
+    I want functions for each kind of common transfer, for instance:
+        COLOR_ATTACHMENT_OPTIMAL -> PRESENT
+        TRANSFER_SRC_OPTIMAL     -> TRANSFER_DST_OPTIMAL
+        TRANSFER_DST_OPTIMAL     -> COLOR_ATTACHMENT_OPTIMAL
+
+    In future I will want others such as for height maps, as the read sync would be different
+    (vertex access rather than fragment...)
+*/
+
+// cao = color attachment optimal
+VkDependencyInfo memdep_cao_to_present();
+VkDependencyInfo memdep_src_to_dst();
+VkDependencyInfo memdep_dst_to_cao();
+
+struct Fill_Vk_Dependency_Info {
+    // @Todo support dependency flags
+    u32 memory_barrier_count;
+    u32 buffer_barrier_count;
+    u32 image_barrier_count;
+    VkMemoryBarrier2       memory_barriers;
+    VkBufferMemoryBarrier2 buffer_barriers;
+    VkImageMemoryBarrier2  image_barriers;
+};
+VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info);
 
 #if DEBUG
 static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_messenger_callback(
