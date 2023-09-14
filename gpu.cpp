@@ -829,10 +829,11 @@ VkPipelineShaderStageCreateInfo* create_vk_pipeline_shader_stages(VkDevice vk_de
     }
     return (VkPipelineShaderStageCreateInfo*)memory_block;
 }
-void destroy_vk_pipeline_shader_stages(VkDevice vk_device, u32 count, VkShaderModule *modules) {
+void destroy_vk_pl_shader_stages(VkDevice vk_device, u32 count, VkPipelineShaderStageCreateInfo *stages) {
     for(int i = 0; i < count; ++i) {
-        vkDestroyShaderModule(vk_device, modules[i], ALLOCATION_CALLBACKS);
+        vkDestroyShaderModule(vk_device, stages[i].module, ALLOCATION_CALLBACKS);
     }
+    memory_free_heap((void*)stages);
 }
 
 // `VertexInputState

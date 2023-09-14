@@ -47,6 +47,7 @@ int main() {
         {transfer_command_pools[1], command_buffer_count},
     };
 
+    // @Leak these are not freed. Fixing now...
     VkCommandBuffer *graphics_command_buffers_pool_1 =
         allocate_vk_command_buffers(gpu->vk_device, &allocate_infos[0]);
     VkCommandBuffer *graphics_command_buffers_pool_2 =
@@ -70,10 +71,11 @@ int main() {
     };
 
     // Sync Setup
-    VkFence vk_fence; create_vk_fences_unsignalled(gpu->vk_device, 1);
-    submit_vk_command_buffer(gpu->vk_queues[0], vk_fence, 1, &submit_info);
-    vkWaitForFences(gpu->vk_device, 1, &vk_fence, true, 10e9);
-    destroy_vk_fences(gpu->vk_device, 1, &vk_fence);
+    VkFence *vk_fence = create_vk_fences_unsignalled(gpu->vk_device, 1);
+    submit_vk_command_buffer(gpu->vk_queues[0], *vk_fence, 1, &submit_info);
+
+    vkWaitForFences(gpu->vk_device, 1, vk_fence, true, 10e9);
+    destroy_vk_fences(gpu->vk_device, 1, vk_fence);
 
     // Descriptor setup
     u64 byte_count_vert;
@@ -181,11 +183,11 @@ int main() {
 
     // Shutdown
     reset_temp(); // just to clear the allocation from the file read
-    memory_free_heap((void*)shader_stages);
     memory_free_heap((void*)vertex_input_state);
     memory_free_heap((void*)vertex_assembly_state);
 
     destroy_vk_pipelines_heap(gpu->vk_device, 1, pipelines);
+    destroy_vk_pl_shader_stages(gpu->vk_device, 2, shader_stages);
     destroy_vk_pl_layouts(gpu->vk_device, 1, pl_layout);
     destroy_vk_descriptor_set_layouts(gpu->vk_device, descriptor_set_layout_count, descriptor_set_layouts);
     destroy_vk_command_pools(gpu->vk_device, 2, graphics_command_pools);

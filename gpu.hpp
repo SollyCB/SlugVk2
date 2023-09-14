@@ -127,6 +127,7 @@ struct Create_Vk_Pipeline_Shader_Stage_Info {
     VkSpecializationInfo *spec_info = NULL;
 };
 VkPipelineShaderStageCreateInfo* create_vk_pipeline_shader_stages(VkDevice vk_device, u32 count, Create_Vk_Pipeline_Shader_Stage_Info *infos);
+void destroy_vk_pl_shader_stages(VkDevice vk_device, u32 count, VkPipelineShaderStageCreateInfo *stages);
 
 // `VertexInputState
 // @StructPacking pack struct
