@@ -231,10 +231,10 @@ static inline void cmd_vk_line_width(VkCommandBuffer vk_command_buffer, float wi
 VkPipelineMultisampleStateCreateInfo create_vk_pipeline_multisample_state();
 
 // `DepthStencilState
-static inline void cmd_vk_depth_test_enable(VkCommandBuffer vk_command_buffer) {
+static inline void cmd_vk_set_depth_test_enabled(VkCommandBuffer vk_command_buffer) {
     vkCmdSetDepthTestEnable(vk_command_buffer, VK_TRUE);
 }
-static inline void cmd_vk_depth_test_disable(VkCommandBuffer vk_command_buffer) {
+static inline void cmd_vk_set_depth_test_disabled(VkCommandBuffer vk_command_buffer) {
     vkCmdSetDepthTestEnable(vk_command_buffer, VK_FALSE);
 }
 static inline void cmd_vk_depth_write_enable(VkCommandBuffer vk_command_buffer) {
@@ -276,10 +276,10 @@ static inline void cmd_vk_depth_bounds_test_disable(VkCommandBuffer vk_command_b
     vkCmdSetDepthBoundsTestEnable(vk_command_buffer, VK_FALSE);
 }
 
-static inline void cmd_vk_stencil_test_enable(VkCommandBuffer vk_command_buffer) {
+static inline void cmd_vk_set_stencil_test_enabled(VkCommandBuffer vk_command_buffer) {
     vkCmdSetStencilTestEnable(vk_command_buffer, VK_TRUE);
 }
-static inline void cmd_vk_stencil_test_disable(VkCommandBuffer vk_command_buffer) {
+static inline void cmd_vk_set_stencil_test_disabled(VkCommandBuffer vk_command_buffer) {
     vkCmdSetStencilTestEnable(vk_command_buffer, VK_FALSE);
 }
 static inline void cmd_vk_stencil_op(
@@ -352,14 +352,14 @@ VkPipelineLayout* create_vk_pipeline_layouts(VkDevice vk_device, u32 count, Crea
 void destroy_vk_pipeline_layouts(VkDevice vk_device, u32 count, VkPipelineLayout *pl_layouts);
 
 // PipelineRenderingInfo
-struct Create_Vk_Rendering_Info_Info {
+struct Create_Vk_Pipeline_Rendering_Info_Info {
     u32 view_mask;
     u32 color_attachment_count;
     VkFormat *color_attachment_formats;
     VkFormat  depth_attachment_format;
     VkFormat  stencil_attachment_format;
 };
-VkPipelineRenderingCreateInfo create_vk_pipeline_rendering_info(Create_Vk_Rendering_Info_Info *info);
+VkPipelineRenderingCreateInfo create_vk_pipeline_rendering_info(Create_Vk_Pipeline_Rendering_Info_Info *info);
 
 // @Todo pipeline: increase possible use of dyn states, eg. vertex input, raster states etc.
 // `Pipeline Final
@@ -388,15 +388,19 @@ struct Create_Vk_Rendering_Info_Info {
     //     layered attachments (layer count and view mask)
     VkRect2D render_area; 
     u32 color_attachment_count;
-    VkRenderingAttachmentInfo color_attachments_infos;
-    VkRenderingAttachmentInfo depth_attachments_info;
-    VkRenderingAttachmentInfo stencil_attachments_info;
+    VkRenderingAttachmentInfo *color_attachment_infos;
+    VkRenderingAttachmentInfo *depth_attachment_info;
+    VkRenderingAttachmentInfo *stencil_attachment_info;
 
     u32 view_mask;
     u32 layer_count = 1; // I think 1 is correct??...
 };
 // @Note the names on these sorts of functions might be misleading, as create implies the need to destroy...
 VkRenderingInfo create_vk_rendering_info(Create_Vk_Rendering_Info_Info *info);
+
+// `Resources
+// `Images
+
 
 // `Memory Dependencies
 // @Todo add helper functions for:
@@ -417,19 +421,32 @@ VkRenderingInfo create_vk_rendering_info(Create_Vk_Rendering_Info_Info *info);
     (vertex access rather than fragment...)
 */
 
+// @Todo add similar functions for buffer barriers
 // cao = color attachment optimal
-VkDependencyInfo memdep_cao_to_present();
-VkDependencyInfo memdep_src_to_dst();
-VkDependencyInfo memdep_dst_to_cao();
+struct MemDep_Queue_Transfer_Info_Image {
+    u16 release_queue_index; 
+    u16 acquire_queue_index; 
+    VkImage image;
+    VkImageSubresourceRange view;
+};
+VkImageMemoryBarrier2 fill_image_barrier_transfer_cao_to_present(MemDep_Queue_Transfer_Info_Image *info);
+
+struct MemDep_Queue_Transition_Info_Image {
+    VkImage image;
+    VkImageSubresourceRange view;
+};
+VkImageMemoryBarrier2 fill_image_barrier_transition_undefined_to_cao(MemDep_Queue_Transition_Info_Image *info);
+//VkImageMemoryBarrier2 memdep_src_to_dst(MemDep_Queue_Transfer_Info_Image *info);
+//VkImageMemoryBarrier2 memdep_dst_to_cao();
 
 struct Fill_Vk_Dependency_Info {
     // @Todo support dependency flags
     u32 memory_barrier_count;
     u32 buffer_barrier_count;
     u32 image_barrier_count;
-    VkMemoryBarrier2       memory_barriers;
-    VkBufferMemoryBarrier2 buffer_barriers;
-    VkImageMemoryBarrier2  image_barriers;
+    VkMemoryBarrier2       *memory_barriers;
+    VkBufferMemoryBarrier2 *buffer_barriers;
+    VkImageMemoryBarrier2  *image_barriers;
 };
 VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info);
 

@@ -1114,7 +1114,7 @@ void destroy_vk_pipeline_layouts(VkDevice vk_device, u32 count, VkPipelineLayout
 }
 
 // PipelineRenderingInfo
-VkPipelineRenderingCreateInfo create_vk_pipeline_rendering_info(Create_Vk_Rendering_Info_Info *info) {
+VkPipelineRenderingCreateInfo create_vk_pipeline_rendering_info(Create_Vk_Pipeline_Rendering_Info_Info *info) {
     VkPipelineRenderingCreateInfo create_info = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
     create_info.viewMask = info->view_mask;
     create_info.colorAttachmentCount    = info->color_attachment_count;
@@ -1162,14 +1162,14 @@ VkRenderingAttachmentInfo create_vk_rendering_attachment_info(Create_Vk_Renderin
     VkRenderingAttachmentInfo attachment_info = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
     attachment_info.imageView   = info->image_view;
     attachment_info.imageLayout = info->image_layout;
-    attachment_info.loadOp      = info->image_view;
-    attachment_info.storeOp     = info->image_layout;
-    attachment_info.clearValue  = info->image_layout;
+    attachment_info.loadOp      = info->load_op;
+    attachment_info.storeOp     = info->store_op;
+    attachment_info.clearValue  = info->clear_value;
 
     // for multisampling
-    attachment_info.resolveMode        = info->image_view;
-    attachment_info.resolveImageView   = info->image_layout;
-    attachment_info.resolveImageLayout = info->image_layout;
+    attachment_info.resolveMode        = info->resolve_mode;
+    attachment_info.resolveImageView   = info->resolve_image_view;
+    attachment_info.resolveImageLayout = info->resolve_image_layout;
 
     return attachment_info;
 }
@@ -1178,18 +1178,63 @@ VkRenderingInfo create_vk_rendering_info(Create_Vk_Rendering_Info_Info *info) {
     rendering_info.renderArea           = info->render_area;
     rendering_info.colorAttachmentCount = info->color_attachment_count;
     rendering_info.pColorAttachments    = info->color_attachment_infos;
-    rendering_info.pDepth               = info->depth_attachment_infos;
-    rendering_info.pStencilAttachments  = info->stencil_attachment_infos;
+    rendering_info.pDepthAttachment     = info->depth_attachment_info;
+    rendering_info.pStencilAttachment   = info->stencil_attachment_info;
 
     // Layered images
     rendering_info.layerCount = info->layer_count;
     rendering_info.viewMask = info->view_mask;
+
+    return rendering_info;
 }
 
 // `Memory Dependencies
-VkDependencyInfo memdep_cao_to_present() {}
-VkDependencyInfo memdep_src_to_dst() {}
-VkDependencyInfo memdep_dst_to_cao() {}
+VkImageMemoryBarrier2 fill_image_barrier_transfer_cao_to_present(MemDep_Queue_Transfer_Info_Image *info) {
+    VkImageSubresourceRange view  = {};
+    view.aspectMask               = VK_IMAGE_ASPECT_COLOR_BIT;
+    view.baseMipLevel             = 0;
+    view.levelCount               = 1;
+    view.baseArrayLayer           = 0;
+    view.layerCount               = 1;
+
+    VkImageMemoryBarrier2 barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+    barrier.srcStageMask          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    barrier.srcAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    barrier.dstStageMask          = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    barrier.dstAccessMask         = 0x0;
+    barrier.oldLayout             = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    barrier.newLayout             = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    barrier.srcQueueFamilyIndex   = info->release_queue_index;
+    barrier.dstQueueFamilyIndex   = info->acquire_queue_index;
+    barrier.image                 = info->image;
+    barrier.subresourceRange      = view;
+
+    return barrier;
+}
+VkImageMemoryBarrier2 fill_image_barrier_transition_undefined_to_cao(MemDep_Queue_Transition_Info_Image *info) {
+    VkImageSubresourceRange view  = {};
+    view.aspectMask               = VK_IMAGE_ASPECT_COLOR_BIT;
+    view.baseMipLevel             = 0;
+    view.levelCount               = 1;
+    view.baseArrayLayer           = 0;
+    view.layerCount               = 1;
+
+    VkImageMemoryBarrier2 barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+    barrier.srcStageMask          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    barrier.srcAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    barrier.dstStageMask          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    barrier.dstAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    barrier.oldLayout             = VK_IMAGE_LAYOUT_UNDEFINED;
+    barrier.newLayout             = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    barrier.srcQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image                 = info->image;
+    barrier.subresourceRange      = info->view;
+
+    return barrier;
+}
+//VkImageMemoryBarrier2 fill_imagebarrier_transfer_src_to_dst(MemDep_Queue_Transfer_Info_Image *info) {}
+//VkImageMemoryBarrier2 fill_imagebarrier_transition_dst_to_cao() {}
 
 VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info) {
     VkDependencyInfo dependency_info = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
@@ -1198,9 +1243,9 @@ VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info) {
     dependency_info.bufferMemoryBarrierCount = info->buffer_barrier_count;
     dependency_info.imageMemoryBarrierCount  = info->image_barrier_count;
 
-    dependency_info.pMemoryBarriers          = info->memory_barrier_count;
-    dependency_info.pBufferMemoryBarriers    = info->buffer_barrier_count;
-    dependency_info.pImageMemoryBarriers     = info->image_barrier_count;
+    dependency_info.pMemoryBarriers          = info->memory_barriers;
+    dependency_info.pBufferMemoryBarriers    = info->buffer_barriers;
+    dependency_info.pImageMemoryBarriers     = info->image_barriers;
 
     return dependency_info;
 }

@@ -73,8 +73,9 @@ int main() {
     submit_vk_command_buffer(gpu->vk_queues[0], *vk_fence, 1, &submit_info);
 
     vkWaitForFences(gpu->vk_device, 1, vk_fence, true, 10e9);
+    vkResetFences(gpu->vk_device, 1, vk_fence);
     reset_vk_command_pools(gpu->vk_device, 1, &graphics_command_groups[0].pool);
-    destroy_vk_fences(gpu->vk_device, 1, vk_fence);
+    //destroy_vk_fences(gpu->vk_device, 1, vk_fence);
 
     // Descriptor setup
     u64 byte_count_vert;
@@ -97,10 +98,10 @@ int main() {
     VkPipelineLayout *pl_layout = create_vk_pipeline_layouts(gpu->vk_device, 1, &pl_layout_info);
 
     // Rendering info
-    Create_Vk_Rendering_Info_Info rendering_info = {};
-    rendering_info.color_attachment_count = 1;
-    rendering_info.color_attachment_formats = &window->swapchain_info.imageFormat;
-    VkPipelineRenderingCreateInfo rendering_create_info = create_vk_pipeline_rendering_info(&rendering_info);
+    Create_Vk_Pipeline_Rendering_Info_Info pl_rendering_info = {};
+    pl_rendering_info.color_attachment_count = 1;
+    pl_rendering_info.color_attachment_formats = &window->swapchain_info.imageFormat;
+    VkPipelineRenderingCreateInfo rendering_create_info = create_vk_pipeline_rendering_info(&pl_rendering_info);
 
     // Shader stages
     Create_Vk_Pipeline_Shader_Stage_Info shader_stage_infos[] = {
@@ -176,39 +177,114 @@ int main() {
     VkPipeline *pipelines =
         create_vk_graphics_pipelines_heap(gpu->vk_device, VK_NULL_HANDLE, 1, &pl_create_info);
 
+    VkAcquireNextImageInfoKHR acquire_info = {VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR};
+    acquire_info.swapchain  = window->vk_swapchain;
+    acquire_info.timeout    = 10e9;
+    acquire_info.semaphore  = VK_NULL_HANDLE;
+    acquire_info.fence      = *vk_fence;
+    acquire_info.deviceMask = 1;
+
+    u32 present_image_index;
+    vkAcquireNextImage2KHR(gpu->vk_device, &acquire_info, &present_image_index);
+    vkWaitForFences(gpu->vk_device, 1, vk_fence, true, 10e9);
+    vkResetFences(gpu->vk_device, 1, vk_fence);
+
     Create_Vk_Rendering_Attachment_Info_Info render_attachment_info = {};
-    render_attachment_info.image_view = window->vk_image_views[0];
+    render_attachment_info.image_view   = window->vk_image_views[present_image_index];
     render_attachment_info.image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    render_attachment_info.load_op = VK_LOAD_OP_CLEAR;
-    render_attachment_info.store_op = VK_STORE_OP_STORE;
+    render_attachment_info.load_op      = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    render_attachment_info.store_op     = VK_ATTACHMENT_STORE_OP_STORE;
 
     float clear_color_white[] = {1.0f, 1.0f, 1.0f, 1.0f};
-    render_attachment.clear_value.float32 = {clear_color_white};
+    render_attachment_info.clear_value.color.float32[0] = clear_color_white[0];
+    render_attachment_info.clear_value.color.float32[1] = clear_color_white[1];
+    render_attachment_info.clear_value.color.float32[2] = clear_color_white[2];
+    render_attachment_info.clear_value.color.float32[3] = clear_color_white[3];
 
     VkRenderingAttachmentInfo render_attachment =
         create_vk_rendering_attachment_info(&render_attachment_info);
 
     Create_Vk_Rendering_Info_Info rendering_info_info = {};
-    rendering_info_info.render_area = {
-        {
-            0, 0,
-        },
-        {
-            window->swapchain_info->extent.width,
-            window->swapchain_info->extent.height,
+    VkRect2D render_area = {
+        .offset = { 0, 0, },
+        .extent = { 
+            window->swapchain_info.imageExtent.width,
+            window->swapchain_info.imageExtent.height, 
         }
     };
+    rendering_info_info.render_area = render_area;
     rendering_info_info.color_attachment_count = 1;
-    rendering_info_info.color_attachment_infos = render_attachment;
+    rendering_info_info.color_attachment_infos = &render_attachment;
     rendering_info_info.layer_count = 1;
-
     VkRenderingInfo rendering_info = create_vk_rendering_info(&rendering_info_info);
 
-    // Before Rendering:
-    //     Set depth stencil state before rendering
-    //     Transition image
-    VkCommandBuffer graphics_cmd;
-    cmd_vk_depth_test_disable(graphics_cmd);
+    VkImageSubresourceRange view  = {};
+    view.aspectMask               = VK_IMAGE_ASPECT_COLOR_BIT;
+    view.baseMipLevel             = 0;
+    view.levelCount               = 1;
+    view.baseArrayLayer           = 0;
+    view.layerCount               = 1;
+
+    MemDep_Queue_Transition_Info_Image transition_info = {};
+    transition_info.image = window->vk_images[present_image_index];
+    transition_info.view = view;
+    VkImageMemoryBarrier2 transition_barrier =
+        fill_image_barrier_transition_undefined_to_cao(&transition_info);
+
+    MemDep_Queue_Transfer_Info_Image cao_to_present_info = {};
+    cao_to_present_info.release_queue_index = gpu->vk_queue_indices[0];
+    cao_to_present_info.acquire_queue_index = gpu->vk_queue_indices[1];
+    cao_to_present_info.image = window->vk_images[present_image_index];
+    VkImageMemoryBarrier2 transfer_barrier =
+        fill_image_barrier_transfer_cao_to_present(&cao_to_present_info);
+
+    Fill_Vk_Dependency_Info transition_dependency_info = {};
+    transition_dependency_info.image_barrier_count = 1;
+    transition_dependency_info.image_barriers = &transition_barrier;
+    VkDependencyInfo transition_dependency = fill_vk_dependency(&transition_dependency_info);
+
+    Fill_Vk_Dependency_Info transfer_dependency_info = {};
+    transfer_dependency_info.image_barrier_count = 1;
+    transfer_dependency_info.image_barriers = &transfer_barrier;
+    VkDependencyInfo transfer_dependency = fill_vk_dependency(&transfer_dependency_info);
+
+    // Drawing
+    VkCommandBuffer graphics_cmd = graphics_buffers_1[0];
+
+    begin_vk_command_buffer_primary(graphics_cmd);
+
+        cmd_vk_set_depth_test_disabled(graphics_cmd);
+        cmd_vk_set_stencil_test_disabled(graphics_cmd);
+
+        vkCmdPipelineBarrier2(graphics_cmd, &transition_dependency);
+        vkCmdBeginRendering(graphics_cmd, &rendering_info);
+
+            vkCmdBindPipeline(graphics_cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipelines);
+            vkCmdDraw(graphics_cmd, 3, 1, 0, 0);
+
+        vkCmdEndRendering(graphics_cmd);
+        vkCmdPipelineBarrier2(graphics_cmd, &transfer_dependency);
+
+    end_vk_command_buffer(graphics_cmd);
+    
+    VkSemaphore *semaphore = create_vk_semaphores_binary(gpu->vk_device, 1);
+
+    VkSemaphoreSubmitInfo semaphore_info = {VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+    semaphore_info.semaphore = *semaphore;
+    semaphore_info.stageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+    Submit_Vk_Command_Buffer_Info graphics_submit_info = {
+        0, NULL, 1, &semaphore_info, 1, &graphics_cmd 
+    };
+    submit_vk_command_buffer(gpu->vk_queues[0], *vk_fence, 1, &graphics_submit_info);
+
+    VkPresentInfoKHR present_info = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+    present_info.waitSemaphoreCount    = 1;
+    present_info.pWaitSemaphores       = semaphore;
+    present_info.swapchainCount        = 1;
+    present_info.pSwapchains           = &window->vk_swapchain;
+    present_info.pImageIndices         = &present_image_index;
+    vkQueuePresentKHR(gpu->vk_queues[1], &present_info);
 
     println("Beginning render loop...\n");
     while(!glfwWindowShouldClose(glfw->window)) {
@@ -220,6 +296,8 @@ int main() {
     memory_free_heap((void*)vertex_input_state);
     memory_free_heap((void*)vertex_assembly_state);
 
+    destroy_vk_fences(gpu->vk_device, 1, vk_fence);
+    destroy_vk_semaphores(gpu->vk_device, 1, semaphore);
     destroy_vk_pipelines_heap(gpu->vk_device, 1, pipelines);
     destroy_vk_pipeline_shader_stages(gpu->vk_device, 2, shader_stages);
 
