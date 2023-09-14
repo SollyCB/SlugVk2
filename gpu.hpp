@@ -67,24 +67,19 @@ void destroy_vk_swapchain(VkDevice vk_device, Window *window); // also destroys 
 VkSwapchainKHR recreate_vk_swapchain(Gpu *gpu, Window *window);
 
 // CommandPools and CommandBuffers
-struct Create_Vk_Command_Pool_Info {
-    u32 queue_family_index;
-    // @BoolsInStructs
-    bool transient = false;
-    bool reset_buffers = false;
+struct Command_Group_Vk {
+    VkCommandPool pool;
+    Dyn_Array<VkCommandBuffer> buffers;
 };
-VkCommandPool* create_vk_command_pools(VkDevice vk_device, Create_Vk_Command_Pool_Info *info, u32 count);
-void destroy_vk_command_pools(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools);
+Command_Group_Vk create_command_group_vk(VkDevice vk_device, u32 queue_family_index);
+Command_Group_Vk create_command_group_vk_transient(VkDevice vk_device, u32 queue_family_index);
+void destroy_command_groups_vk(VkDevice vk_device, u32 count, Command_Group_Vk *command_groups_vk);
 
 void reset_vk_command_pools(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools);
 void reset_vk_command_pools_and_release_resources(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools);
 
-struct Allocate_Vk_Command_Buffer_Info {
-    VkCommandPool pool;
-    u32 count;
-    bool secondary = false;
-};
-VkCommandBuffer* allocate_vk_command_buffers(VkDevice vk_device, Allocate_Vk_Command_Buffer_Info *info);
+VkCommandBuffer* allocate_vk_secondary_command_buffers(VkDevice vk_device, Command_Group_Vk *command_group, u32 count);
+VkCommandBuffer* allocate_vk_primary_command_buffers(VkDevice vk_device, Command_Group_Vk *command_group, u32 count);
 
 void begin_vk_command_buffer_primary(VkCommandBuffer vk_command_buffer);
 void begin_vk_command_buffer_primary_onetime(VkCommandBuffer vk_command_buffer);
@@ -127,7 +122,7 @@ struct Create_Vk_Pipeline_Shader_Stage_Info {
     VkSpecializationInfo *spec_info = NULL;
 };
 VkPipelineShaderStageCreateInfo* create_vk_pipeline_shader_stages(VkDevice vk_device, u32 count, Create_Vk_Pipeline_Shader_Stage_Info *infos);
-void destroy_vk_pl_shader_stages(VkDevice vk_device, u32 count, VkPipelineShaderStageCreateInfo *stages);
+void destroy_vk_pipeline_shader_stages(VkDevice vk_device, u32 count, VkPipelineShaderStageCreateInfo *stages);
 
 // `VertexInputState
 // @StructPacking pack struct
@@ -159,7 +154,7 @@ VkPipelineInputAssemblyStateCreateInfo* create_vk_pipeline_input_assembly_states
 // @Todo support Tessellation
 
 // Viewport
-VkPipelineViewportStateCreateInfo create_vk_pl_viewport_state(Window *window);
+VkPipelineViewportStateCreateInfo create_vk_pipeline_viewport_state(Window *window);
 static inline void cmd_vk_set_viewports(u32 count, VkCommandBuffer *vk_command_buffers) {
     VkSwapchainCreateInfoKHR info = get_window_instance()->swapchain_info;
     VkViewport viewport = {
@@ -341,7 +336,7 @@ struct Create_Vk_Pl_Color_Blend_State_Info {
     u32 attachment_count;
     VkPipelineColorBlendAttachmentState *attachment_states;
 };
-VkPipelineColorBlendStateCreateInfo create_vk_pl_color_blend_state(Create_Vk_Pl_Color_Blend_State_Info *info);
+VkPipelineColorBlendStateCreateInfo create_vk_pipeline_color_blend_state(Create_Vk_Pl_Color_Blend_State_Info *info);
 
 // `DynamicState
 VkPipelineDynamicStateCreateInfo create_vk_pipeline_dyn_state();
@@ -354,7 +349,7 @@ struct Create_Vk_Pipeline_Layout_Info {
     VkPushConstantRange *push_constant_ranges;
 };
 VkPipelineLayout* create_vk_pipeline_layouts(VkDevice vk_device, u32 count, Create_Vk_Pipeline_Layout_Info *infos);
-void destroy_vk_pl_layouts(VkDevice vk_device, u32 count, VkPipelineLayout *pl_layouts);
+void destroy_vk_pipeline_layouts(VkDevice vk_device, u32 count, VkPipelineLayout *pl_layouts);
 
 struct Create_Vk_Rendering_Info_Info {
     u32 view_mask;

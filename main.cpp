@@ -27,47 +27,45 @@ int main() {
     Window *window = get_window_instance();
 
     // Command Buffer setup
-    u32 command_pool_count = 2;
-    Create_Vk_Command_Pool_Info pool_infos[] = { 
-        {gpu->vk_queue_indices[0]},
-        {gpu->vk_queue_indices[1]},
-        {gpu->vk_queue_indices[2]},
+    Command_Group_Vk graphics_command_groups[] = {
+        create_command_group_vk(gpu->vk_device, gpu->vk_queue_indices[0]),
+        create_command_group_vk(gpu->vk_device, gpu->vk_queue_indices[0]),
     };
-    VkCommandPool *graphics_command_pools = create_vk_command_pools(gpu->vk_device, &pool_infos[0], command_pool_count);
-    VkCommandPool *present_command_pools  = create_vk_command_pools(gpu->vk_device, &pool_infos[1], command_pool_count);
-    VkCommandPool *transfer_command_pools = create_vk_command_pools(gpu->vk_device, &pool_infos[2], command_pool_count);
-
-    u32 command_buffer_count = 4;
-    Allocate_Vk_Command_Buffer_Info allocate_infos[] = {
-        {graphics_command_pools[0], command_buffer_count},
-        {graphics_command_pools[1], command_buffer_count},
-        {present_command_pools [0], command_buffer_count},
-        {present_command_pools [1], command_buffer_count},
-        {transfer_command_pools[0], command_buffer_count},
-        {transfer_command_pools[1], command_buffer_count},
+    Command_Group_Vk present_command_groups [2] = {
+        create_command_group_vk(gpu->vk_device, gpu->vk_queue_indices[1]),
+        create_command_group_vk(gpu->vk_device, gpu->vk_queue_indices[1]),
     };
+    Command_Group_Vk transfer_command_groups[2] = {
+        create_command_group_vk(gpu->vk_device, gpu->vk_queue_indices[2]),
+        create_command_group_vk(gpu->vk_device, gpu->vk_queue_indices[2]),
+    }; // allocate 2 so i can have one per frame
 
-    // @Leak these are not freed. Fixing now...
-    VkCommandBuffer *graphics_command_buffers_pool_1 =
-        allocate_vk_command_buffers(gpu->vk_device, &allocate_infos[0]);
-    VkCommandBuffer *graphics_command_buffers_pool_2 =
-        allocate_vk_command_buffers(gpu->vk_device, &allocate_infos[1]);
-    VkCommandBuffer *present_command_buffers_pool_1 =
-        allocate_vk_command_buffers(gpu->vk_device, &allocate_infos[2]); 
-    VkCommandBuffer *present_command_buffers_pool_2 =
-        allocate_vk_command_buffers(gpu->vk_device, &allocate_infos[3]); 
-    VkCommandBuffer *transfer_command_buffers_pool_1 =
-        allocate_vk_command_buffers(gpu->vk_device, &allocate_infos[4]); 
-    VkCommandBuffer *transfer_command_buffers_pool_2 =
-        allocate_vk_command_buffers(gpu->vk_device, &allocate_infos[5]); 
+    // allocate command buffers
+    VkCommandBuffer *graphics_buffers_1 =
+        allocate_vk_primary_command_buffers(gpu->vk_device, &graphics_command_groups[0], 4);
+    VkCommandBuffer *graphics_buffers_2 =
+        allocate_vk_primary_command_buffers(gpu->vk_device, &graphics_command_groups[1], 4);
 
-    begin_vk_command_buffer_primary(graphics_command_buffers_pool_1[0]);
-    end_vk_command_buffer(graphics_command_buffers_pool_1[0]);
-    begin_vk_command_buffer_primary(graphics_command_buffers_pool_2[1]);
-    end_vk_command_buffer(graphics_command_buffers_pool_1[1]);
+    VkCommandBuffer *present_buffers_1  =
+        allocate_vk_primary_command_buffers(gpu->vk_device, &present_command_groups [0], 4);
+    VkCommandBuffer *present_buffers_2  =
+        allocate_vk_primary_command_buffers(gpu->vk_device, &present_command_groups [1], 4);
+
+    VkCommandBuffer *transfer_buffers_1 =
+        allocate_vk_primary_command_buffers(gpu->vk_device, &transfer_command_groups[0], 4);
+    VkCommandBuffer *transfer_buffers_2 =
+        allocate_vk_primary_command_buffers(gpu->vk_device, &transfer_command_groups[1], 4);
+
+    // begin pool 1[0]
+    begin_vk_command_buffer_primary(graphics_buffers_1[0]);
+    end_vk_command_buffer(graphics_buffers_1[0]);
+
+    // begin pool 1[1]
+    begin_vk_command_buffer_primary(graphics_buffers_1[1]);
+    end_vk_command_buffer(graphics_buffers_1[1]);
 
     Submit_Vk_Command_Buffer_Info submit_info {
-        0, NULL, 0, NULL, 2, graphics_command_buffers_pool_1,
+        0, NULL, 0, NULL, 2, graphics_buffers_1,
     };
 
     // Sync Setup
@@ -75,6 +73,7 @@ int main() {
     submit_vk_command_buffer(gpu->vk_queues[0], *vk_fence, 1, &submit_info);
 
     vkWaitForFences(gpu->vk_device, 1, vk_fence, true, 10e9);
+    reset_vk_command_pools(gpu->vk_device, 1, &graphics_command_groups[0].pool);
     destroy_vk_fences(gpu->vk_device, 1, vk_fence);
 
     // Descriptor setup
@@ -130,7 +129,7 @@ int main() {
         create_vk_pipeline_input_assembly_states(1, &topology, &primitive_restart_enabled);
 
     // Viewport
-    VkPipelineViewportStateCreateInfo viewport_info = create_vk_pl_viewport_state(window);
+    VkPipelineViewportStateCreateInfo viewport_info = create_vk_pipeline_viewport_state(window);
 
     // Multisample state   - just plain default, but should be set dynamically
     VkPipelineMultisampleStateCreateInfo multisampling = create_vk_pipeline_multisample_state();
@@ -146,7 +145,7 @@ int main() {
     blend_state_info.logic_op_enable = VK_FALSE;
     blend_state_info.attachment_count = 1;
     blend_state_info.attachment_states = &blend_attachment_state;
-    VkPipelineColorBlendStateCreateInfo blend_state = create_vk_pl_color_blend_state(&blend_state_info);
+    VkPipelineColorBlendStateCreateInfo blend_state = create_vk_pipeline_color_blend_state(&blend_state_info);
 
     // Dynamic state
     VkPipelineDynamicStateCreateInfo dyn_state = create_vk_pipeline_dyn_state();
@@ -182,17 +181,19 @@ int main() {
     }
 
     // Shutdown
-    reset_temp(); // just to clear the allocation from the file read
+    reset_temp();
     memory_free_heap((void*)vertex_input_state);
     memory_free_heap((void*)vertex_assembly_state);
 
     destroy_vk_pipelines_heap(gpu->vk_device, 1, pipelines);
-    destroy_vk_pl_shader_stages(gpu->vk_device, 2, shader_stages);
-    destroy_vk_pl_layouts(gpu->vk_device, 1, pl_layout);
+    destroy_vk_pipeline_shader_stages(gpu->vk_device, 2, shader_stages);
+
+    destroy_vk_pipeline_layouts(gpu->vk_device, 1, pl_layout);
     destroy_vk_descriptor_set_layouts(gpu->vk_device, descriptor_set_layout_count, descriptor_set_layouts);
-    destroy_vk_command_pools(gpu->vk_device, 2, graphics_command_pools);
-    destroy_vk_command_pools(gpu->vk_device, 2,  present_command_pools);
-    destroy_vk_command_pools(gpu->vk_device, 2, transfer_command_pools);
+
+    destroy_command_groups_vk(gpu->vk_device, 2, graphics_command_groups);
+    destroy_command_groups_vk(gpu->vk_device, 2,  present_command_groups);
+    destroy_command_groups_vk(gpu->vk_device, 2, transfer_command_groups);
 
     kill_window(gpu, window);
     kill_gpu(gpu);

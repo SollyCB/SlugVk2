@@ -542,27 +542,42 @@ void destroy_vk_swapchain(VkDevice device, Window *window) {
 }
 
 // `Commands
-VkCommandPool* create_vk_command_pools(VkDevice vk_device, Create_Vk_Command_Pool_Info *info, u32 count) {
+Command_Group_Vk create_command_group_vk(VkDevice vk_device, u32 queue_family_index) {
     VkCommandPoolCreateInfo create_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
-
-    create_info.flags |= info->transient ? VK_COMMAND_POOL_CREATE_TRANSIENT_BIT : 0x0;
-    create_info.flags |= info->reset_buffers ? VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT : 0x0;
-    create_info.queueFamilyIndex = info->queue_family_index;
+    create_info.flags = 0x0;
+    create_info.queueFamilyIndex = queue_family_index;
 
     // @AllocationType pools will likely be persistent
-    VkCommandPool *vk_command_pools = (VkCommandPool*)memory_allocate_heap(sizeof(VkCommandPool) * count, 8);
-    VkResult check;
-    for(int i = 0; i < count; ++i) {
-        check = vkCreateCommandPool(vk_device, &create_info, ALLOCATION_CALLBACKS, &vk_command_pools[i]);
-        DEBUG_OBJ_CREATION(vkCreateCommandPool, check);
-    }
-    return vk_command_pools;
+    VkCommandPool vk_command_pool;
+    auto check = vkCreateCommandPool(vk_device, &create_info, ALLOCATION_CALLBACKS, &vk_command_pool);
+    DEBUG_OBJ_CREATION(vkCreateCommandPool, check);
+
+    Command_Group_Vk command_group;
+    command_group.pool = vk_command_pool;
+    INIT_DYN_ARRAY(command_group.buffers, 8);
+    return command_group;
 }
-void destroy_vk_command_pools(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools) {
+Command_Group_Vk create_command_group_vk_transient(VkDevice vk_device, u32 queue_family_index) {
+    VkCommandPoolCreateInfo create_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+    create_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+    create_info.queueFamilyIndex = queue_family_index;
+
+    // @AllocationType pools will likely be persistent
+    VkCommandPool vk_command_pool;
+    auto check = vkCreateCommandPool(vk_device, &create_info, ALLOCATION_CALLBACKS, &vk_command_pool);
+    DEBUG_OBJ_CREATION(vkCreateCommandPool, check);
+
+    Command_Group_Vk command_group;
+    command_group.pool = vk_command_pool;
+    INIT_DYN_ARRAY(command_group.buffers, 8);
+    return command_group;
+}
+void destroy_command_groups_vk(VkDevice vk_device, u32 count, Command_Group_Vk *command_groups_vk) {
+    // Assumes pools are already reset
     for(int i = 0; i < count; ++i) {
-        vkDestroyCommandPool(vk_device, vk_command_pools[i], ALLOCATION_CALLBACKS);
+        vkDestroyCommandPool(vk_device, command_groups_vk[i].pool, ALLOCATION_CALLBACKS);
+        KILL_DYN_ARRAY(command_groups_vk[i].buffers);
     }
-    memory_free_heap((void*)vk_command_pools);
 }
 void reset_vk_command_pools(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools) {
     for(int i = 0; i < count; ++i) {
@@ -575,23 +590,47 @@ void reset_vk_command_pools_and_release_resources(VkDevice vk_device, u32 count,
     }
 }
 
-VkCommandBuffer* allocate_vk_command_buffers(VkDevice vk_device, Allocate_Vk_Command_Buffer_Info *info) {
+VkCommandBuffer* allocate_vk_secondary_command_buffers(VkDevice vk_device, Command_Group_Vk *command_group, u32 count) {
     VkCommandBufferAllocateInfo allocate_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-    allocate_info.commandPool = info->pool;
-    allocate_info.commandBufferCount = info->count;
+    allocate_info.commandPool = command_group->pool;
+    allocate_info.commandBufferCount = count;
+    allocate_info.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
 
-    // @Branch remove this, make separate function for primary vs secondary
-    allocate_info.level = info->secondary ? VK_COMMAND_BUFFER_LEVEL_SECONDARY : 
-                                            VK_COMMAND_BUFFER_LEVEL_PRIMARY;    
+    if (command_group->buffers.len + count > command_group->buffers.cap) {
+        // This might be growing by too much. I do not yet know how many command buffers I will be needing,
+        // But I assume this array will never be that large...
+        GROW_DYN_ARRAY(command_group->buffers,/*Just in case cap is small*/count + (2 * command_group->buffers.cap)); 
+    }
 
-    // @AllocationType these will likely also be persistent
-    VkCommandBuffer *vk_command_buffers =
-        (VkCommandBuffer*)memory_allocate_heap(sizeof(VkCommandBuffer) * info->count, 8);
-
-    auto check = vkAllocateCommandBuffers(vk_device, &allocate_info, vk_command_buffers);
+    // @Todo I need to handle pools returning out of memory. I dont know how often this happens. But it should
+    // be easy: just make the pool field in Command_Group arrayed.
+    auto check =
+        vkAllocateCommandBuffers(vk_device, &allocate_info, command_group->buffers.data + command_group->buffers.len);
     DEBUG_OBJ_CREATION(vkAllocateCommandBuffers, check);
 
-    return vk_command_buffers;
+    command_group->buffers.len += count;
+    return command_group->buffers.data + command_group->buffers.len - count;
+}
+VkCommandBuffer* allocate_vk_primary_command_buffers(VkDevice vk_device, Command_Group_Vk *command_group, u32 count) {
+    VkCommandBufferAllocateInfo allocate_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    allocate_info.commandPool = command_group->pool;
+    allocate_info.commandBufferCount = count;
+    allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+    if (command_group->buffers.len + count > command_group->buffers.cap) {
+        // This might be growing by too much. I do not yet know how many command buffers I will be needing,
+        // But I assume this array will never be that large...
+        GROW_DYN_ARRAY(command_group->buffers,/*Just in case cap is small*/count + (2 * command_group->buffers.cap)); 
+    }
+
+    // @Todo I need to handle pools returning out of memory. I dont know how often this happens. But it should
+    // be easy: just make the pool field in Command_Group arrayed.
+    auto check =
+        vkAllocateCommandBuffers(vk_device, &allocate_info, command_group->buffers.data + command_group->buffers.len);
+    DEBUG_OBJ_CREATION(vkAllocateCommandBuffers, check);
+
+    command_group->buffers.len += count;
+    return command_group->buffers.data + command_group->buffers.len - count;
 }
 
 void begin_vk_command_buffer_primary(VkCommandBuffer vk_command_buffer) {
@@ -829,7 +868,7 @@ VkPipelineShaderStageCreateInfo* create_vk_pipeline_shader_stages(VkDevice vk_de
     }
     return (VkPipelineShaderStageCreateInfo*)memory_block;
 }
-void destroy_vk_pl_shader_stages(VkDevice vk_device, u32 count, VkPipelineShaderStageCreateInfo *stages) {
+void destroy_vk_pipeline_shader_stages(VkDevice vk_device, u32 count, VkPipelineShaderStageCreateInfo *stages) {
     for(int i = 0; i < count; ++i) {
         vkDestroyShaderModule(vk_device, stages[i].module, ALLOCATION_CALLBACKS);
     }
@@ -896,7 +935,7 @@ VkPipelineInputAssemblyStateCreateInfo* create_vk_pipeline_input_assembly_states
 // @Todo support Tessellation
 
 // `Viewport
-VkPipelineViewportStateCreateInfo create_vk_pl_viewport_state(Window *window) {
+VkPipelineViewportStateCreateInfo create_vk_pipeline_viewport_state(Window *window) {
     VkViewport viewport = {
         0.0f, 0.0f, // x, y
         (float)window->swapchain_info.imageExtent.width,
@@ -946,7 +985,7 @@ VkPipelineMultisampleStateCreateInfo create_vk_pipeline_multisample_state() {
 // `DepthStencilState - All inlined dyn state functions
 
 // `BlendState - Lots of inlined dyn states
-VkPipelineColorBlendStateCreateInfo create_vk_pl_color_blend_state(Create_Vk_Pl_Color_Blend_State_Info *info) {
+VkPipelineColorBlendStateCreateInfo create_vk_pipeline_color_blend_state(Create_Vk_Pl_Color_Blend_State_Info *info) {
     // @PipelineAllocations I think this state is one that contrasts to the others, these will likely be super 
     // ephemeral. I do not know to what extent I can effect color blending. Not very much I assume without 
     // extended dyn state 3... so I think this will require recompilations or state explosion...
@@ -1059,7 +1098,7 @@ VkPipelineLayout* create_vk_pipeline_layouts(VkDevice vk_device, u32 count, Crea
     }
     return layouts;
 }
-void destroy_vk_pl_layouts(VkDevice vk_device, u32 count, VkPipelineLayout *pl_layouts) {
+void destroy_vk_pipeline_layouts(VkDevice vk_device, u32 count, VkPipelineLayout *pl_layouts) {
     for(int i = 0; i < count; ++i) {
         vkDestroyPipelineLayout(vk_device, pl_layouts[i], ALLOCATION_CALLBACKS);
     }
