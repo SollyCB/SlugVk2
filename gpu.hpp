@@ -155,147 +155,15 @@ VkPipelineInputAssemblyStateCreateInfo* create_vk_pipeline_input_assembly_states
 
 // Viewport
 VkPipelineViewportStateCreateInfo create_vk_pipeline_viewport_state(Window *window);
-static inline void cmd_vk_set_viewports(u32 count, VkCommandBuffer *vk_command_buffers) {
-    VkSwapchainCreateInfoKHR info = get_window_instance()->swapchain_info;
-    VkViewport viewport = {
-        0.0f, 0.0f, // x, y
-        (float)info.imageExtent.width,
-        (float)info.imageExtent.height,
-        0.0f, 1.0f, // mindepth, maxdepth
-    };
-    for(int i = 0; i < count; ++i)
-        vkCmdSetViewportWithCount(vk_command_buffers[i], 1, &viewport);
-}
 
 // `RasterizationState
 void vkCmdSetDepthClampEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthClampEnable);
 void vkCmdSetPolygonModeEXT(VkCommandBuffer commandBuffer, VkPolygonMode polygonMode);
-
-static inline void cmd_vk_enable_depth_clamp(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthClampEnableEXT(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_disable_depth_clamp(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthClampEnableEXT(vk_command_buffer, VK_FALSE);
-}
-
-static inline void cmd_vk_rasterizer_discard_enable(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetRasterizerDiscardEnable(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_rasterizer_discard_disable(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetRasterizerDiscardEnable(vk_command_buffer, VK_FALSE);
-}
-
-static inline void cmd_vk_draw_fill(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetPolygonModeEXT(vk_command_buffer, VK_POLYGON_MODE_FILL);
-}
-static inline void cmd_vk_draw_wireframe(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetPolygonModeEXT(vk_command_buffer, VK_POLYGON_MODE_LINE);
-}
-static inline void cmd_vk_draw_points(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetPolygonModeEXT(vk_command_buffer, VK_POLYGON_MODE_POINT);
-}
-
-static inline void cmd_vk_cull_none(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetCullMode(vk_command_buffer, VK_CULL_MODE_NONE);
-}
-static inline void cmd_vk_cull_front(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetCullMode(vk_command_buffer, VK_CULL_MODE_FRONT_BIT);
-}
-static inline void cmd_vk_cull_back(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetCullMode(vk_command_buffer, VK_CULL_MODE_BACK_BIT);
-}
-static inline void cmd_vk_cull_front_and_back(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetCullMode(vk_command_buffer, VK_CULL_MODE_FRONT_AND_BACK);
-}
-
-static inline void cmd_vk_front_face_clockwise(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetFrontFace(vk_command_buffer, VK_FRONT_FACE_CLOCKWISE);
-}
-static inline void cmd_vk_front_face_counter_clockwise(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetFrontFace(vk_command_buffer, VK_FRONT_FACE_COUNTER_CLOCKWISE);
-}
-
-static inline void cmd_vk_depth_bias_enable(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthBiasEnable(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_depth_bias_disable(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthBiasEnable(vk_command_buffer, VK_FALSE);
-}
-
-static inline void cmd_vk_line_width(VkCommandBuffer vk_command_buffer, float width) {
-    vkCmdSetLineWidth(vk_command_buffer, width);
-}
-
 // `MultisampleState // @Todo support setting multisampling functions
 //struct Create_Vk_Pipeline_Multisample_State_Info {};
 VkPipelineMultisampleStateCreateInfo create_vk_pipeline_multisample_state();
 
 // `DepthStencilState
-static inline void cmd_vk_set_depth_test_enabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthTestEnable(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_set_depth_test_disabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthTestEnable(vk_command_buffer, VK_FALSE);
-}
-static inline void cmd_vk_depth_write_enable(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthWriteEnable(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_depth_write_disable(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthWriteEnable(vk_command_buffer, VK_FALSE);
-}
-
-static inline void cmd_vk_depth_compare_op_never(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_NEVER);
-}
-static inline void cmd_vk_depth_compare_op_less(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_LESS);
-}
-static inline void cmd_vk_depth_compare_op_equal(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_EQUAL);
-}
-static inline void cmd_vk_depth_compare_op_less_or_equal(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_LESS_OR_EQUAL);
-}
-static inline void cmd_vk_depth_compare_op_greater(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_GREATER);
-}
-static inline void cmd_vk_depth_compare_op_not_equal(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_NOT_EQUAL);
-}
-static inline void cmd_vk_depth_compare_op_greater_or_equal(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_GREATER_OR_EQUAL);
-}
-static inline void cmd_vk_depth_compare_op_always(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_ALWAYS);
-}
-
-static inline void cmd_vk_depth_bounds_test_enable(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthBoundsTestEnable(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_depth_bounds_test_disable(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthBoundsTestEnable(vk_command_buffer, VK_FALSE);
-}
-
-static inline void cmd_vk_set_stencil_test_enabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetStencilTestEnable(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_set_stencil_test_disabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetStencilTestEnable(vk_command_buffer, VK_FALSE);
-}
-static inline void cmd_vk_stencil_op(
-        VkCommandBuffer vk_command_buffer,
-        VkStencilFaceFlags face_mask = VK_STENCIL_FACE_FRONT_BIT,
-        VkStencilOp fail_op = VK_STENCIL_OP_KEEP,
-        VkStencilOp pass_op = VK_STENCIL_OP_KEEP,
-        VkStencilOp depth_fail_op = VK_STENCIL_OP_KEEP,
-        VkCompareOp compare_op = VK_COMPARE_OP_NEVER) 
-{
-    vkCmdSetStencilOp(vk_command_buffer, face_mask, fail_op, pass_op, depth_fail_op, compare_op); 
-}
-static inline void cmd_vk_depth_bounds(VkCommandBuffer vk_command_buffer, float min, float max) {
-    vkCmdSetDepthBounds(vk_command_buffer, min, max);
-}
-
 // `BlendState
 void vkCmdSetLogicOpEnableEXT(VkCommandBuffer commandBuffer, VkBool32 logicOpEnable);
 void vkCmdSetColorBlendEnableEXT(VkCommandBuffer commandBuffer, u32 firstAttachment,
@@ -304,30 +172,6 @@ void vkCmdSetColorBlendEquationEXT(VkCommandBuffer commandBuffer, u32 firstAttac
     u32 attachmentCount, const VkColorBlendEquationEXT* pColorBlendEquations);
 void vkCmdSetColorWriteMaskEXT(VkCommandBuffer commandBuffer, u32 firstAttachment, 
     u32 attachmentCount, const VkColorComponentFlags* pColorWriteMasks);
-
-static inline void cmd_vk_logic_op_enable(VkCommandBuffer vk_command_buffer) {
-    // @Note this might fire a not found, even though dyn_state2 is in 1.3 core, to fix just define the PFN fetch
-    vkCmdSetLogicOpEnableEXT(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_logic_op_disable(VkCommandBuffer vk_command_buffer) {
-    // @Note this might fire a not found, even though dyn_state2 is in 1.3 core, to fix just define the PFN fetch
-    vkCmdSetLogicOpEnableEXT(vk_command_buffer, VK_FALSE);
-}
-static inline void cmd_vk_color_blend_enable_or_disables(VkCommandBuffer vk_command_buffer, 
-    u32 first_attachment, u32 attachment_count, VkBool32 *enable_or_disables) {
-    vkCmdSetColorBlendEnableEXT(vk_command_buffer, first_attachment, attachment_count, enable_or_disables);
-}
-static inline void cmd_vk_color_blend_equations(VkCommandBuffer vk_command_buffer, 
-    u32 first_attachment, u32 attachment_count, VkColorBlendEquationEXT *color_blend_equations) {
-    vkCmdSetColorBlendEquationEXT(vk_command_buffer, first_attachment, attachment_count, color_blend_equations);
-}
-static inline void cmd_vk_color_write_masks(VkCommandBuffer vk_command_buffer, 
-    u32 first_attachment, u32 attachment_count, VkColorComponentFlags *color_write_masks) {
-    vkCmdSetColorWriteMaskEXT(vk_command_buffer, first_attachment, attachment_count, color_write_masks);
-}
-static inline void cmd_vk_blend_constants(VkCommandBuffer vk_command_buffer, const float blend_constants[4]) {
-    vkCmdSetBlendConstants(vk_command_buffer, blend_constants);
-}
 
 // `BlendState - Lots of inlined dyn states
 struct Create_Vk_Pl_Color_Blend_State_Info {
@@ -370,15 +214,11 @@ void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipeli
 // `Rendering
 struct Create_Vk_Rendering_Attachment_Info_Info {
     VkImageView image_view;
-    VkImageLayout image_layout;
-    VkAttachmentLoadOp load_op;
-    VkAttachmentStoreOp store_op;
-    VkClearValue clear_value;
-
     // Pretty sure this is left null for now (no multisampling yet...)
     VkResolveModeFlagBits resolve_mode;
     VkImageView resolve_image_view;
     VkImageLayout resolve_image_layout;
+    float *clear_color;
 };
 VkRenderingAttachmentInfo create_vk_rendering_attachment_info(Create_Vk_Rendering_Attachment_Info_Info *info);
 
@@ -449,6 +289,206 @@ struct Fill_Vk_Dependency_Info {
     VkImageMemoryBarrier2  *image_barriers;
 };
 VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info);
+
+
+// Inline Cmds
+static inline void cmd_vk_set_scissor(VkCommandBuffer vk_command_buffer) {
+    VkSwapchainCreateInfoKHR info = get_window_instance()->swapchain_info;
+    VkRect2D scissor = {
+        0, 0, // x, y
+        info.imageExtent.width,
+        info.imageExtent.height,
+    };
+    vkCmdSetScissorWithCount(vk_command_buffer, 1, &scissor);
+}
+static inline void cmd_vk_set_viewport(VkCommandBuffer vk_command_buffer) {
+    VkSwapchainCreateInfoKHR info = get_window_instance()->swapchain_info;
+    VkViewport viewport = {
+        0.0f, 0.0f, // x, y
+        (float)info.imageExtent.width,
+        (float)info.imageExtent.height,
+        0.0f, 1.0f, // mindepth, maxdepth
+    };
+    vkCmdSetViewportWithCount(vk_command_buffer, 1, &viewport);
+}
+
+static inline void cmd_vk_enable_depth_clamp(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthClampEnableEXT(vk_command_buffer, VK_TRUE);
+}
+static inline void cmd_vk_disable_depth_clamp(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthClampEnableEXT(vk_command_buffer, VK_FALSE);
+}
+
+static inline void cmd_vk_set_rasterizer_discard_enabled(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetRasterizerDiscardEnable(vk_command_buffer, VK_TRUE);
+}
+static inline void cmd_vk_set_rasterizer_discard_disabled(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetRasterizerDiscardEnable(vk_command_buffer, VK_FALSE);
+}
+
+static inline void cmd_vk_draw_fill(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetPolygonModeEXT(vk_command_buffer, VK_POLYGON_MODE_FILL);
+}
+static inline void cmd_vk_draw_wireframe(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetPolygonModeEXT(vk_command_buffer, VK_POLYGON_MODE_LINE);
+}
+static inline void cmd_vk_draw_points(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetPolygonModeEXT(vk_command_buffer, VK_POLYGON_MODE_POINT);
+}
+
+static inline void cmd_vk_set_cull_mode_none(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetCullMode(vk_command_buffer, VK_CULL_MODE_NONE);
+}
+static inline void cmd_vk_set_cull_mode_front(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetCullMode(vk_command_buffer, VK_CULL_MODE_FRONT_BIT);
+}
+static inline void cmd_vk_set_cull_mode_back(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetCullMode(vk_command_buffer, VK_CULL_MODE_BACK_BIT);
+}
+static inline void cmd_vk_set_cull_mode_front_and_back(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetCullMode(vk_command_buffer, VK_CULL_MODE_FRONT_AND_BACK);
+}
+
+static inline void cmd_vk_set_front_face_clockwise(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetFrontFace(vk_command_buffer, VK_FRONT_FACE_CLOCKWISE);
+}
+static inline void cmd_vk_set_front_face_counter_clockwise(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetFrontFace(vk_command_buffer, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+}
+
+static inline void cmd_vk_set_depth_bias_enabled(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthBiasEnable(vk_command_buffer, VK_TRUE);
+}
+static inline void cmd_vk_set_depth_bias_disabled(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthBiasEnable(vk_command_buffer, VK_FALSE);
+}
+
+static inline void cmd_vk_line_width(VkCommandBuffer vk_command_buffer, float width) {
+    vkCmdSetLineWidth(vk_command_buffer, width);
+}
+
+static inline void cmd_vk_set_depth_test_enabled(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthTestEnable(vk_command_buffer, VK_TRUE);
+}
+static inline void cmd_vk_set_depth_test_disabled(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthTestEnable(vk_command_buffer, VK_FALSE);
+}
+static inline void cmd_vk_set_depth_write_enabled(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthWriteEnable(vk_command_buffer, VK_TRUE);
+}
+static inline void cmd_vk_set_depth_write_disabled(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthWriteEnable(vk_command_buffer, VK_FALSE);
+}
+
+static inline void cmd_vk_set_depth_compare_op_never(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_NEVER);
+}
+static inline void cmd_vk_set_depth_compare_op_less(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_LESS);
+}
+static inline void cmd_vk_set_depth_compare_op_equal(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_EQUAL);
+}
+static inline void cmd_vk_set_depth_compare_op_less_or_equal(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_LESS_OR_EQUAL);
+}
+static inline void cmd_set_vk_set_depth_compare_op_greater(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_GREATER);
+}
+static inline void cmd_set_vk_depth_compare_op_not_equal(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_NOT_EQUAL);
+}
+static inline void cmd_set_vk_depth_compare_op_greater_or_equal(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_GREATER_OR_EQUAL);
+}
+static inline void cmd_set_vk_depth_compare_op_always(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_ALWAYS);
+}
+
+static inline void cmd_vk_set_depth_bounds_test_enabled(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthBoundsTestEnable(vk_command_buffer, VK_TRUE);
+}
+static inline void cmd_vk_set_depth_bounds_test_disabled(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetDepthBoundsTestEnable(vk_command_buffer, VK_FALSE);
+}
+
+static inline void cmd_vk_set_stencil_test_enabled(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetStencilTestEnable(vk_command_buffer, VK_TRUE);
+}
+static inline void cmd_vk_set_stencil_test_disabled(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetStencilTestEnable(vk_command_buffer, VK_FALSE);
+}
+static inline void cmd_vk_set_stencil_op(
+        VkCommandBuffer vk_command_buffer,
+        VkStencilFaceFlags face_mask = VK_STENCIL_FACE_FRONT_BIT,
+        VkStencilOp fail_op = VK_STENCIL_OP_KEEP,
+        VkStencilOp pass_op = VK_STENCIL_OP_KEEP,
+        VkStencilOp depth_fail_op = VK_STENCIL_OP_KEEP,
+        VkCompareOp compare_op = VK_COMPARE_OP_NEVER) 
+{
+    vkCmdSetStencilOp(vk_command_buffer, face_mask, fail_op, pass_op, depth_fail_op, compare_op); 
+}
+static inline void cmd_vk_depth_bounds(VkCommandBuffer vk_command_buffer, float min, float max) {
+    vkCmdSetDepthBounds(vk_command_buffer, min, max);
+}
+
+static inline void cmd_vk_logic_op_enable(VkCommandBuffer vk_command_buffer) {
+    // @Note this might fire a not found, even though dyn_state2 is in 1.3 core, to fix just define the PFN fetch
+    vkCmdSetLogicOpEnableEXT(vk_command_buffer, VK_TRUE);
+}
+static inline void cmd_vk_logic_op_disable(VkCommandBuffer vk_command_buffer) {
+    // @Note this might fire a not found, even though dyn_state2 is in 1.3 core, to fix just define the PFN fetch
+    vkCmdSetLogicOpEnableEXT(vk_command_buffer, VK_FALSE);
+}
+static inline void cmd_vk_color_blend_enable_or_disables(VkCommandBuffer vk_command_buffer, 
+    u32 first_attachment, u32 attachment_count, VkBool32 *enable_or_disables) {
+    vkCmdSetColorBlendEnableEXT(vk_command_buffer, first_attachment, attachment_count, enable_or_disables);
+}
+static inline void cmd_vk_color_blend_equations(VkCommandBuffer vk_command_buffer, 
+    u32 first_attachment, u32 attachment_count, VkColorBlendEquationEXT *color_blend_equations) {
+    vkCmdSetColorBlendEquationEXT(vk_command_buffer, first_attachment, attachment_count, color_blend_equations);
+}
+static inline void cmd_vk_color_write_masks(VkCommandBuffer vk_command_buffer, 
+    u32 first_attachment, u32 attachment_count, VkColorComponentFlags *color_write_masks) {
+    vkCmdSetColorWriteMaskEXT(vk_command_buffer, first_attachment, attachment_count, color_write_masks);
+}
+static inline void cmd_vk_blend_constants(VkCommandBuffer vk_command_buffer, const float blend_constants[4]) {
+    vkCmdSetBlendConstants(vk_command_buffer, blend_constants);
+}
+
+static inline void cmd_vk_set_topology_triangle_list(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetPrimitiveTopology(vk_command_buffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+}
+static inline void cmd_vk_set_topology_line_list(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetPrimitiveTopology(vk_command_buffer, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+}
+static inline void cmd_vk_set_primitive_restart_enabled(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetPrimitiveRestartEnable(vk_command_buffer, VK_TRUE);
+}
+static inline void cmd_vk_set_primitive_restart_disabled(VkCommandBuffer vk_command_buffer) {
+    vkCmdSetPrimitiveRestartEnable(vk_command_buffer, VK_FALSE);
+}
+
+void set_default_draw_state(VkCommandBuffer vk_command_buffer); // calls lots of state cmds
+
+struct Dyn_Vertex_Bind_Info {
+    u32 first_binding;
+    u32 binding_count;
+    VkBuffer *buffers;
+    VkDeviceSize *offsets;
+    VkDeviceSize *sizes;
+    VkDeviceSize *strides;
+};
+static inline void cmd_vk_bind_vertex_buffers2(VkCommandBuffer vk_command_buffer, Dyn_Vertex_Bind_Info *info) {
+    vkCmdBindVertexBuffers2(
+        vk_command_buffer, 
+        info->first_binding,
+        info->binding_count, 
+        info->buffers,
+        info->offsets,
+        info->sizes,
+        info->strides);
+}
 
 #if DEBUG
 static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_messenger_callback(

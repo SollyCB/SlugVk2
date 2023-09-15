@@ -99,7 +99,7 @@ int main() {
 
     // Rendering info
     Create_Vk_Pipeline_Rendering_Info_Info pl_rendering_info = {};
-    pl_rendering_info.color_attachment_count = 1;
+    pl_rendering_info.color_attachment_count   = 1;
     pl_rendering_info.color_attachment_formats = &window->swapchain_info.imageFormat;
     VkPipelineRenderingCreateInfo rendering_create_info = create_vk_pipeline_rendering_info(&pl_rendering_info);
 
@@ -153,7 +153,7 @@ int main() {
     VkPipelineDynamicStateCreateInfo dyn_state = create_vk_pipeline_dyn_state();
 
     VkPipelineRasterizationStateCreateInfo rasterization = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
-    //rasterization.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterization.polygonMode = VK_POLYGON_MODE_FILL;
 
     // DepthStencil state  - set dynamically
 
@@ -189,17 +189,10 @@ int main() {
     vkWaitForFences(gpu->vk_device, 1, vk_fence, true, 10e9);
     vkResetFences(gpu->vk_device, 1, vk_fence);
 
+    float clear_color_white[] = {1.0f, 1.0f, 1.0f, 1.0f};
     Create_Vk_Rendering_Attachment_Info_Info render_attachment_info = {};
     render_attachment_info.image_view   = window->vk_image_views[present_image_index];
-    render_attachment_info.image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    render_attachment_info.load_op      = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    render_attachment_info.store_op     = VK_ATTACHMENT_STORE_OP_STORE;
-
-    float clear_color_white[] = {1.0f, 1.0f, 1.0f, 1.0f};
-    render_attachment_info.clear_value.color.float32[0] = clear_color_white[0];
-    render_attachment_info.clear_value.color.float32[1] = clear_color_white[1];
-    render_attachment_info.clear_value.color.float32[2] = clear_color_white[2];
-    render_attachment_info.clear_value.color.float32[3] = clear_color_white[3];
+    render_attachment_info.clear_color  = clear_color_white;
 
     VkRenderingAttachmentInfo render_attachment =
         create_vk_rendering_attachment_info(&render_attachment_info);
@@ -253,9 +246,8 @@ int main() {
 
     begin_vk_command_buffer_primary(graphics_cmd);
 
-        cmd_vk_set_depth_test_disabled(graphics_cmd);
-        cmd_vk_set_stencil_test_disabled(graphics_cmd);
-
+        set_default_draw_state(graphics_cmd);
+        
         vkCmdPipelineBarrier2(graphics_cmd, &transition_dependency);
         vkCmdBeginRendering(graphics_cmd, &rendering_info);
 
@@ -296,6 +288,7 @@ int main() {
     memory_free_heap((void*)vertex_input_state);
     memory_free_heap((void*)vertex_assembly_state);
 
+    vkDeviceWaitIdle(gpu->vk_device);
     destroy_vk_fences(gpu->vk_device, 1, vk_fence);
     destroy_vk_semaphores(gpu->vk_device, 1, semaphore);
     destroy_vk_pipelines_heap(gpu->vk_device, 1, pipelines);

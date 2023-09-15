@@ -1064,9 +1064,10 @@ const VkDynamicState dyn_state_list[] = {
     VK_DYNAMIC_STATE_STENCIL_TEST_ENABLE,
     VK_DYNAMIC_STATE_STENCIL_OP,
     VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE,
-    VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE
+    VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE,
+    VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE,
 }; 
-const u32 dyn_state_count = 21; //  This list is 23 last time I counted
+const u32 dyn_state_count = 22; //  This list is 23 last time I counted
     // @Todo @DynState list of possible other dyn states
     //      vertex input
     //      multisampling
@@ -1161,15 +1162,14 @@ void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipeli
 VkRenderingAttachmentInfo create_vk_rendering_attachment_info(Create_Vk_Rendering_Attachment_Info_Info *info) {
     VkRenderingAttachmentInfo attachment_info = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
     attachment_info.imageView   = info->image_view;
-    attachment_info.imageLayout = info->image_layout;
-    attachment_info.loadOp      = info->load_op;
-    attachment_info.storeOp     = info->store_op;
-    attachment_info.clearValue  = info->clear_value;
+    attachment_info.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+    attachment_info.loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_info.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
 
-    // for multisampling
-    attachment_info.resolveMode        = info->resolve_mode;
-    attachment_info.resolveImageView   = info->resolve_image_view;
-    attachment_info.resolveImageLayout = info->resolve_image_layout;
+    attachment_info.clearValue.color.float32[0] = info->clear_color[0];
+    attachment_info.clearValue.color.float32[1] = info->clear_color[1];
+    attachment_info.clearValue.color.float32[2] = info->clear_color[2];
+    attachment_info.clearValue.color.float32[3] = info->clear_color[3];
 
     return attachment_info;
 }
@@ -1178,14 +1178,26 @@ VkRenderingInfo create_vk_rendering_info(Create_Vk_Rendering_Info_Info *info) {
     rendering_info.renderArea           = info->render_area;
     rendering_info.colorAttachmentCount = info->color_attachment_count;
     rendering_info.pColorAttachments    = info->color_attachment_infos;
-    rendering_info.pDepthAttachment     = info->depth_attachment_info;
-    rendering_info.pStencilAttachment   = info->stencil_attachment_info;
-
-    // Layered images
-    rendering_info.layerCount = info->layer_count;
-    rendering_info.viewMask = info->view_mask;
+    rendering_info.layerCount = 1;
 
     return rendering_info;
+}
+
+void set_default_draw_state(VkCommandBuffer vk_command_buffer) {
+    cmd_vk_set_depth_test_disabled(vk_command_buffer);
+    cmd_vk_set_depth_write_disabled(vk_command_buffer);
+    cmd_vk_set_stencil_test_disabled(vk_command_buffer);
+    cmd_vk_set_cull_mode_none(vk_command_buffer);
+    cmd_vk_set_front_face_counter_clockwise(vk_command_buffer);
+    cmd_vk_set_topology_triangle_list(vk_command_buffer);
+    cmd_vk_set_depth_compare_op_never(vk_command_buffer);
+    cmd_vk_set_depth_bounds_test_disabled(vk_command_buffer);
+    cmd_vk_set_stencil_op(vk_command_buffer);
+    cmd_vk_set_rasterizer_discard_disabled(vk_command_buffer);
+    cmd_vk_set_depth_bias_disabled(vk_command_buffer);
+    cmd_vk_set_viewport(vk_command_buffer);
+    cmd_vk_set_scissor(vk_command_buffer);
+    cmd_vk_set_primitive_restart_disabled(vk_command_buffer);
 }
 
 // `Memory Dependencies
@@ -1225,7 +1237,7 @@ VkImageMemoryBarrier2 fill_image_barrier_transition_undefined_to_cao(MemDep_Queu
     barrier.dstStageMask          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     barrier.dstAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     barrier.oldLayout             = VK_IMAGE_LAYOUT_UNDEFINED;
-    barrier.newLayout             = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    barrier.newLayout             = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
     barrier.srcQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
     barrier.image                 = info->image;
