@@ -46,10 +46,10 @@ void init_gpu() {
     *get_vk_debug_messenger_instance() = create_debug_messenger(&create_debug_messenger_info);
 #endif
 
-    // Info for this function is set in the function body, as lots of feature structs have to be specified awkwardly
-    // This function also creates the device queues and adds them to the gpu struct
+    // creates queues and fills gpu struct with them
+    // features and extensions lists defined in the function body
     gpu->vk_device = create_vk_device(gpu);
-
+    gpu->vma_allocator = create_vma_allocator(gpu);
 }
 void kill_gpu(Gpu *gpu) {
     vkDestroyDevice(gpu->vk_device, ALLOCATION_CALLBACKS);
@@ -355,6 +355,26 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
 
     return vk_device;
 } // func create_vk_device
+
+// `Allocator
+VmaAllocator create_vma_allocator(Gpu *gpu) {
+    VmaVulkanFunctions vulkanFunctions = {};
+    vulkanFunctions.vkGetInstanceProcAddr = &vkGetInstanceProcAddr;
+    vulkanFunctions.vkGetDeviceProcAddr = &vkGetDeviceProcAddr;
+     
+    VmaAllocatorCreateInfo allocatorCreateInfo = {};
+    allocatorCreateInfo.vulkanApiVersion = VK_API_VERSION_1_3;
+    allocatorCreateInfo.physicalDevice = gpu->vk_physical_device;
+    allocatorCreateInfo.device = gpu->vk_device;
+    allocatorCreateInfo.instance = gpu->vk_instance;
+    allocatorCreateInfo.pVulkanFunctions = &vulkanFunctions;
+     
+    VmaAllocator allocator;
+    auto check = vmaCreateAllocator(&allocatorCreateInfo, &allocator);
+    DEBUG_OBJ_CREATION(vmaCreateAllocator, check);
+
+    return allocator;
+}
 
 // `Surface and `Swapchain
 static Window *s_Window;
@@ -1050,7 +1070,7 @@ const VkDynamicState dyn_state_list[] = {
     VK_DYNAMIC_STATE_STENCIL_WRITE_MASK,
     VK_DYNAMIC_STATE_STENCIL_REFERENCE,
 
-    // Provided by VK_VERSION_1_3 (all below this point)
+    // Provided by VK_VERSION_1_3 - all below
     VK_DYNAMIC_STATE_CULL_MODE,
     VK_DYNAMIC_STATE_FRONT_FACE,
     VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY,
@@ -1261,6 +1281,36 @@ VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info) {
 
     return dependency_info;
 }
+
+// `Resources
+struct GpuImage {
+    VkImage vk_image;
+    VmaAllocation vma_allocation;
+};
+struct GpuBuffer {
+    VkBuffer vk_buffer;
+    VmaAllocation vma_allocation;
+};
+
+struct Create_Gpu_Buffer_Info {
+    u64 size;
+};
+GpuBuffer create_host_visible_buffer(VmaAllocator vma_allocator, Create_Gpu_Buffer_Info *info) {
+    VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    buffer_info.size = 65536;
+    buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+
+    VmaAllocationCreateInfo allocation_create_info = {};
+    allocation_info.usage = VMA_MEMORY_USAGE_AUTO;
+
+    GpuBuffer gpu_buffer;
+    VmaAllocationInfo allocation_info;
+    vmaCreateBuffer(vma_allocator, &buffer_create_info, &allocation_create_info, &gpu_buffer.vk_buffer, &gpu_buffer.vma_allocation, &allocation_info;
+}
+
+void destroy_vma_buffer(VmaAllocator vma_allocator, GpuBuffer *gpu_buffer) {
+    vmaDestroyBuffer(vma_allocator, gpu_buffer->vk_buffer, gpu_buffer->vma_allocation);
+};
 
 #if DEBUG
 VkDebugUtilsMessengerEXT create_debug_messenger(Create_Vk_Debug_Messenger_Info *info) {

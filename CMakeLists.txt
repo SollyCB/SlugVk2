@@ -53,7 +53,7 @@ add_executable(Slug
      #image.cpp
 
      external/tlsf.cpp
-     #external/vk_mem_alloc.cpp
+     external/vk_mem_alloc.cpp
      #external/stb_image.cpp
 )
 target_include_directories(Slug PUBLIC external)

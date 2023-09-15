@@ -3,13 +3,17 @@
 
 #include <vulkan/vulkan_core.h>
 
+#define VMA_STATIC_VULKAN_FUNCTIONS 0
+#define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
+#include "external/vk_mem_alloc.h" // vma allocator
+
 #include "basic.h"
 #include "glfw.hpp"
 
 struct GpuInfo {};
 struct Gpu {
     VkInstance vk_instance;
-    //VmaAllocator allocator
+    VmaAllocator vma_allocator;
 
     VkPhysicalDevice vk_physical_device;
     VkDevice vk_device;
@@ -44,6 +48,9 @@ VkDevice create_vk_device(Gpu *gpu);
 VkQueue create_vk_queue(Gpu *gpu);
 void destroy_vk_device(Gpu *gpu);
 void destroy_vk_queue(Gpu *gpu);
+
+// Allocator
+VmaAllocator create_vma_allocator(Gpu *gpu);
 
 // Surface and Swapchain
 struct Window {
