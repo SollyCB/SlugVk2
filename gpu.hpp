@@ -174,11 +174,11 @@ VkPipelineMultisampleStateCreateInfo create_vk_pipeline_multisample_state();
 // `BlendState
 void vkCmdSetLogicOpEnableEXT(VkCommandBuffer commandBuffer, VkBool32 logicOpEnable);
 void vkCmdSetColorBlendEnableEXT(VkCommandBuffer commandBuffer, u32 firstAttachment,
-    u32 attachmentCount, VkBool32 *pColorBlendEnables);
+        u32 attachmentCount, VkBool32 *pColorBlendEnables);
 void vkCmdSetColorBlendEquationEXT(VkCommandBuffer commandBuffer, u32 firstAttachment, 
-    u32 attachmentCount, const VkColorBlendEquationEXT* pColorBlendEquations);
+        u32 attachmentCount, const VkColorBlendEquationEXT* pColorBlendEquations);
 void vkCmdSetColorWriteMaskEXT(VkCommandBuffer commandBuffer, u32 firstAttachment, 
-    u32 attachmentCount, const VkColorComponentFlags* pColorWriteMasks);
+        u32 attachmentCount, const VkColorComponentFlags* pColorWriteMasks);
 
 // `BlendState - Lots of inlined dyn states
 struct Create_Vk_Pl_Color_Blend_State_Info {
@@ -215,7 +215,7 @@ VkPipelineRenderingCreateInfo create_vk_pipeline_rendering_info(Create_Vk_Pipeli
 // @Todo pipeline: increase possible use of dyn states, eg. vertex input, raster states etc.
 // `Pipeline Final
 VkPipeline* create_vk_graphics_pipelines_heap(VkDevice vk_device, VkPipelineCache cache, 
-    u32 count, VkGraphicsPipelineCreateInfo *create_infos);
+        u32 count, VkGraphicsPipelineCreateInfo *create_infos);
 void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipelines); // Also frees memory associated with the 'pipelines' pointer
 
 // `Rendering
@@ -258,15 +258,15 @@ VkRenderingInfo create_vk_rendering_info(Create_Vk_Rendering_Info_Info *info);
 // transfers and image layout transitions. But as I do not have much experience with them yet 
 // this a complete WIP and will likely change greatly
 /*
-    *Plan:*
-    I want functions for each kind of common transfer, for instance:
-        COLOR_ATTACHMENT_OPTIMAL -> PRESENT
-        TRANSFER_SRC_OPTIMAL     -> TRANSFER_DST_OPTIMAL
-        TRANSFER_DST_OPTIMAL     -> COLOR_ATTACHMENT_OPTIMAL
+ *Plan:*
+ I want functions for each kind of common transfer, for instance:
+ COLOR_ATTACHMENT_OPTIMAL -> PRESENT
+ TRANSFER_SRC_OPTIMAL     -> TRANSFER_DST_OPTIMAL
+ TRANSFER_DST_OPTIMAL     -> COLOR_ATTACHMENT_OPTIMAL
 
-    In future I will want others such as for height maps, as the read sync would be different
-    (vertex access rather than fragment...)
-*/
+ In future I will want others such as for height maps, as the read sync would be different
+ (vertex access rather than fragment...)
+ */
 
 // @Todo add similar functions for buffer barriers
 // cao = color attachment optimal
@@ -285,6 +285,20 @@ struct MemDep_Queue_Transition_Info_Image {
 VkImageMemoryBarrier2 fill_image_barrier_transition_undefined_to_cao(MemDep_Queue_Transition_Info_Image *info);
 //VkImageMemoryBarrier2 memdep_src_to_dst(MemDep_Queue_Transfer_Info_Image *info);
 //VkImageMemoryBarrier2 memdep_dst_to_cao();
+
+struct MemDep_Queue_Transfer_Info_Buffer {
+    u16 release_queue_index; 
+    u16 acquire_queue_index; 
+    VkBuffer vk_buffer;
+    u64 size;
+    u64 offset;
+};
+// @Todo query gpu instance inside the struct to get queues
+// create second function in place of the commented one to transfer gpu to cpu
+// rename other one to the reverse
+// VkBufferMemoryBarrier2 fill_buffer_barrier_transfer(MemDep_Queue_Transfer_Info_Buffer *info); 
+VkBufferMemoryBarrier2 fill_buffer_barrier_transfer(MemDep_Queue_Transfer_Info_Buffer *info); 
+VkDependencyInfo fill_vk_dependency_buffer(VkBufferMemoryBarrier2 *buffer_barrier);
 
 struct Fill_Vk_Dependency_Info {
     // @Todo support dependency flags
@@ -448,15 +462,15 @@ static inline void cmd_vk_logic_op_disable(VkCommandBuffer vk_command_buffer) {
     vkCmdSetLogicOpEnableEXT(vk_command_buffer, VK_FALSE);
 }
 static inline void cmd_vk_color_blend_enable_or_disables(VkCommandBuffer vk_command_buffer, 
-    u32 first_attachment, u32 attachment_count, VkBool32 *enable_or_disables) {
+        u32 first_attachment, u32 attachment_count, VkBool32 *enable_or_disables) {
     vkCmdSetColorBlendEnableEXT(vk_command_buffer, first_attachment, attachment_count, enable_or_disables);
 }
 static inline void cmd_vk_color_blend_equations(VkCommandBuffer vk_command_buffer, 
-    u32 first_attachment, u32 attachment_count, VkColorBlendEquationEXT *color_blend_equations) {
+        u32 first_attachment, u32 attachment_count, VkColorBlendEquationEXT *color_blend_equations) {
     vkCmdSetColorBlendEquationEXT(vk_command_buffer, first_attachment, attachment_count, color_blend_equations);
 }
 static inline void cmd_vk_color_write_masks(VkCommandBuffer vk_command_buffer, 
-    u32 first_attachment, u32 attachment_count, VkColorComponentFlags *color_write_masks) {
+        u32 first_attachment, u32 attachment_count, VkColorComponentFlags *color_write_masks) {
     vkCmdSetColorWriteMaskEXT(vk_command_buffer, first_attachment, attachment_count, color_write_masks);
 }
 static inline void cmd_vk_blend_constants(VkCommandBuffer vk_command_buffer, const float blend_constants[4]) {
@@ -488,14 +502,40 @@ struct Dyn_Vertex_Bind_Info {
 };
 static inline void cmd_vk_bind_vertex_buffers2(VkCommandBuffer vk_command_buffer, Dyn_Vertex_Bind_Info *info) {
     vkCmdBindVertexBuffers2(
-        vk_command_buffer, 
-        info->first_binding,
-        info->binding_count, 
-        info->buffers,
-        info->offsets,
-        info->sizes,
-        info->strides);
+            vk_command_buffer, 
+            info->first_binding,
+            info->binding_count, 
+            info->buffers,
+            info->offsets,
+            info->sizes,
+            info->strides);
 }
+
+// Resources
+struct Gpu_Image {
+    VkImage vk_image;
+    VmaAllocation vma_allocation;
+};
+struct Gpu_Buffer {
+    VkBuffer vk_buffer;
+    VmaAllocation vma_allocation;
+};
+
+// @Note this really needs to be inlined?
+static inline void* get_vma_mapped_ptr(VmaAllocator vma_allocator, Gpu_Buffer *gpu_buffer) {
+    VmaAllocationInfo info;
+    vmaGetAllocationInfo(vma_allocator, gpu_buffer->vma_allocation, &info);
+    return info.pMappedData;
+}
+void destroy_vma_buffer(VmaAllocator vma_allocator, Gpu_Buffer *gpu_buffer);
+void destroy_vma_image(VmaAllocator vma_allocator, Gpu_Image *gpu_image);
+
+Gpu_Buffer create_src_vertex_buffer(VmaAllocator vma_allocator, u64 size);
+Gpu_Buffer create_dst_vertex_buffer(VmaAllocator vma_allocator, u64 size);
+
+// Resource commands
+void cmd_vk_copy_buffer(VkCommandBuffer vk_command_buffer, VkBuffer from, VkBuffer to, u64 size);
+void cmd_vk_copy_buffer_with_offset(VkCommandBuffer vk_command_buffer, Gpu_Buffer from, Gpu_Buffer to, u64 src_offset, u64 dst_offset, u64 size); // @Unimplemented
 
 #if DEBUG
 static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_messenger_callback(
@@ -542,7 +582,7 @@ void vkDestroyDebugUtilsMessengerEXT(
 
 inline VkDebugUtilsMessengerCreateInfoEXT fill_vk_debug_messenger_info(Create_Vk_Debug_Messenger_Info *info) {
     VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info = 
-        {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+    {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
 
     debug_messenger_create_info.messageSeverity = info->severity;
     debug_messenger_create_info.messageType     = info->type;

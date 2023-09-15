@@ -1268,6 +1268,30 @@ VkImageMemoryBarrier2 fill_image_barrier_transition_undefined_to_cao(MemDep_Queu
 //VkImageMemoryBarrier2 fill_imagebarrier_transfer_src_to_dst(MemDep_Queue_Transfer_Info_Image *info) {}
 //VkImageMemoryBarrier2 fill_imagebarrier_transition_dst_to_cao() {}
 
+VkBufferMemoryBarrier2 fill_buffer_barrier_transfer(MemDep_Queue_Transfer_Info_Buffer *info) {
+    VkBufferMemoryBarrier2 barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2}; 
+    barrier.offset              = info->offset;
+    barrier.size                = info->size;
+    barrier.buffer              = info->vk_buffer;
+
+    barrier.srcStageMask        = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    barrier.dstStageMask        = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    barrier.srcAccessMask       = VK_ACCESS_TRANSFER_READ_BIT;
+    barrier.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+    barrier.srcQueueFamilyIndex = info->release_queue_index;
+    barrier.dstQueueFamilyIndex = info->acquire_queue_index;
+    
+    return barrier;
+}
+
+VkDependencyInfo fill_vk_dependency_buffer(VkBufferMemoryBarrier2 *buffer_barrier) {
+    VkDependencyInfo dependency         = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    dependency.bufferMemoryBarrierCount = 1;
+    dependency.pBufferMemoryBarriers    = buffer_barrier;
+    return dependency;
+}
+
 VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info) {
     VkDependencyInfo dependency_info = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
 
@@ -1283,34 +1307,57 @@ VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info) {
 }
 
 // `Resources
-struct GpuImage {
-    VkImage vk_image;
-    VmaAllocation vma_allocation;
-};
-struct GpuBuffer {
-    VkBuffer vk_buffer;
-    VmaAllocation vma_allocation;
-};
-
-struct Create_Gpu_Buffer_Info {
-    u64 size;
-};
-GpuBuffer create_host_visible_buffer(VmaAllocator vma_allocator, Create_Gpu_Buffer_Info *info) {
+Gpu_Buffer create_dst_vertex_buffer(VmaAllocator vma_allocator, u64 size) {
     VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    buffer_info.size = 65536;
-    buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    buffer_create_info.size  = size;
+    buffer_create_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
     VmaAllocationCreateInfo allocation_create_info = {};
-    allocation_info.usage = VMA_MEMORY_USAGE_AUTO;
+    allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
 
-    GpuBuffer gpu_buffer;
+    Gpu_Buffer gpu_buffer;
     VmaAllocationInfo allocation_info;
-    vmaCreateBuffer(vma_allocator, &buffer_create_info, &allocation_create_info, &gpu_buffer.vk_buffer, &gpu_buffer.vma_allocation, &allocation_info;
+    vmaCreateBuffer(vma_allocator, &buffer_create_info, &allocation_create_info, &gpu_buffer.vk_buffer, &gpu_buffer.vma_allocation, NULL);
+    return gpu_buffer;
+}
+Gpu_Buffer create_src_vertex_buffer(VmaAllocator vma_allocator, u64 size) {
+    VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    buffer_create_info.size  = size;
+    buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+    VmaAllocationCreateInfo allocation_create_info = {};
+    allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+    allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    Gpu_Buffer gpu_buffer;
+    VmaAllocationInfo allocation_info;
+    vmaCreateBuffer(vma_allocator, &buffer_create_info, &allocation_create_info, &gpu_buffer.vk_buffer, &gpu_buffer.vma_allocation, NULL);
+    return gpu_buffer;
 }
 
-void destroy_vma_buffer(VmaAllocator vma_allocator, GpuBuffer *gpu_buffer) {
+// `Resource Commands
+void cmd_vk_copy_buffer(VkCommandBuffer vk_command_buffer, VkBuffer from, VkBuffer to, u64 size) {
+    VkBufferCopy2 region = {VK_STRUCTURE_TYPE_BUFFER_COPY_2};
+    region.srcOffset = 0;
+    region.dstOffset = 0;
+    region.size = size;
+
+    VkCopyBufferInfo2 copy_info = {VK_STRUCTURE_TYPE_COPY_BUFFER_INFO_2};
+    copy_info.srcBuffer   = from;
+    copy_info.dstBuffer   = to;
+    copy_info.regionCount = 1;
+    copy_info.pRegions   = &region;
+
+    vkCmdCopyBuffer2(vk_command_buffer, &copy_info);
+}
+
+// @Note could be inlined cos so small? who cares...
+void destroy_vma_buffer(VmaAllocator vma_allocator, Gpu_Buffer *gpu_buffer) {
     vmaDestroyBuffer(vma_allocator, gpu_buffer->vk_buffer, gpu_buffer->vma_allocation);
-};
+}
+void destroy_vma_image(VmaAllocator vma_allocator, Gpu_Image *gpu_image) {
+    vmaDestroyImage(vma_allocator, gpu_image->vk_image, gpu_image->vma_allocation);
+}
 
 #if DEBUG
 VkDebugUtilsMessengerEXT create_debug_messenger(Create_Vk_Debug_Messenger_Info *info) {
