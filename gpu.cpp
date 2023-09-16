@@ -52,6 +52,7 @@ void init_gpu() {
     gpu->vma_allocator = create_vma_allocator(gpu);
 }
 void kill_gpu(Gpu *gpu) {
+    vmaDestroyAllocator(gpu->vma_allocator);
     vkDestroyDevice(gpu->vk_device, ALLOCATION_CALLBACKS);
 #if DEBUG
     vkDestroyDebugUtilsMessengerEXT(gpu->vk_instance, *get_vk_debug_messenger_instance(), ALLOCATION_CALLBACKS);
@@ -712,85 +713,99 @@ void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Sub
 }
 
 // `Sync
-// @Todo use a free list and an in-use list and an in-use/free mask to avoid allocating new command buffers.
-// Use a bucket array for this? Or just swap stuff around to keep free stuff contiguous (if its in use it swapped 
-// with the first free implemented in a ring buffer?)
-// ^^ also applies to sync objects... (this is pasted from the cmd buffer todo, same shit different name
-VkFence* create_vk_fences_unsignalled(VkDevice vk_device, u32 count) {
-    VkFenceCreateInfo info = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-    // @AllocationType these will be persistent because they will be in a pool
-    VkFence *vk_fences = (VkFence*)memory_allocate_heap(sizeof(VkFence) * count, 8);
+// @Todo for these sync pools, maybe implement a free mask and simd checking, so if there is a large enough 
+// block of free objects in the middle of the pool, they can be used instead of appending. I have no idea if this 
+// will be useful, as my intendedm use case for this system is to have a persistent pool and a temp pool. This 
+// would eliminate the requirement for space saving. 
+Fence_Pool create_fence_pool(VkDevice vk_device, u32 size) {
+    Fence_Pool pool;
+    pool.len = size;
+    pool.in_use = 0;
+    pool.fences = (VkFence*)memory_allocate_heap(sizeof(VkFence) * size, 8);
 
+    VkFenceCreateInfo info = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     VkResult check;
-    for(int i = 0; i < count; ++i) {
-        check = vkCreateFence(vk_device, &info, ALLOCATION_CALLBACKS, &vk_fences[i]); 
+    for(int i = 0; i < size; ++i) {
+        check = vkCreateFence(vk_device, &info, ALLOCATION_CALLBACKS, &pool.fences[i]);
         DEBUG_OBJ_CREATION(vkCreateFence, check);
     }
-    return vk_fences;
-}
-VkFence* create_vk_fences_signalled(VkDevice vk_device, u32 count) {
-    VkFenceCreateInfo info = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-    info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    // @AllocationType these will be persistent because they will be in a pool (@Todo create the pooling system)
-    VkFence *vk_fences = (VkFence*)memory_allocate_heap(sizeof(VkFence) * count, 8);
 
-    VkResult check;
-    for(int i = 0; i < count; ++i) {
-        check = vkCreateFence(vk_device, &info, ALLOCATION_CALLBACKS, &vk_fences[i]); 
-        DEBUG_OBJ_CREATION(vkCreateFence, check);
-    }
-    return vk_fences;
+    return pool;
 }
-void destroy_vk_fences(VkDevice vk_device, u32 count, VkFence *vk_fences) {
-    for(int i = 0; i < count; ++i) {
-        vkDestroyFence(vk_device, vk_fences[i], ALLOCATION_CALLBACKS);
+void destroy_fence_pool(VkDevice vk_device, Fence_Pool *pool) {
+    ASSERT(pool->in_use, "Fences cannot be in use when pool is destroyed");
+    for(int i = 0; i < pool->len; ++i) {
+        vkDestroyFence(vk_device, pool->fences[i], ALLOCATION_CALLBACKS);
     }
-    memory_free_heap((void*)vk_fences);
+    memory_free_heap((void*)pool->fences);
+}
+VkFence* get_fences(Fence_Pool *pool, u32 count) {
+    if (pool->in_use + count == pool->len) {
+        VkFence *old_fences = pool->fences;
+        u32 old_len = pool->len;
+
+        pool->len *= 2;
+        pool->fences = (VkFence*)memory_allocate_heap(sizeof(VkFence) * pool->len, 8);
+
+        memcpy(pool->fences, old_fences, old_len * sizeof(VkFence));
+        memory_free_heap((void*)old_fences);
+    }
+    pool->in_use += count;
+    return pool->fences + (pool->in_use - count);
+}
+void reset_fence_pool(Fence_Pool *pool) {
+    pool->in_use = 0;
+}
+void cut_tail_fences(Fence_Pool *pool, u32 size) {
+    pool->in_use -= size;
 }
 
-VkSemaphore* create_vk_semaphores_binary(VkDevice vk_device, u32 count) {
+// Semaphores
+Binary_Semaphore_Pool create_binary_semaphore_pool(VkDevice vk_device, u32 size) {
+    Binary_Semaphore_Pool pool;
+    pool.len = size;
+    pool.in_use = 0;
+    pool.semaphores = (VkSemaphore*)memory_allocate_heap(sizeof(VkSemaphore) * size, 8);
+
     VkSemaphoreCreateInfo info = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-
-    VkSemaphore *vk_semaphores = (VkSemaphore*)memory_allocate_heap(sizeof(VkSemaphore) * count, 8);
     VkResult check;
-    for(int i = 0; i < count; ++i) {
-        check = vkCreateSemaphore(vk_device, &info, ALLOCATION_CALLBACKS, &vk_semaphores[i]);
+    for(int i = 0; i < size; ++i) {
+        check = vkCreateSemaphore(vk_device, &info, ALLOCATION_CALLBACKS, &pool.semaphores[i]);
         DEBUG_OBJ_CREATION(vkCreateSemaphore, check);
     }
 
-    return vk_semaphores;
+    return pool;
 }
-VkSemaphore* create_vk_semaphores_timeline(VkDevice vk_device, u64 initial_value, u32 count) {
-    VkSemaphoreTypeCreateInfo type_info = {
-        VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
-        NULL,
-        VK_SEMAPHORE_TYPE_TIMELINE,
-        initial_value,
-    };
-
-    VkSemaphoreCreateInfo info = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-    info.pNext = &type_info;
-
-    VkSemaphore *vk_semaphores = (VkSemaphore*)memory_allocate_heap(sizeof(VkSemaphore) * count, 8);
-
-    VkResult check;
-    for(int i = 0; i < count; ++i) {
-        check = vkCreateSemaphore(vk_device, &info, ALLOCATION_CALLBACKS, &vk_semaphores[i]);
-        DEBUG_OBJ_CREATION(vkCreateSemaphore, check);
+void destroy_binary_semaphore_pool(VkDevice vk_device, Binary_Semaphore_Pool *pool) {
+    ASSERT(pool->in_use, "Semaphores cannot be in use when pool is destroyed");
+    for(int i = 0; i < pool->len; ++i) {
+        vkDestroySemaphore(vk_device, pool->semaphores[i], ALLOCATION_CALLBACKS);
     }
-
-    return vk_semaphores;
+    memory_free_heap((void*)pool->semaphores);
 }
-void destroy_vk_semaphores(VkDevice vk_device, u32 count, VkSemaphore *vk_semaphores) {
-    for(int i = 0; i < count; ++i) {
-        vkDestroySemaphore(vk_device, vk_semaphores[i], ALLOCATION_CALLBACKS);
+VkSemaphore* get_binary_semaphores(Binary_Semaphore_Pool *pool, u32 count) {
+    if (pool->in_use + count == pool->len) {
+        VkSemaphore *old_semaphores = pool->semaphores;
+        u32 old_len = pool->len;
+
+        pool->len *= 2;
+        pool->semaphores = (VkSemaphore*)memory_allocate_heap(sizeof(VkSemaphore) * pool->len, 8);
+
+        memcpy(pool->semaphores, old_semaphores, old_len * sizeof(VkSemaphore));
+        memory_free_heap((void*)old_semaphores);
     }
-    memory_free_heap((void*)vk_semaphores);
+    pool->in_use += count;
+    return pool->semaphores + (pool->in_use - count);
+}
+// poopoo <- do not delete this comment - Sol & Jenny, Sept 16 2023
+void reset_binary_semaphore_pool(Binary_Semaphore_Pool *pool) {
+    pool->in_use = 0;
+}
+void cut_tail_binary_semaphores(Binary_Semaphore_Pool *pool, u32 size) {
+    pool->in_use -= size;
 }
 
 // `Descriptors
-
-// This returned pointer has to be freed
 VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, Parsed_Spirv *parsed_spirv, u32 *count) {
     u32 total_binding_count = 0;
     for(int i = 0; i < parsed_spirv->group_count; ++i) {
@@ -904,45 +919,29 @@ void destroy_vk_pipeline_shader_stages(VkDevice vk_device, u32 count, VkPipeline
 }
 
 // `VertexInputState
-VkVertexInputBindingDescription* create_vk_vertex_binding_description(u32 count, Create_Vk_Vertex_Input_Binding_Description_Info *infos) {
-    // @Todo @PipelineAllocation I think this is another pipeline state which will not change, as I will just have 
-    // these created for every mesh/model. Or I can just make this dynamic, but it seems like something which 
-    // can be stored for program lifetime. Idk what memory footprints are going to look like for each pipeline state...
-    VkVertexInputBindingDescription *binding_descriptions = 
-        (VkVertexInputBindingDescription*)memory_allocate_heap(sizeof(VkVertexInputBindingDescription) * count, 8);
-    for(int i = 0; i < count; ++i) {
-        binding_descriptions[i] = { infos[i].binding, infos[i].stride }; 
-    }
-    return binding_descriptions;
+VkVertexInputBindingDescription create_vk_vertex_binding_description(Create_Vk_Vertex_Input_Binding_Description_Info *info) {
+    VkVertexInputBindingDescription binding_description = { info->binding, info->stride }; 
+    return binding_description;
 }
 
-VkVertexInputAttributeDescription* create_vk_vertex_attribute_description(u32 count, Create_Vk_Vertex_Input_Attribute_Description_Info *infos) {
-    // @Todo @PipelineAllocation same as above ^^
-    VkVertexInputAttributeDescription *attribute_descriptions = 
-        (VkVertexInputAttributeDescription*)memory_allocate_heap(sizeof(VkVertexInputAttributeDescription) * count, 8);
-    for(int i = 0; i < count; ++i) {
-        attribute_descriptions[i] = {
-            infos[i].location,
-            infos[i].binding,
-            infos[i].format,
-            infos[i].offset,
-        };
-    }
-    return attribute_descriptions;
+VkVertexInputAttributeDescription create_vk_vertex_attribute_description(Create_Vk_Vertex_Input_Attribute_Description_Info *info) {
+    VkVertexInputAttributeDescription attribute_description = {
+        info->location,
+        info->binding,
+        (VkFormat)info->format,
+        info->offset,
+    };
+    return attribute_description;
 }
-VkPipelineVertexInputStateCreateInfo* create_vk_pipeline_vertex_input_states(u32 count, Create_Vk_Pipeline_Vertex_Input_State_Info *infos) {
+VkPipelineVertexInputStateCreateInfo create_vk_pipeline_vertex_input_states(Create_Vk_Pipeline_Vertex_Input_State_Info *info) {
     // @Todo @PipelineAllocation same as above ^^
-    VkPipelineVertexInputStateCreateInfo *input_state_infos = 
-        (VkPipelineVertexInputStateCreateInfo*)memory_allocate_heap(
-            sizeof(VkPipelineVertexInputStateCreateInfo) * count, 8);
-    for(int i = 0; i < count; ++i) {
-        input_state_infos[i] = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-        input_state_infos[i].vertexBindingDescriptionCount   = infos[i].binding_count;
-        input_state_infos[i].pVertexBindingDescriptions      = infos[i].binding_descriptions;
-        input_state_infos[i].vertexAttributeDescriptionCount = infos[i].attribute_count;
-        input_state_infos[i].pVertexAttributeDescriptions    = infos[i].attribute_descriptions;
-    }
-    return input_state_infos;
+    VkPipelineVertexInputStateCreateInfo input_state_info = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    input_state_info.vertexBindingDescriptionCount   = info->binding_count;
+    input_state_info.pVertexBindingDescriptions      = info->binding_descriptions;
+    input_state_info.vertexAttributeDescriptionCount = info->attribute_count;
+    input_state_info.pVertexAttributeDescriptions    = info->attribute_descriptions;
+
+    return input_state_info;
 }
 
 // `InputAssemblyState
@@ -1307,6 +1306,8 @@ VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info) {
 }
 
 // `Resources
+
+// `Buffers
 Gpu_Buffer create_dst_vertex_buffer(VmaAllocator vma_allocator, u64 size) {
     VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     buffer_create_info.size  = size;
@@ -1330,10 +1331,46 @@ Gpu_Buffer create_src_vertex_buffer(VmaAllocator vma_allocator, u64 size) {
     allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
     Gpu_Buffer gpu_buffer;
-    VmaAllocationInfo allocation_info;
     vmaCreateBuffer(vma_allocator, &buffer_create_info, &allocation_create_info, &gpu_buffer.vk_buffer, &gpu_buffer.vma_allocation, NULL);
     return gpu_buffer;
 }
+
+// `Images
+void create_src_dst_buffer_image_pair(VmaAllocator vma_allocator, u32 width, u32 height, Gpu_Buffer *src, Gpu_Image *dst) {
+    VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    buffer_create_info.size  = size;
+    buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+    VmaAllocationCreateInfo allocation_create_info = {};
+    allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+    allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    vmaCreateBuffer(vma_allocator, &buffer_create_info, &allocation_create_info, &src->vk_buffer, &src->vma_allocation, NULL);
+
+    VkImageCreateInfo imgCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    imgCreateInfo.imageType     = VK_IMAGE_TYPE_2D;
+    imgCreateInfo.extent.width  = 3840;
+    imgCreateInfo.extent.height = 2160;
+    imgCreateInfo.extent.depth  = 1;
+    imgCreateInfo.mipLevels     = 1;
+    imgCreateInfo.arrayLayers   = 1;
+    imgCreateInfo.format        = VK_FORMAT_R8G8B8A8_UNORM;
+    imgCreateInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
+    imgCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imgCreateInfo.usage         = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    imgCreateInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
+     
+    VmaAllocationCreateInfo allocCreateInfo = {};
+    allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
+    allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+    allocCreateInfo.priority = 1.0f;
+     
+    VkImage img;
+    VmaAllocation alloc;
+    vmaCreateImage(allocator, &imgCreateInfo, &allocCreateInfo, &img, &alloc, nullptr);
+}
+Gpu_Image create_src_image(VmaAllocator vma_allocator, u64 size) {} // @Unimplemented
+Gpu_Image create_dst_image(VmaAllocator vma_allocator, u64 size) {} // @Unimplemented
 
 // `Resource Commands
 void cmd_vk_copy_buffer(VkCommandBuffer vk_command_buffer, VkBuffer from, VkBuffer to, u64 size) {

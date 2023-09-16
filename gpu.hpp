@@ -103,13 +103,31 @@ struct Submit_Vk_Command_Buffer_Info {
 void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Submit_Vk_Command_Buffer_Info *infos);
 
 // Sync
-VkFence* create_vk_fences_unsignalled(VkDevice vk_device, u32 count);
-VkFence* create_vk_fences_signalled(VkDevice vk_device, u32 count);
-void destroy_vk_fences(VkDevice vk_device, u32 count, VkFence *vk_fences);
+struct Fence_Pool {
+    u32 len;
+    u32 in_use;
+    VkFence *fences;
+};
+Fence_Pool create_fence_pool(VkDevice vk_device, u32 size);
+void destroy_fence_pool(VkDevice vk_device, Fence_Pool *pool);
 
-VkSemaphore* create_vk_semaphores_binary(VkDevice vk_device, u32 count);
-VkSemaphore* create_vk_semaphores_timeline(VkDevice vk_device, u64 initial_value, u32 count);
-void destroy_vk_semaphores(VkDevice vk_device, u32 count, VkSemaphore *vk_semaphore);
+VkFence* get_fences(Fence_Pool *pool, u32 count);
+void reset_fence_pool(Fence_Pool *pool);
+void cut_tail_fences(Fence_Pool *pool, u32 size);
+
+// Semaphores
+struct Binary_Semaphore_Pool {
+    u32 len;
+    u32 in_use;
+    VkSemaphore *semaphores;
+};
+Binary_Semaphore_Pool create_binary_semaphore_pool(VkDevice vk_device, u32 size); 
+void destroy_binary_semaphore_pool(VkDevice vk_device, Binary_Semaphore_Pool *pool);
+
+VkSemaphore* get_binary_semaphores(Binary_Semaphore_Pool *pool, u32 count);
+void reset_binary_semaphore_pool(Binary_Semaphore_Pool *pool);
+void cut_tail_binary_semaphores(Binary_Semaphore_Pool *pool, u32 size);
+
 
 // Descriptors
 struct Create_Vk_Descriptor_Set_Layout_Info {
@@ -138,21 +156,28 @@ struct Create_Vk_Vertex_Input_Binding_Description_Info {
     u32 stride;
     // @Todo support instance input rate
 };
-VkVertexInputBindingDescription* create_vk_vertex_binding_description(u32 count, Create_Vk_Vertex_Input_Binding_Description_Info *infos);
+VkVertexInputBindingDescription create_vk_vertex_binding_description(Create_Vk_Vertex_Input_Binding_Description_Info *info);
+enum Vec_Type {
+    VEC_TYPE_1 = VK_FORMAT_R32_SFLOAT,
+    VEC_TYPE_2 = VK_FORMAT_R32G32_SFLOAT,
+    VEC_TYPE_3 = VK_FORMAT_R32G32B32_SFLOAT,
+    VEC_TYPE_4 = VK_FORMAT_R32G32B32A32_SFLOAT,
+};
 struct Create_Vk_Vertex_Input_Attribute_Description_Info {
     u32 location;
     u32 binding;
     u32 offset;
-    VkFormat format;
+    Vec_Type format;
 };
-VkVertexInputAttributeDescription* create_vk_vertex_attribute_description(u32 count, Create_Vk_Vertex_Input_Attribute_Description_Info *infos);
+VkVertexInputAttributeDescription create_vk_vertex_attribute_description(Create_Vk_Vertex_Input_Attribute_Description_Info *info);
+
 struct Create_Vk_Pipeline_Vertex_Input_State_Info {
     u32 binding_count;
     VkVertexInputBindingDescription *binding_descriptions;
     u32 attribute_count;
     VkVertexInputAttributeDescription *attribute_descriptions;
 };
-VkPipelineVertexInputStateCreateInfo* create_vk_pipeline_vertex_input_states(u32 count, Create_Vk_Pipeline_Vertex_Input_State_Info *infos);
+VkPipelineVertexInputStateCreateInfo create_vk_pipeline_vertex_input_states(Create_Vk_Pipeline_Vertex_Input_State_Info *info);
 
 // `InputAssemblyState
 VkPipelineInputAssemblyStateCreateInfo* create_vk_pipeline_input_assembly_states(u32 count, VkPrimitiveTopology *topologies, VkBool32 *primitive_restart);
@@ -512,10 +537,8 @@ static inline void cmd_vk_bind_vertex_buffers2(VkCommandBuffer vk_command_buffer
 }
 
 // Resources
-struct Gpu_Image {
-    VkImage vk_image;
-    VmaAllocation vma_allocation;
-};
+
+// Buffers
 struct Gpu_Buffer {
     VkBuffer vk_buffer;
     VmaAllocation vma_allocation;
@@ -528,10 +551,23 @@ static inline void* get_vma_mapped_ptr(VmaAllocator vma_allocator, Gpu_Buffer *g
     return info.pMappedData;
 }
 void destroy_vma_buffer(VmaAllocator vma_allocator, Gpu_Buffer *gpu_buffer);
-void destroy_vma_image(VmaAllocator vma_allocator, Gpu_Image *gpu_image);
 
+void create_src_dst_vertex_buffer_pair(VmaAllocator vma_allocator, u64 size); // @Unimplemented
 Gpu_Buffer create_src_vertex_buffer(VmaAllocator vma_allocator, u64 size);
 Gpu_Buffer create_dst_vertex_buffer(VmaAllocator vma_allocator, u64 size);
+
+// Images
+struct Gpu_Image {
+    VkImage vk_image;
+    VmaAllocation vma_allocation;
+};
+void destroy_vma_image(VmaAllocator vma_allocator, Gpu_Image *gpu_image);
+
+void create_src_dst_buffer_image_pair(VmaAllocator vma_allocator, 
+                                      u32 width, u32 height, 
+                                      Gpu_Buffer *src, Gpu_Image *dst);
+Gpu_Image create_src_image(VmaAllocator vma_allocator, u64 size); // @Unimplemented
+Gpu_Image create_dst_image(VmaAllocator vma_allocator, u64 size); // @Unimplemented
 
 // Resource commands
 void cmd_vk_copy_buffer(VkCommandBuffer vk_command_buffer, VkBuffer from, VkBuffer to, u64 size);

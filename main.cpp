@@ -79,16 +79,20 @@ int main() {
     VkBufferMemoryBarrier2 buffer_barrier = fill_buffer_barrier_transfer(&transfer_info);
     VkDependencyInfo buffer_dependency = fill_vk_dependency_buffer(&buffer_barrier);
 
-    VkSemaphore *semaphores = create_vk_semaphores_binary(gpu->vk_device, 2);
+    Binary_Semaphore_Pool semaphore_pool = create_binary_semaphore_pool(gpu->vk_device, 128);
+    Fence_Pool fence_pool = create_fence_pool(gpu->vk_device, 128);
+
+    VkSemaphore *semaphores = get_binary_semaphores(&semaphore_pool, 16);
+    VkFence *fences = get_fences(&fence_pool, 16);
 
     VkSemaphoreSubmitInfo semaphore_info_transfer = {VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-    semaphore_info_transfer.semaphore = semaphores[1];
+    semaphore_info_transfer.semaphore = semaphores[0];
     semaphore_info_transfer.stageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
 
     // upload data to gpu
     VkCommandBuffer transfer_cmd = transfer_buffers_1[0];
 
-    Submit_Vk_Command_Buffer_Info submit_info {
+    Submit_Vk_Command_Buffer_Info transfer_submit_info  = {
         0, NULL, 1, &semaphore_info_transfer, 1, &transfer_cmd,
     };
 
@@ -100,20 +104,18 @@ int main() {
     end_vk_command_buffer(transfer_cmd);
 
     // Sync Setup
-    VkFence *vk_fence = create_vk_fences_unsignalled(gpu->vk_device, 1);
-    submit_vk_command_buffer(gpu->vk_queues[2], *vk_fence, 1, &submit_info);
+    VkFence fence = fences[0];
+    submit_vk_command_buffer(gpu->vk_queues[2], fence, 1, &transfer_submit_info);
 
-    vkWaitForFences(gpu->vk_device, 1, vk_fence, true, 10e9);
-    vkResetFences(gpu->vk_device, 1, vk_fence);
+    vkWaitForFences(gpu->vk_device, 1, &fence, true, 10e9);
+    vkResetFences(gpu->vk_device, 1, &fence);
     reset_vk_command_pools(gpu->vk_device, 1, &graphics_command_groups[0].pool);
-    //destroy_vk_fences(gpu->vk_device, 1, vk_fence);
 
-    // Descriptor setup
+    // Shader setup
     u64 byte_count_vert;
     u64 byte_count_frag;
-    const u32 *spirv_vert = (const u32*)file_read_bin_temp("shaders/vertex_1.vert.spv",   &byte_count_vert);
-    const u32 *spirv_frag = (const u32*)file_read_bin_temp("shaders/fragment_1.frag.spv", &byte_count_frag);
-    // CHECK THE SPIRV OUTPUT WITH ZERO STUFF IN THE SHADER!
+    const u32 *spirv_vert = (const u32*)file_read_bin_temp("shaders/vertex_2.vert.spv",   &byte_count_vert);
+    const u32 *spirv_frag = (const u32*)file_read_bin_temp("shaders/fragment_2.frag.spv", &byte_count_frag);
 
     Parsed_Spirv parsed_spirv_vert = parse_spirv(byte_count_vert, spirv_vert); 
 
@@ -147,13 +149,16 @@ int main() {
     VkPipelineShaderStageCreateInfo *shader_stages =
         create_vk_pipeline_shader_stages(gpu->vk_device, shader_stage_count, shader_stage_infos);
 
-    // Input state - currently unused
-    Create_Vk_Vertex_Input_Binding_Description_Info vertex_binding_info     = {};
-    Create_Vk_Vertex_Input_Attribute_Description_Info vertex_attribute_info = {};
+    // Input state
+    Create_Vk_Vertex_Input_Binding_Description_Info vertex_binding_info     = { 0, sizeof(glm::vec3) };
+    Create_Vk_Vertex_Input_Attribute_Description_Info vertex_attribute_info = { 0, 0, 0, VEC_TYPE_3 };
 
-    Create_Vk_Pipeline_Vertex_Input_State_Info vertex_input_state_info = { 0, NULL, 0, NULL };
-    VkPipelineVertexInputStateCreateInfo *vertex_input_state = 
-        create_vk_pipeline_vertex_input_states(1, &vertex_input_state_info);
+    VkVertexInputBindingDescription input_binding = create_vk_vertex_binding_description(&vertex_binding_info);
+    VkVertexInputAttributeDescription attribute_desc = create_vk_vertex_attribute_description(&vertex_attribute_info);
+
+    Create_Vk_Pipeline_Vertex_Input_State_Info vertex_input_state_info = { 1, &input_binding, 1, &attribute_desc };
+    VkPipelineVertexInputStateCreateInfo vertex_input_state = 
+        create_vk_pipeline_vertex_input_states(&vertex_input_state_info);
 
     // Assembly state
     VkPrimitiveTopology topology       = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -194,7 +199,7 @@ int main() {
     pl_create_info.pNext               = &rendering_create_info;
     pl_create_info.stageCount          =  shader_stage_count;
     pl_create_info.pStages             =  shader_stages;
-    pl_create_info.pVertexInputState   =  vertex_input_state;
+    pl_create_info.pVertexInputState   =  &vertex_input_state;
     pl_create_info.pInputAssemblyState =  vertex_assembly_state;
     pl_create_info.pViewportState      = &viewport_info;
     pl_create_info.pRasterizationState = &rasterization;
@@ -212,13 +217,13 @@ int main() {
     acquire_info.swapchain  = window->vk_swapchain;
     acquire_info.timeout    = 10e9;
     acquire_info.semaphore  = VK_NULL_HANDLE;
-    acquire_info.fence      = *vk_fence;
+    acquire_info.fence      = fence;
     acquire_info.deviceMask = 1;
 
     u32 present_image_index;
     vkAcquireNextImage2KHR(gpu->vk_device, &acquire_info, &present_image_index);
-    vkWaitForFences(gpu->vk_device, 1, vk_fence, true, 10e9);
-    vkResetFences(gpu->vk_device, 1, vk_fence);
+    vkWaitForFences(gpu->vk_device, 1, &fence, true, 10e9);
+    vkResetFences(gpu->vk_device, 1, &fence);
 
     float clear_color_white[] = {1.0f, 1.0f, 1.0f, 1.0f};
     Create_Vk_Rendering_Attachment_Info_Info render_attachment_info = {};
@@ -277,10 +282,17 @@ int main() {
 
     begin_vk_command_buffer_primary(graphics_cmd);
 
-        set_default_draw_state(graphics_cmd);
         vkCmdPipelineBarrier2(graphics_cmd, &buffer_dependency);
-        
         vkCmdPipelineBarrier2(graphics_cmd, &transition_dependency);
+        set_default_draw_state(graphics_cmd);
+
+        // Bind vertex buffers
+        u64 offset = 0;
+        u64 size = sizeof(vertices);
+        u64 stride = sizeof(glm::vec3);
+        Dyn_Vertex_Bind_Info buffer_bind_info = {0, 1, &dst_vert_buffer.vk_buffer, &offset, &size, &stride};
+        cmd_vk_bind_vertex_buffers2(graphics_cmd, &buffer_bind_info);
+
         vkCmdBeginRendering(graphics_cmd, &rendering_info);
 
             vkCmdBindPipeline(graphics_cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipelines);
@@ -291,22 +303,22 @@ int main() {
 
     end_vk_command_buffer(graphics_cmd);
 
-    VkSemaphoreSubmitInfo semaphore_info = {VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-    semaphore_info.semaphore = semaphores[0];
-    semaphore_info.stageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkSemaphoreSubmitInfo wait_transfer_semaphore_info = {VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+    wait_transfer_semaphore_info.semaphore = semaphores[0];
+    wait_transfer_semaphore_info.stageMask = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
 
-    VkSemaphoreSubmitInfo wait_semaphore_info = {VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-    semaphore_info.semaphore = semaphores[1];
-    semaphore_info.stageMask = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
+    VkSemaphoreSubmitInfo signal_render_semaphore_info = {VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+    signal_render_semaphore_info.semaphore = semaphores[1];
+    signal_render_semaphore_info.stageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
     Submit_Vk_Command_Buffer_Info graphics_submit_info = {
-        1, &wait_semaphore_info, 1, &semaphore_info, 1, &graphics_cmd 
+        1, &wait_transfer_semaphore_info, 1, &signal_render_semaphore_info, 1, &graphics_cmd 
     };
-    submit_vk_command_buffer(gpu->vk_queues[0], *vk_fence, 1, &graphics_submit_info);
+    submit_vk_command_buffer(gpu->vk_queues[0], fence, 1, &graphics_submit_info);
 
     VkPresentInfoKHR present_info = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
     present_info.waitSemaphoreCount    = 1;
-    present_info.pWaitSemaphores       = &semaphores[0];
+    present_info.pWaitSemaphores       = &semaphores[1];
     present_info.swapchainCount        = 1;
     present_info.pSwapchains           = &window->vk_swapchain;
     present_info.pImageIndices         = &present_image_index;
@@ -319,12 +331,16 @@ int main() {
 
     // Shutdown
     reset_temp();
-    memory_free_heap((void*)vertex_input_state);
     memory_free_heap((void*)vertex_assembly_state);
 
     vkDeviceWaitIdle(gpu->vk_device);
-    destroy_vk_fences(gpu->vk_device, 1, vk_fence);
-    destroy_vk_semaphores(gpu->vk_device, 2, semaphores);
+
+    destroy_vma_buffer(gpu->vma_allocator, &dst_vert_buffer);
+    destroy_vma_buffer(gpu->vma_allocator, &src_vert_buffer);
+
+    destroy_fence_pool(gpu->vk_device, &fence_pool);
+    destroy_binary_semaphore_pool(gpu->vk_device, &semaphore_pool);
+
     destroy_vk_pipelines_heap(gpu->vk_device, 1, pipelines);
     destroy_vk_pipeline_shader_stages(gpu->vk_device, 2, shader_stages);
 

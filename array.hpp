@@ -85,6 +85,12 @@ inline T* append_to_dyn_array(Dyn_Array<T> *array) {
 }
 
 template<typename T>
+inline T* pop_last_dyn_array(Dyn_Array<T> *array) {
+    array->len--;
+    return &array.data[array->len];
+}
+
+template<typename T>
 inline void copy_to_static_array(Static_Array<T> *array, T *from, u64 item_count) {
 #if DEBUG
     ASSERT(array->len + item_count <= array->cap, "Static Array Overflow");
