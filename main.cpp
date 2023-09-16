@@ -58,13 +58,13 @@ int main() {
         allocate_vk_primary_command_buffers(gpu->vk_device, &transfer_command_groups[1], 4);
 
     const glm::vec3 vertices[] = {
-        glm::vec3( 0.0, -0.5, 1.0),  
-        glm::vec3( 0.5,  0.5, 1.0),  
-        glm::vec3(-0.5,  0.5, 1.0),  
+        glm::vec3( 0.0, -0.5, 1.0),
+        glm::vec3( 0.5,  0.5, 1.0),
+        glm::vec3(-0.5,  0.5, 1.0),
     };
 
     const u64 vert_buffer_size = 256;
-    Gpu_Buffer src_vert_buffer = create_src_vertex_buffer(gpu->vma_allocator, 512);
+    Gpu_Buffer src_vert_buffer = create_src_buffer(gpu->vma_allocator, 512);
     void *src_vert_ptr = get_vma_mapped_ptr(gpu->vma_allocator, &src_vert_buffer);
     memcpy(src_vert_ptr, vertices, sizeof(vertices));
 

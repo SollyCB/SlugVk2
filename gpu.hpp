@@ -552,8 +552,8 @@ static inline void* get_vma_mapped_ptr(VmaAllocator vma_allocator, Gpu_Buffer *g
 }
 void destroy_vma_buffer(VmaAllocator vma_allocator, Gpu_Buffer *gpu_buffer);
 
-void create_src_dst_vertex_buffer_pair(VmaAllocator vma_allocator, u64 size); // @Unimplemented
-Gpu_Buffer create_src_vertex_buffer(VmaAllocator vma_allocator, u64 size);
+void create_src_dst_vertex_buffer_pair(VmaAllocator vma_allocator, u64 size, Gpu_Buffer *src, Gpu_Buffer *dst);
+Gpu_Buffer create_src_buffer(VmaAllocator vma_allocator, u64 size);
 Gpu_Buffer create_dst_vertex_buffer(VmaAllocator vma_allocator, u64 size);
 
 // Images
@@ -562,12 +562,7 @@ struct Gpu_Image {
     VmaAllocation vma_allocation;
 };
 void destroy_vma_image(VmaAllocator vma_allocator, Gpu_Image *gpu_image);
-
-void create_src_dst_buffer_image_pair(VmaAllocator vma_allocator, 
-                                      u32 width, u32 height, 
-                                      Gpu_Buffer *src, Gpu_Image *dst);
-Gpu_Image create_src_image(VmaAllocator vma_allocator, u64 size); // @Unimplemented
-Gpu_Image create_dst_image(VmaAllocator vma_allocator, u64 size); // @Unimplemented
+Gpu_Image create_vma_image(VmaAllocator vma_allocator, u32 width, u32 height);
 
 // Resource commands
 void cmd_vk_copy_buffer(VkCommandBuffer vk_command_buffer, VkBuffer from, VkBuffer to, u64 size);

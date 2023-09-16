@@ -1308,6 +1308,28 @@ VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info) {
 // `Resources
 
 // `Buffers
+void create_src_dst_vertex_buffer_pair(VmaAllocator vma_allocator, u64 size, Gpu_Buffer *src, Gpu_Buffer *dst) {
+    VkBufferCreateInfo buffer_create_info_dst = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    buffer_create_info_dst.size  = size;
+    buffer_create_info_dst.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+    VmaAllocationCreateInfo allocation_create_info_dst = {};
+    allocation_create_info_dst.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+    vmaCreateBuffer(vma_allocator, &buffer_create_info_dst, &allocation_create_info_dst, &dst->vk_buffer, &dst->vma_allocation, NULL);
+
+    VkBufferCreateInfo buffer_create_info_src = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    buffer_create_info_src.size  = size;
+    buffer_create_info_src.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+    VmaAllocationCreateInfo allocation_create_info_src = {};
+    allocation_create_info_src.usage = VMA_MEMORY_USAGE_AUTO;
+    allocation_create_info_src.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    Gpu_Buffer gpu_buffer;
+    vmaCreateBuffer(vma_allocator, &buffer_create_info_src, &allocation_create_info_src, &gpu_buffer.vk_buffer, &gpu_buffer.vma_allocation, NULL);
+
+}
 Gpu_Buffer create_dst_vertex_buffer(VmaAllocator vma_allocator, u64 size) {
     VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     buffer_create_info.size  = size;
@@ -1321,7 +1343,7 @@ Gpu_Buffer create_dst_vertex_buffer(VmaAllocator vma_allocator, u64 size) {
     vmaCreateBuffer(vma_allocator, &buffer_create_info, &allocation_create_info, &gpu_buffer.vk_buffer, &gpu_buffer.vma_allocation, NULL);
     return gpu_buffer;
 }
-Gpu_Buffer create_src_vertex_buffer(VmaAllocator vma_allocator, u64 size) {
+Gpu_Buffer create_src_buffer(VmaAllocator vma_allocator, u64 size) {
     VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     buffer_create_info.size  = size;
     buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
@@ -1336,41 +1358,32 @@ Gpu_Buffer create_src_vertex_buffer(VmaAllocator vma_allocator, u64 size) {
 }
 
 // `Images
-void create_src_dst_buffer_image_pair(VmaAllocator vma_allocator, u32 width, u32 height, Gpu_Buffer *src, Gpu_Image *dst) {
-    VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    buffer_create_info.size  = size;
-    buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-
+Gpu_Image create_vma_image(VmaAllocator vma_allocator, u32 width, u32 height) {
+    VkImageCreateInfo image_create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    image_create_info.imageType         = VK_IMAGE_TYPE_2D;
+    image_create_info.extent.width      = width;
+    image_create_info.extent.height     = height;
+    image_create_info.extent.depth      = 1;
+    image_create_info.mipLevels         = 1;
+    image_create_info.arrayLayers       = 1;
+    image_create_info.format            = VK_FORMAT_R8G8B8A8_UNORM;
+    image_create_info.tiling            = VK_IMAGE_TILING_OPTIMAL;
+    image_create_info.initialLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
+    image_create_info.usage             = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    image_create_info.samples           = VK_SAMPLE_COUNT_1_BIT;
+     
     VmaAllocationCreateInfo allocation_create_info = {};
     allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
-    allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-    vmaCreateBuffer(vma_allocator, &buffer_create_info, &allocation_create_info, &src->vk_buffer, &src->vma_allocation, NULL);
-
-    VkImageCreateInfo imgCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
-    imgCreateInfo.imageType     = VK_IMAGE_TYPE_2D;
-    imgCreateInfo.extent.width  = 3840;
-    imgCreateInfo.extent.height = 2160;
-    imgCreateInfo.extent.depth  = 1;
-    imgCreateInfo.mipLevels     = 1;
-    imgCreateInfo.arrayLayers   = 1;
-    imgCreateInfo.format        = VK_FORMAT_R8G8B8A8_UNORM;
-    imgCreateInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
-    imgCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imgCreateInfo.usage         = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    imgCreateInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
+    allocation_create_info.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+    allocation_create_info.priority = 1.0f;
      
-    VmaAllocationCreateInfo allocCreateInfo = {};
-    allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
-    allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-    allocCreateInfo.priority = 1.0f;
-     
-    VkImage img;
-    VmaAllocation alloc;
-    vmaCreateImage(allocator, &imgCreateInfo, &allocCreateInfo, &img, &alloc, nullptr);
-}
-Gpu_Image create_src_image(VmaAllocator vma_allocator, u64 size) {} // @Unimplemented
-Gpu_Image create_dst_image(VmaAllocator vma_allocator, u64 size) {} // @Unimplemented
+    Gpu_Image gpu_image;
+    auto check = vmaCreateImage(vma_allocator, &image_create_info, &allocation_create_info, 
+                                &gpu_image.vk_image, &gpu_image.vma_allocation, nullptr);
+    DEBUG_OBJ_CREATION(vmaCreateImage, check);
+
+    return gpu_image;
+} // @Unimplemented
 
 // `Resource Commands
 void cmd_vk_copy_buffer(VkCommandBuffer vk_command_buffer, VkBuffer from, VkBuffer to, u64 size) {
