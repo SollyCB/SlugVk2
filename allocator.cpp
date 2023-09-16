@@ -78,14 +78,13 @@ u8 *memory_allocate_heap(u64 size, u64 alignment) {
 }
 u8 *memory_allocate_temp(u64 size, u64 alignment) {
     Linear_Allocator *allocator = get_instance_temp();
-    // pad 
+    size = align(size, alignment);
 
-    // @Note i think this is actually wrong, because if the size is already aligned then alignment is just entirely 
-    // added???
-    allocator->used += alignment - ((u64)(allocator->memory + allocator->used) & (alignment - 1));
+    // pad 
+    allocator->used += (allocator->capacity + allocator->used) - align((u64)(allocator->capacity + allocator->used), alignment);
 
     u8 *ret = allocator->memory + allocator->used;
-    allocator->used += align(size, alignment);
+    allocator->used += size;
 
     ASSERT(allocator->used <= allocator->capacity, "Temp Allocator Overflow");
     return ret;
