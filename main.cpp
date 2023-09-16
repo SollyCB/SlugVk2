@@ -27,6 +27,10 @@ int main() {
     init_window(gpu, glfw);
     Window *window = get_window_instance();
 
+    Create_Vk_Sampler_Info sampler_info = {gpu->info->limits.maxSamplerAnisotropy};
+    VkSampler sampler = create_vk_sampler(gpu->vk_device, &sampler_info);
+    destroy_vk_sampler(gpu->vk_device, sampler);
+
     // Command Buffer setup
     Command_Group_Vk graphics_command_groups[] = {
         create_command_group_vk(gpu->vk_device, gpu->vk_queue_indices[0]),
@@ -39,7 +43,7 @@ int main() {
     Command_Group_Vk transfer_command_groups[2] = {
         create_command_group_vk(gpu->vk_device, gpu->vk_queue_indices[2]),
         create_command_group_vk(gpu->vk_device, gpu->vk_queue_indices[2]),
-    }; // allocate 2 so i can have one per frame
+    };
 
     // allocate command buffers
     VkCommandBuffer *graphics_buffers_1 =
@@ -150,7 +154,7 @@ int main() {
         create_vk_pipeline_shader_stages(gpu->vk_device, shader_stage_count, shader_stage_infos);
 
     // Input state
-    Create_Vk_Vertex_Input_Binding_Description_Info vertex_binding_info     = { 0, sizeof(glm::vec3) };
+    Create_Vk_Vertex_Input_Binding_Description_Info vertex_binding_info     = { 0, sizeof(glm::vec3)};
     Create_Vk_Vertex_Input_Attribute_Description_Info vertex_attribute_info = { 0, 0, 0, VEC_TYPE_3 };
 
     VkVertexInputBindingDescription input_binding = create_vk_vertex_binding_description(&vertex_binding_info);

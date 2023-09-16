@@ -42,20 +42,20 @@ inline void memory_free_heap(void *ptr) {
     tlsf_free(allocator->tlsf_handle, ptr);
 }
 
-inline void reset_temp() {
+static inline void reset_temp() {
     get_instance_temp()->used = 0;
 }
-inline void cut_tail_temp(u64 size) {
+static inline void cut_tail_temp(u64 size) {
     get_instance_temp()->used -= size;
 }
-inline void cut_diff_temp(u64 size) {
+static inline void cut_diff_temp(u64 size) {
     get_instance_temp()->used = size;
 }
-inline u64 get_mark_temp() {
+static inline u64 get_mark_temp() {
     return get_instance_temp()->used;
 }
 
-inline size_t align(size_t size, size_t alignment) {
+static inline size_t align(size_t size, size_t alignment) {
   const size_t alignment_mask = alignment - 1;
   return (size + alignment_mask) & ~alignment_mask;
 }

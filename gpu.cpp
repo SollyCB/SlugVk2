@@ -24,6 +24,8 @@ VkDebugUtilsMessengerEXT* get_vk_debug_messenger_instance() { return &s_vk_debug
 static Gpu *s_Gpu;
 Gpu* get_gpu_instance() { return s_Gpu; }
 
+static VkFormat COLOR_ATTACHMENT_FORMAT;
+
 void init_gpu() {
     // keep struct data together (not pointing to random heap addresses)
     s_Gpu = (Gpu*)memory_allocate_heap(
@@ -36,7 +38,7 @@ void init_gpu() {
     Gpu *gpu = get_gpu_instance();
     gpu->vk_queues = (VkQueue*)(gpu + 1);
     gpu->vk_queue_indices = (u32*)(gpu->vk_queues + 3);
-    //gpu->info = (GpuInfo*)(gpu->vk_queue_indices + 3);
+    gpu->info = (GpuInfo*)(gpu->vk_queue_indices + 3);
 
     Create_Vk_Instance_Info create_instance_info = {};
     gpu->vk_instance = create_vk_instance(&create_instance_info);
@@ -185,16 +187,6 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
  
     features_full_unfilled.features = vk1_features_unfilled;
 
-    VkPhysicalDeviceExtendedDynamicState3PropertiesEXT dyn_state_3_props = {
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_PROPERTIES_EXT,
-        NULL,
-        VK_FALSE,
-    };
-    VkPhysicalDeviceProperties2 device_props_2 = {
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
-        &dyn_state_3_props,
-    };
-
     // choose physical device
     u32 physical_device_count;
     vkEnumeratePhysicalDevices(gpu->vk_instance, &physical_device_count, NULL);
@@ -215,7 +207,6 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
     for(int i = 0; i < physical_device_count; ++i) {
 
         vkGetPhysicalDeviceFeatures2(physical_devices[i], &features_full);
-        vkGetPhysicalDeviceProperties2(physical_devices[i], &device_props_2);
 
         bool incompatible = false;
         if (descriptor_buffer_features.descriptorBuffer == VK_FALSE) {
@@ -354,6 +345,10 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
         gpu->vk_queues[2] = gpu->vk_queues[0];
     }
 
+    VkPhysicalDeviceProperties physical_device_properties;
+    vkGetPhysicalDeviceProperties(gpu->vk_physical_device, &physical_device_properties);
+    gpu->info->limits = physical_device_properties.limits;
+
     return vk_device;
 } // func create_vk_device
 
@@ -473,6 +468,7 @@ VkSwapchainKHR create_vk_swapchain(Gpu *gpu, VkSurfaceKHR vk_surface) {
     vkGetPhysicalDeviceSurfaceFormatsKHR(gpu->vk_physical_device, swapchain_info.surface, &format_count, formats);
 
     swapchain_info.imageFormat = formats[0].format;
+    COLOR_ATTACHMENT_FORMAT = swapchain_info.imageFormat;
     swapchain_info.imageColorSpace = formats[0].colorSpace;
 
     vkGetPhysicalDeviceSurfacePresentModesKHR(gpu->vk_physical_device, swapchain_info.surface, &present_mode_count, NULL);
@@ -1264,8 +1260,50 @@ VkImageMemoryBarrier2 fill_image_barrier_transition_undefined_to_cao(MemDep_Queu
 
     return barrier;
 }
-//VkImageMemoryBarrier2 fill_imagebarrier_transfer_src_to_dst(MemDep_Queue_Transfer_Info_Image *info) {}
-//VkImageMemoryBarrier2 fill_imagebarrier_transition_dst_to_cao() {}
+VkImageMemoryBarrier2 fill_image_barrier_transition_dst_to_cao(MemDep_Queue_Transition_Info_Image *info) {
+    VkImageSubresourceRange view  = {};
+    view.aspectMask               = VK_IMAGE_ASPECT_COLOR_BIT;
+    view.baseMipLevel             = 0;
+    view.levelCount               = 1;
+    view.baseArrayLayer           = 0;
+    view.layerCount               = 1;
+
+    VkImageMemoryBarrier2 barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+    barrier.srcStageMask          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    barrier.srcAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    barrier.dstStageMask          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    barrier.dstAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    barrier.oldLayout             = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.newLayout             = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+    barrier.srcQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image                 = info->image;
+    barrier.subresourceRange      = info->view;
+
+    return barrier;
+}
+VkImageMemoryBarrier2 fill_image_barrier_transition_undefined_to_dst(MemDep_Queue_Transition_Info_Image *info) {
+    VkImageSubresourceRange view  = {};
+    view.aspectMask               = VK_IMAGE_ASPECT_COLOR_BIT;
+    view.baseMipLevel             = 0;
+    view.levelCount               = 1;
+    view.baseArrayLayer           = 0;
+    view.layerCount               = 1;
+
+    VkImageMemoryBarrier2 barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+    barrier.srcStageMask          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    barrier.srcAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    barrier.dstStageMask          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    barrier.dstAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    barrier.oldLayout             = VK_IMAGE_LAYOUT_UNDEFINED;
+    barrier.newLayout             = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barrier.srcQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image                 = info->image;
+    barrier.subresourceRange      = info->view;
+
+    return barrier;
+}
 
 VkBufferMemoryBarrier2 fill_buffer_barrier_transfer(MemDep_Queue_Transfer_Info_Buffer *info) {
     VkBufferMemoryBarrier2 barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2}; 
@@ -1306,6 +1344,61 @@ VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info) {
 }
 
 // `Resources
+
+// `GpuLinearAllocator - Buffer optimisation
+struct Gpu_Linear_Allocator {
+    u64 used;
+    u64 cap;
+    VkBuffer buffer;
+    VmaAllocation vma_allocation;
+};
+// returns offset into the buffer;
+u64 make_gpu_allocation(Gpu_Linear_Allocator *allocator, u64 size, u8 alignment) {
+    u8 alignment_mask = allocator->used & (alignment - 1);
+    allocator->used = (allocator->used + alignment_mask) & ~alignment_mask;
+
+    u64 ret = allocator->used;
+    allocator->used += size;
+    return ret;
+}
+void empty_gpu_allocator(Gpu_Linear_Allocator *allocator) {
+    allocator->used = 0;
+}
+void cut_tail_gpu_allocator(Gpu_Linear_Allocator *allocator, u64 size) {
+    allocator->used -= size;
+}
+
+// Allocate the perframe and persistent buffers
+Gpu_Linear_Allocator create_gpu_linear_allocator_host(VmaAllocator vma_allocator, u64 size) {
+    VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    buffer_create_info.size  = size;
+    buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+    VmaAllocationCreateInfo allocation_create_info = {};
+    allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+    allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    Gpu_Linear_Allocator gpu_linear_allocator;
+    auto check = vmaCreateBuffer(vma_allocator, &buffer_create_info, &allocation_create_info, &gpu_linear_allocator.buffer, &gpu_linear_allocator.vma_allocation, NULL);
+    DEBUG_OBJ_CREATION(vmaCreateBuffer, check);
+
+    return gpu_linear_allocator;
+}
+
+Gpu_Linear_Allocator create_gpu_linear_allocator_device(VmaAllocator vma_allocator, u64 size) {
+    VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    buffer_create_info.size  = size;
+    buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+    VmaAllocationCreateInfo allocation_create_info = {};
+    allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+    Gpu_Linear_Allocator gpu_linear_allocator;
+    auto check = vmaCreateBuffer(vma_allocator, &buffer_create_info, &allocation_create_info, &gpu_linear_allocator.buffer, &gpu_linear_allocator.vma_allocation, NULL);
+    DEBUG_OBJ_CREATION(vmaCreateBuffer, check);
+
+    return gpu_linear_allocator;
+}
 
 // `Buffers
 void create_src_dst_vertex_buffer_pair(VmaAllocator vma_allocator, u64 size, Gpu_Buffer *src, Gpu_Buffer *dst) {
@@ -1358,7 +1451,7 @@ Gpu_Buffer create_src_buffer(VmaAllocator vma_allocator, u64 size) {
 }
 
 // `Images
-Gpu_Image create_vma_image(VmaAllocator vma_allocator, u32 width, u32 height) {
+Gpu_Image create_vma_color_image(VmaAllocator vma_allocator, u32 width, u32 height) {
     VkImageCreateInfo image_create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
     image_create_info.imageType         = VK_IMAGE_TYPE_2D;
     image_create_info.extent.width      = width;
@@ -1366,11 +1459,43 @@ Gpu_Image create_vma_image(VmaAllocator vma_allocator, u32 width, u32 height) {
     image_create_info.extent.depth      = 1;
     image_create_info.mipLevels         = 1;
     image_create_info.arrayLayers       = 1;
+
+    // Idk what format I should use?
     image_create_info.format            = VK_FORMAT_R8G8B8A8_UNORM;
     image_create_info.tiling            = VK_IMAGE_TILING_OPTIMAL;
     image_create_info.initialLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
-    image_create_info.usage             = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     image_create_info.samples           = VK_SAMPLE_COUNT_1_BIT;
+    image_create_info.usage             = VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                                          VK_IMAGE_USAGE_SAMPLED_BIT;
+     
+    VmaAllocationCreateInfo allocation_create_info = {};
+    allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+    allocation_create_info.flags = 0x0;
+    allocation_create_info.priority = 1.0f;
+     
+    Gpu_Image gpu_image;
+    auto check = vmaCreateImage(vma_allocator, &image_create_info, &allocation_create_info, 
+                                &gpu_image.vk_image, &gpu_image.vma_allocation, nullptr);
+    DEBUG_OBJ_CREATION(vmaCreateImage, check);
+
+    return gpu_image;
+}
+Gpu_Image create_vma_color_attachment(VmaAllocator vma_allocator, u32 width, u32 height) {
+    VkImageCreateInfo image_create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    image_create_info.imageType         = VK_IMAGE_TYPE_2D;
+    image_create_info.extent.width      = width;
+    image_create_info.extent.height     = height;
+    image_create_info.extent.depth      = 1;
+    image_create_info.mipLevels         = 1;
+    image_create_info.arrayLayers       = 1;
+
+    // Idk what format I should use?
+    image_create_info.format            = COLOR_ATTACHMENT_FORMAT;
+    image_create_info.tiling            = VK_IMAGE_TILING_OPTIMAL;
+    image_create_info.initialLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
+    image_create_info.samples           = VK_SAMPLE_COUNT_1_BIT;
+    image_create_info.usage             = VK_IMAGE_USAGE_SAMPLED_BIT |
+                                          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
      
     VmaAllocationCreateInfo allocation_create_info = {};
     allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
@@ -1383,20 +1508,53 @@ Gpu_Image create_vma_image(VmaAllocator vma_allocator, u32 width, u32 height) {
     DEBUG_OBJ_CREATION(vmaCreateImage, check);
 
     return gpu_image;
-} // @Unimplemented
+}
+
+VkSampler create_vk_sampler(VkDevice vk_device, Create_Vk_Sampler_Info *info) {
+    VkSamplerCreateInfo create_info = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+
+    create_info.magFilter = VK_FILTER_LINEAR;
+    create_info.minFilter = VK_FILTER_LINEAR;
+
+    create_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    create_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    create_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+
+    create_info.anisotropyEnable = VK_TRUE;
+    create_info.maxAnisotropy = info->max_anisotropy;
+
+    create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    create_info.mipLodBias = 0.0f;
+    create_info.minLod = 0.0f;
+    create_info.maxLod = 0.0f;
+
+    // @Todo percentage closer filtering shadow maps
+    create_info.compareEnable = VK_FALSE;
+    //create_info.compareOp = 
+
+    VkSampler sampler;
+    auto check = vkCreateSampler(vk_device, &create_info, ALLOCATION_CALLBACKS, &sampler);
+    DEBUG_OBJ_CREATION(vkCreateSampler, check);
+
+    return sampler;
+}
+void destroy_vk_sampler(VkDevice vk_device, VkSampler sampler) {
+    vkDestroySampler(vk_device, sampler, ALLOCATION_CALLBACKS);
+}
 
 // `Resource Commands
 void cmd_vk_copy_buffer(VkCommandBuffer vk_command_buffer, VkBuffer from, VkBuffer to, u64 size) {
     VkBufferCopy2 region = {VK_STRUCTURE_TYPE_BUFFER_COPY_2};
-    region.srcOffset = 0;
-    region.dstOffset = 0;
-    region.size = size;
+    region.srcOffset     = 0;
+    region.dstOffset     = 0;
+    region.size          = size;
 
     VkCopyBufferInfo2 copy_info = {VK_STRUCTURE_TYPE_COPY_BUFFER_INFO_2};
-    copy_info.srcBuffer   = from;
-    copy_info.dstBuffer   = to;
-    copy_info.regionCount = 1;
-    copy_info.pRegions   = &region;
+    copy_info.srcBuffer         = from;
+    copy_info.dstBuffer         = to;
+    copy_info.regionCount       = 1;
+    copy_info.pRegions          = &region;
 
     vkCmdCopyBuffer2(vk_command_buffer, &copy_info);
 }

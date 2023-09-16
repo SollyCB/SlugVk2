@@ -10,7 +10,23 @@
 #include "basic.h"
 #include "glfw.hpp"
 
-struct GpuInfo {};
+/* @Note
+        I want to end up with separate code paths beginning right from device creation. For instance, I dont want to 
+        be deciding at draw time if I need to do a host device copy via a transfer queue because I am dealing 
+        with a discrete gpu (Mike Acton's, decide early). Even measuring PCIe bandwith if possible. This will 
+        likely be a long time down the road but I need to keep it in mind so that adapting the code base later 
+        is not completely impossible...
+
+        Also regarding memory allocation. Is using VMA necessary? If I am using linear allocators per frame, 
+        plus persistent allocations for other stuff, not really as I will very rarely be calling allocate 
+        buffer, at the same time what can I gain by not using it? I can just use it to allocate a buffer once,
+        and then offset that... We will see. Getting rid of it just for the sake of being self written is huge.
+*/
+
+
+struct GpuInfo {
+    VkPhysicalDeviceLimits limits;
+};
 struct Gpu {
     VkInstance vk_instance;
     VmaAllocator vma_allocator;
@@ -563,6 +579,15 @@ struct Gpu_Image {
 };
 void destroy_vma_image(VmaAllocator vma_allocator, Gpu_Image *gpu_image);
 Gpu_Image create_vma_image(VmaAllocator vma_allocator, u32 width, u32 height);
+Gpu_Image create_vma_color_attachment(VmaAllocator vma_allocator, u32 width, u32 height);
+
+// Samplers
+struct Create_Vk_Sampler_Info {
+    // @Todo support more options that just a default sampler
+    float max_anisotropy;
+};
+VkSampler create_vk_sampler(VkDevice vk_device, Create_Vk_Sampler_Info *info);
+void destroy_vk_sampler(VkDevice vk_device, VkSampler sampler);
 
 // Resource commands
 void cmd_vk_copy_buffer(VkCommandBuffer vk_command_buffer, VkBuffer from, VkBuffer to, u64 size);
