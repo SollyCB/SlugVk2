@@ -76,6 +76,16 @@ u8 *memory_allocate_heap(u64 size, u64 alignment) {
 
     return (u8*)ret;
 }
+
+u8 *memory_reallocate_heap(u8 *ptr, u64 new_size) {
+    u64 old_size = tlsf_block_size((void*)ptr);
+    Heap_Allocator *allocator = get_instance_heap();
+    allocator->used -= old_size;
+    ptr = (u8*)tlsf_realloc(allocator->tlsf_handle, ptr, new_size);
+    allocator->used += tlsf_block_size((void*)ptr);
+    return ptr;
+}
+
 u8 *memory_allocate_temp(u64 size, u64 alignment) {
     Linear_Allocator *allocator = get_instance_temp();
     size = align(size, alignment);

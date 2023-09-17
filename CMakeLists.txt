@@ -46,16 +46,16 @@ add_executable(Slug
     file.cpp
     spirv.cpp
     test.cpp
-    gltf_ktx.cpp 
+    image.cpp
 
     #clock.cpp
     #camera.cpp
     #gltf.cpp
-    #image.cpp
+    #gltf_ktx.cpp 
 
     external/tlsf.cpp
     external/vk_mem_alloc.cpp
-    #external/stb_image.cpp
+    external/stb_image.cpp
 )
 target_include_directories(Slug PUBLIC external)
 

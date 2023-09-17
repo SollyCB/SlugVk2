@@ -5,6 +5,7 @@
 #include "spirv.hpp"
 #include "gltf_ktx.hpp"
 #include "math.hpp"
+#include "image.hpp"
 
 #if TEST
 #include "test.hpp"
@@ -360,7 +361,10 @@ int main() {
     kill_glfw(glfw);
 #endif
     
-    Ktx ktx = load_ktx("images/generated_flame.ktx");
+    int width, height;
+    const u8 *image_data = load_image("models/cube-static/Cube_BaseColor.png", &width, &height);
+    println("height: %s, width %s", height, width);
+    memory_free_heap((void*)image_data);
 
     kill_allocators();
     return 0;

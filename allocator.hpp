@@ -30,6 +30,7 @@ void kill_heap_allocator();
 void kill_temp_allocator();
 
 u8 *memory_allocate_heap(u64 size, u64 alignment);
+u8 *memory_reallocate_heap(u8 *ptr, u64 new_size);
 u8 *memory_allocate_temp(u64 size, u64 alignment);
 
 // Inlines
