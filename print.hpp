@@ -1,9 +1,9 @@
 #ifndef SOL_PRINT_HPP_INCLUDE_GUARD_
 #define SOL_PRINT_HPP_INCLUDE_GUARD_
 
-#include <iostream>
+#include <stdio.h> // @Todo implement my own streaming to stdout and get rid of printf
 #include <string.h>
-#include <assert.h>
+#include <assert.h> // @Todo get rid of this asserting
 #include <cstdarg>
 #include "typedef.h"
 
@@ -242,8 +242,9 @@ static void println(const char* str, ...) {
 
     va_end(args);
 
-    buf[buf_index] = '\0';
-    std::cout << buf << '\n';
+    buf[buf_index] = '\n';
+    buf[buf_index + 1] = '\0';
+    printf("%s", buf);
 }
 
 static void print(const char* str, ...) {
@@ -319,7 +320,7 @@ static void print(const char* str, ...) {
     va_end(args);
 
     buf[buf_index] = '\0';
-    std::cout << buf;
+    printf("%s", buf);
 }
 
 #endif // include guard
