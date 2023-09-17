@@ -1,6 +1,7 @@
 #include "vulkan_errors.hpp"
 #include "assert.h"
 
+#if DEBUG
 const char *match_vk_error(Vulkan_Result error) {
     switch (error) {
     case VULKAN_SUCCESS:
@@ -99,3 +100,4 @@ const char *match_vk_error(Vulkan_Result error) {
         ASSERT(false, "UNKOWN VULKAN ERROR CODE");
     };
 }
+#endif // if DEBUG

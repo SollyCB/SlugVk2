@@ -3,6 +3,7 @@
 
 #include <iostream>
 
+#if DEBUG
 enum Vulkan_Result {
     VULKAN_SUCCESS = 0,
     VULKAN_NOT_READY = 1,
@@ -63,8 +64,6 @@ enum Vulkan_Result {
 
 const char* match_vk_error(Vulkan_Result error);
 
-#if DEBUG
-
 #ifndef _WIN32
 #define DEBUG_OBJ_CREATION(creation_func, err_code)  \
   if (err_code != (VkResult)VULKAN_SUCCESS) { \
@@ -88,7 +87,7 @@ const char* match_vk_error(Vulkan_Result error);
 
 #else
 
-#define DEBUG_ABORT_CREATION(obj_name, creation_func, err_code)
+#define DEBUG_OBJ_CREATION(creation_func, err_code)
 
 #endif // DEBUG
 

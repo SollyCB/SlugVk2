@@ -6,7 +6,7 @@ Glfw* get_glfw_instance() {
 }
 
 void init_glfw() {
-    ASSERT(glfwInit(), "GLFW Initial Failed");
+    glfwInit();
 
     // no opengl context
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
