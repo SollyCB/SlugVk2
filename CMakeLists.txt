@@ -37,24 +37,25 @@ endif()
 
 # Source
 add_executable(Slug 
-     main.cpp
-     allocator.cpp
-     string.cpp
-     vulkan_errors.cpp
-     gpu.cpp
-     glfw.cpp
-     file.cpp
-     spirv.cpp
-     test.cpp
+    main.cpp
+    allocator.cpp
+    string.cpp
+    vulkan_errors.cpp
+    gpu.cpp
+    glfw.cpp
+    file.cpp
+    spirv.cpp
+    test.cpp
+    gltf_ktx.cpp 
 
-     #clock.cpp
-     #camera.cpp
-     #gltf.cpp
-     #image.cpp
+    #clock.cpp
+    #camera.cpp
+    #gltf.cpp
+    #image.cpp
 
-     external/tlsf.cpp
-     external/vk_mem_alloc.cpp
-     #external/stb_image.cpp
+    external/tlsf.cpp
+    external/vk_mem_alloc.cpp
+    #external/stb_image.cpp
 )
 target_include_directories(Slug PUBLIC external)
 
@@ -78,9 +79,3 @@ else()
     target_link_libraries(Slug PUBLIC "${CMAKE_CURRENT_LIST_DIR}/external/glfw-shared-linux/build/src/libglfw.so")
     target_include_directories(Slug PUBLIC "${CMAKE_CURRENT_LIST_DIR}/external/glfw-shared-linux/include/")
 endif()
-
-# GLM
-#set(BUILD_STATIC_LIBS ON CACHE BOOL "Build GLM static libs...")
-#add_subdirectory(external/glm)
-#target_link_libraries(Slug PUBLIC glm_static)
-#target_include_directories(Slug PUBLIC external/glm)

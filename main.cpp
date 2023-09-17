@@ -3,13 +3,13 @@
 #include "gpu.hpp"
 #include "file.hpp"
 #include "spirv.hpp"
-#include "glm/glm.hpp"
+#include "gltf_ktx.hpp"
+#include "math.hpp"
 
 #if TEST
 #include "test.hpp"
 void run_tests(); // defined below main
 #endif
-
 int main() {
     init_allocators();
 
@@ -17,7 +17,7 @@ int main() {
     run_tests(); 
 #endif
     
-#if 1
+#if 0
     init_glfw(); 
     Glfw *glfw = get_glfw_instance();
 
@@ -61,10 +61,10 @@ int main() {
     VkCommandBuffer *transfer_buffers_2 =
         allocate_vk_primary_command_buffers(gpu->vk_device, &transfer_command_groups[1], 4);
 
-    const glm::vec3 vertices[] = {
-        glm::vec3( 0.0, -0.5, 1.0),
-        glm::vec3( 0.5,  0.5, 1.0),
-        glm::vec3(-0.5,  0.5, 1.0),
+    const Vec3 vertices[] = {
+        get_vec3( 0.0, -0.5, 1.0),
+        get_vec3( 0.5,  0.5, 1.0),
+        get_vec3(-0.5,  0.5, 1.0),
     };
 
     const u64 vert_buffer_size = 256;
@@ -154,7 +154,7 @@ int main() {
         create_vk_pipeline_shader_stages(gpu->vk_device, shader_stage_count, shader_stage_infos);
 
     // Input state
-    Create_Vk_Vertex_Input_Binding_Description_Info vertex_binding_info     = { 0, sizeof(glm::vec3)};
+    Create_Vk_Vertex_Input_Binding_Description_Info vertex_binding_info     = { 0, sizeof(Vec3)};
     Create_Vk_Vertex_Input_Attribute_Description_Info vertex_attribute_info = { 0, 0, 0, VEC_TYPE_3 };
 
     VkVertexInputBindingDescription input_binding = create_vk_vertex_binding_description(&vertex_binding_info);
@@ -293,7 +293,7 @@ int main() {
         // Bind vertex buffers
         u64 offset = 0;
         u64 size = sizeof(vertices);
-        u64 stride = sizeof(glm::vec3);
+        u64 stride = sizeof(Vec3);
         Dyn_Vertex_Bind_Info buffer_bind_info = {0, 1, &dst_vert_buffer.vk_buffer, &offset, &size, &stride};
         cmd_vk_bind_vertex_buffers2(graphics_cmd, &buffer_bind_info);
 
@@ -359,6 +359,8 @@ int main() {
     kill_gpu(gpu);
     kill_glfw(glfw);
 #endif
+    
+    Ktx ktx = load_ktx("images/generated_flame.ktx");
 
     kill_allocators();
     return 0;

@@ -96,9 +96,9 @@ VkInstance create_vk_instance(Create_Vk_Instance_Info *info) {
     };
 #else 
     u32 layer_count = 0;
-    const char **layer_names = NULL;
+    const char *layer_names[] = {};
     u32 ext_count = 0;
-    const char **ext_names = NULL;
+    const char *ext_names[] = {};
 #endif
 
     u32 glfw_ext_count;

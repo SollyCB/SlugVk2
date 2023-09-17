@@ -5,20 +5,20 @@
 #include "print.hpp"
 
 #ifndef _WIN32
-#define HALT_EXECUTION() __builtin_trap()
+    #define HALT_EXECUTION() __builtin_trap()
 #else
-#define HALT_EXECUTION() abort()
+    #define HALT_EXECUTION() abort() // @Todo get rid of abort on windows
 #endif
 
 #if DEBUG 
-#define ASSERT(predicate, fmt) if (!(predicate)) { \
-    std::cout << "ASSERT FAILED IN " << __FILE__ << ", " << __LINE__ << ": " << #predicate << '\n'; \
-    HALT_EXECUTION(); \
-}
+    #define ASSERT(predicate, fmt) if (!(predicate)) { \
+        std::cout << "ASSERT FAILED IN " << __FILE__ << ", " << __LINE__ << ": " << #predicate << '\n'; \
+        HALT_EXECUTION(); \
+    }
 #else
 
-#define ASSERT(predicate, fmt, ...) {}
+    #define ASSERT(predicate, fmt, ...) {}
 
 #endif
 
-#endif
+#endif // include guard
