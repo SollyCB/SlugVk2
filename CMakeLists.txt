@@ -47,11 +47,10 @@ add_executable(Slug
     spirv.cpp
     test.cpp
     image.cpp
+    gltf.cpp
 
     #clock.cpp
     #camera.cpp
-    #gltf.cpp
-    #gltf_ktx.cpp 
 
     external/tlsf.cpp
     external/vk_mem_alloc.cpp

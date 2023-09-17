@@ -3,7 +3,7 @@
 #include "gpu.hpp"
 #include "file.hpp"
 #include "spirv.hpp"
-#include "gltf_ktx.hpp"
+#include "gltf.hpp"
 #include "math.hpp"
 #include "image.hpp"
 
@@ -361,10 +361,7 @@ int main() {
     kill_glfw(glfw);
 #endif
     
-    int width, height;
-    const u8 *image_data = load_image("models/cube-static/Cube_BaseColor.png", &width, &height);
-    println("height: %s, width %s", height, width);
-    memory_free_heap((void*)image_data);
+    Gltf gltf = create_gltf("test_gltf.gltf");
 
     kill_allocators();
     return 0;
