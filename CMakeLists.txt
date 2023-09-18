@@ -49,6 +49,7 @@ add_executable(Slug
     spirv.cpp
     test.cpp
     image.cpp
+    gltf.cpp
 
     #clock.cpp
     #camera.cpp

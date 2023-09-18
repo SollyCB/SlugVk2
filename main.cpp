@@ -5,6 +5,7 @@
 #include "spirv.hpp"
 #include "math.hpp"
 #include "image.hpp"
+#include "gltf.hpp"
 
 #if TEST
 #include "test.hpp"
@@ -361,6 +362,8 @@ int main() {
     kill_glfw(glfw);
 #endif
 
+    Gltf gltf;
+    parse_gltf("test_gltf.gltf", &gltf);
     
     kill_allocators();
     return 0;
