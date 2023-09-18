@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED true)
 set(CMAKE_BUILD_PARALLEL_LEVEL 4)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(CMAKE_CXX_COMPILE_FLAGS -mavx512vl -mavx512bw)
+
 project(Slug)
 
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE) 
@@ -47,7 +49,6 @@ add_executable(Slug
     spirv.cpp
     test.cpp
     image.cpp
-    gltf.cpp
 
     #clock.cpp
     #camera.cpp
@@ -57,6 +58,7 @@ add_executable(Slug
     external/stb_image.cpp
 )
 target_include_directories(Slug PUBLIC external)
+target_compile_options(Slug PUBLIC ${CMAKE_CXX_COMPILE_FLAGS})
 
     ## External libs ##
 # Vulkan

@@ -3,7 +3,6 @@
 #include "gpu.hpp"
 #include "file.hpp"
 #include "spirv.hpp"
-#include "gltf.hpp"
 #include "math.hpp"
 #include "image.hpp"
 
@@ -11,6 +10,7 @@
 #include "test.hpp"
 void run_tests(); // defined below main
 #endif
+
 int main() {
     init_allocators();
 
@@ -360,9 +360,8 @@ int main() {
     kill_gpu(gpu);
     kill_glfw(glfw);
 #endif
-    
-    Gltf gltf = create_gltf("test_gltf.gltf");
 
+    
     kill_allocators();
     return 0;
 }
