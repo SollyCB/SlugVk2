@@ -58,9 +58,10 @@ bool cmp_str(const char *a, const char *b, int len) {
     return true;
 }
 
-Gltf_Key match_key(const char *key, u64 *offset) {
-    if (cmp_str(key + *offset, "accessors", 9)) {
-        offset[0] += str_len("accessors", '\0') + 1;
+Gltf_Key match_key(const char *key, int *len) {
+    if (cmp_str(key, "accessors", 9)) {
+        if (len)
+            *len = str_len("accessors", '\0');
         return GLTF_KEY_ACCESSORS;
     }
 
@@ -80,35 +81,123 @@ void skip_to_char(const char *data, u64 *offset, char c) {
         *offset += 1;
 }
 
-void parse_accessors(Gltf *gltf, const char *data, u64 *offset) {
-    skip_to_char(data, offset, '[');
+bool look_ahead_for_char(const char *data, char c, char s) {
+    for(int i = 0; true; ++i) {
+        if (data[i] == c)
+            return true;
+        if (data[i] != s)
+            return false;
+    }
+}
 
-    u64 start = *offset;
+void skip_white_space(const char *data, u64 *offset) {
+    while(data[*offset] == ' ' || data[*offset] == '\n')
+        *offset += 1;
+}
+void skip_useless_chars(const char *data, u64 *offset) {
+    while(true) {
+        skip_white_space(data, offset);
+        switch(data[*offset]) {
+        case '0':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+        case '-':
+        case '.':
+        case ',':
+            *offset += 1;
+            continue;
+        case ':':
+        {
+            *offset += 1;
+            skip_white_space(data, offset);
+            switch(data[*offset]) {
+            case '"':
+            {
+                *offset += 1;
+                skip_to_char(data, offset, '"');
+                *offset += 1;
+                continue;
+            }
+            case '[':
+            {
+                skip_to_char(data, offset, ']');
+                *offset += 1;
+                continue;
+            }
+            default:
+                continue;
+            }
+        }
+        default:
+            return;
+        } // switch data[*offset]
+    }
+}
+
+void collect_string(const char *data, u64 *offset, char *buf) {
+    int i = 0;
+    while(data[*offset] != '"') {
+        buf[i] = data[*offset];
+        i++;
+        *offset += 1;
+    }
+    buf[i] = '\0';
+}
+
+// parse object
+// parse array
+// parse float
+// parse int
+
+Static_Array<Gltf_Key> parse_accessors(Gltf *gltf, const char *data, u64 *offset) {
+    skip_to_char(data, offset, '[');
+    *offset += 1;
 
     int depth = 0;
+    int key_count = 0;
+    char key_buf[16];
     gltf->accessor_count = 0;
     while(true) {
-        if (data[*offset] == '[' || data[*offset] == '{')
+        skip_useless_chars(data, offset);
+
+        if (data[*offset] == '{') {
+            if (depth == 0) {
+                gltf->accessor_count++;
+            }
+            *offset += 1;
             depth++;
-        if (data[*offset] == ']' || data[*offset] == '}')
+            continue;
+        } else if (data[*offset] == '}') {
+            *offset += 1;
             depth--;
+            continue;
+        }
 
-        if (depth == 1 && data[*offset] == '}')
-            gltf->accessor_count++;
+        if (data[*offset] == '"') {
+            *offset += 1;
+            collect_string(data, offset, key_buf); 
+            key_count++;
+            *offset += 1;
+            continue;
+        }
 
-        if (depth == 0 && data[*offset] == ']')
+        if (data[*offset] == ']' && depth == 0)
             break;
-
-        *offset += 1;
     }
 
     gltf->accessors = (Gltf_Accessor*)memory_allocate_temp(sizeof(Gltf_Accessor) * gltf->accessor_count, 8);
 
-    for(int i = start; i < *offset; ++i) {
-        //parse_accessor()
-    }
-
-    println("%u", gltf->accessor_count);
+    println("Accessor Count: %u", gltf->accessor_count);
+    println("Key Count: %u", key_count);
+    //CAP_TO_LEN_STATIC_ARRAY(keys);
+    return {};
 }
 
 void parse_gltf(const char *file_name, Gltf *gltf) {
@@ -119,7 +208,9 @@ void parse_gltf(const char *file_name, Gltf *gltf) {
     skip_to_char(data, &offset, '"');
 
     offset++;
-    Gltf_Key key = match_key(data, &offset);
+    int key_len;
+    Gltf_Key key = match_key(data + offset, &key_len);
+    offset += key_len + 1;
 
     switch(key) {
     case GLTF_KEY_ACCESSORS:

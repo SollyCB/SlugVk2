@@ -1,7 +1,7 @@
 #include "allocator.hpp"
 
 const u64 DEFAULT_CAP_HEAP_ALLOCATOR = 32 * 1024 * 1024;
-const u64 DEFAULT_CAP_TEMP_ALLOCATOR = 32 * 1024;
+const u64 DEFAULT_CAP_TEMP_ALLOCATOR = 32 * 1024 * 1024;
 
 static Heap_Allocator gHeap;
 static Linear_Allocator gTemp;

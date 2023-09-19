@@ -109,6 +109,13 @@ inline void copy_to_dyn_array(Dyn_Array<T> *array, T *from, u64 item_count) {
 }
 
 template<typename T>
+void cap_to_len_static_array(Static_Array<T> *array) {
+    u64 size_to_cut = sizeof(T) * (array->cap - array->len);
+    cut_tail_temp(size_to_cut);
+    array->cap = array->len;
+}
+
+template<typename T>
 inline T* index_array(Static_Array<T> *array, u64 index) {
     ASSERT(index < array->len, "Static Array Out of Bounds Access");
     return array->data + index;
@@ -144,6 +151,7 @@ inline T* index_array(Dyn_Array<T> *array, u64 index) {
     index_static_array(&array, index);
 #define INDEX_DYN_ARRAY(array, index) \
     index_dyn_array(&array, index);
-
+#define CAP_TO_LEN_STATIC_ARRAY(array) \
+    cap_to_len_static_array(&array);
 
 #endif
