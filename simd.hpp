@@ -2,6 +2,7 @@
 #define SOL_SIMD_HPP_INCLUDE_GUARD_
 
 #include <nmmintrin.h>
+#include <emmintrin.h>
 #include "basic.h"
 #include "builtin_wrappers.h"
 

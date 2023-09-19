@@ -1,7 +1,30 @@
 #include "gltf.hpp"
 #include "file.hpp"
+#include "simd.hpp"
 
 /*
+    After working on the problem more, I hav realised that a json parser would be very difficult. It would not be 
+    hard to serialize the text data into a big block of mem with pointers into that memory mapped to keys. 
+    Just iterate through keys or do a hash look up to find the matching key, deref its pointer to find its data.
+    By just knowing what type of data the key is pointing to, it is trivial to interpret the data on the end of the
+    pointer. 
+
+    However I am going to use my original plan but just in one loop. Because this is much faster than the other option.
+    To serialize all the text data into a memory block meaningful for C++ would be a waste of time, because I would
+    then have to turn that memory block into each of the types of structs which meaningfully map to my application.
+    This process is easier with the memory block than just the text data, but it would be interesting work to make the
+    parser/serialiser, then tiresome boring work to turn that into Gltf_<> structs. It would be slow, as it is
+    essentially two programs, one of which will incur minor cache minsses (the data will be parsed in order, but
+    I will still have to jump around in look ups). As such I will turn the data into Gltf_<> structs straight from
+    the text. This will be more difficult work, as a general task becomes more specific (each gltf property becomes
+    its own task to serialize straight from text, rather than text being largely general (objects, arrays, numbers)
+    and then specific to create from the serialized block).
+
+    This will be much faster: I just pass through the data once, all in order. And at the end I have a bunch
+    of C++ structs all mapped to gltf properties. Cool. Let's begin!
+*/
+
+/* ** Old Note, See Above **
     I am unsure how to implement this file. But I think I have come to a working solution:
 
     I have a working idea:
@@ -40,6 +63,185 @@
     second pass can just call the functions in order.
 */
 
+enum Gltf_Key {
+    GLTF_KEY_BUFFER_VIEW,
+    GLTF_KEY_BYTE_OFFSET,
+    GLTF_KEY_COMPONENT_TYPE,
+    GLTF_KEY_COUNT,
+    GLTF_KEY_MAX,
+    GLTF_KEY_MIN,
+    GLTF_KEY_TYPE,
+    GLTF_KEY_SPARSE,
+    GLTF_KEY_INDICES,
+    GLTF_KEY_VALUES,
+};
+enum Gltf_Type {
+    SCALAR = 1,
+    VEC2   = 2,
+    VEC3   = 3,
+    VEC4   = 4,
+    MAT2   = 5,
+    MAT3   = 6,
+    MAT4   = 7,
+    BYTE = 5120,
+    UNSIGNED_BYTE = 5121,
+    SHORT = 5122,
+    UNSIGNED_SHORT = 5123,
+    UNSIGNED_INT = 5125,
+    FLOAT = 5126,
+};
+
+void skip_passed_char(const char *data, u64 *offset, char c) {
+    while(data[*offset] != c)
+        *offset += 1;
+    *offset += 1;
+}
+
+// increments beyond end char
+void collect_string(const char *data, u64 *offset, char c, char *buf) {
+    int i = 0;
+    while(data[*offset] != c) {
+        buf[i] = data[*offset];
+        *offset += 1;
+        i++;
+    }
+    buf[i] = '\0';
+    *offset += 1;
+}
+
+struct Key_Pad {
+    const char *key;
+    u8 padding;
+};
+
+// string must be assumed 16 in len
+static int find_string_in_list(const char *string, const Key_Pad *keys, int count) {
+    for(int i = 0; i < count; ++i) {
+        if(simd_strcmp_short(string, keys[i].key, keys[i].padding) == 0)
+            return i;
+    }
+    return -1;
+}
+
+static int find_int(const char *data, u64 *offset) {
+    while(data[*offset] < 48 || data[*offset] > 57)
+        *offset += 1;
+
+    int len = 0;
+    while(data[*offset + len] > 48 && data[*offset] < 57)
+        len++;
+
+    return len;
+}
+
+static int match_int(char c) {
+    switch(c) {
+    case '0':
+        return 0;
+    case '1':
+        return 1;
+    case '2':
+        return 2;
+    case '3':
+        return 3;
+    case '4':
+        return 4;
+    case '5':
+        return 5;
+    case '6':
+        return 6;
+    case '7':
+        return 7;
+    case '8':
+        return 8;
+    case '9':
+        return 9;
+    default:
+        ASSERT(false && "not an int", "");
+    }
+}
+
+// @Note I am surprised that I cannot find a SSE intrinsic to do this.
+inline static int pow(int num, int exp) {
+    int accum = 1;
+    for(int i = 1; i < exp; ++i) {
+        accum *= num;
+    }
+    return accum;
+}
+
+static int get_int(const char *data, u64 *offset) {
+    int len = find_int(data, offset);
+
+    int num;
+    int mul;
+    int accum = 0;
+    for(int i = len; i > 0; --i) {
+        num = match_int(data[*offset]);
+        mul = pow(10, i);
+
+        accum += mul * num;
+        *offset += 1;
+    }
+    return accum;
+}
+
+Gltf_Accessor parse_accessor(const char *data, u64 *offset) {
+    Key_Pad keys[] = {
+        {"bufferViewxxxxxx",  6},
+        {"byteOffsetxxxxxx",  6},
+        {"componentTypexxx",  3},
+        {"countxxxxxxxxxxx", 11},
+        {"maxxxxxxxxxxxxxx", 13},
+        {"minxxxxxxxxxxxxx", 13},
+        {"typexxxxxxxxxxxx", 12},
+        {"sparsexxxxxxxxxx", 10},
+    };
+    int key_count = 8;
+
+    Gltf_Accessor accessor;
+    char buf[16];
+    int key_index;
+    while(data[*offset] != '}') {
+        skip_passed_char(data, offset, '"');
+        collect_string(data, offset, '"', buf);
+
+        key_index = find_string_in_list(buf, keys, key_count);
+        switch(key_index) {
+        case 1:
+        {
+            accessor.buffer_view = get_int(data, offset);
+            println("Buffer View: %u", accessor.buffer_view);
+            break;
+        }
+        default:
+            ASSERT(false, "Unimplemented Key");
+        }
+    }
+    return accessor;
+}
+
+void parse_accessors(Gltf *gltf, const char *data, u64 *offset) {
+}
+
+Gltf parse_gltf(const char *filename) {
+    Gltf gltf;
+
+    u64 size;
+    const char *data = (const char*)file_read_char_heap(filename, &size);
+
+    char buf[16];
+    u64 offset = 0;
+    skip_passed_char(data, &offset, '"');
+    collect_string(data, &offset, '"', buf);
+    Gltf_Accessor x = parse_accessor(data, &offset);
+
+    return gltf;
+}
+
+#if 0
+
+*********************************************
 enum Gltf_Key {
     GLTF_KEY_INVALID,
     GLTF_KEY_ACCESSORS,
@@ -151,11 +353,7 @@ void collect_string(const char *data, u64 *offset, char *buf) {
     buf[i] = '\0';
 }
 
-// parse object
-// parse array
-// parse float
-// parse int
-
+// This can spit out a list of keys, and a list of values.
 Static_Array<Gltf_Key> parse_accessors(Gltf *gltf, const char *data, u64 *offset) {
     skip_to_char(data, offset, '[');
     *offset += 1;
@@ -202,6 +400,7 @@ Static_Array<Gltf_Key> parse_accessors(Gltf *gltf, const char *data, u64 *offset
 
 void parse_gltf(const char *file_name, Gltf *gltf) {
     u64 size;
+    // @Todo pad file
     const char *data = (const char*)file_read_char_heap(file_name, &size);
     
     u64 offset = 0;
@@ -222,3 +421,4 @@ void parse_gltf(const char *file_name, Gltf *gltf) {
         ASSERT(false, "Unimplemented Key");
     }
 }
+#endif

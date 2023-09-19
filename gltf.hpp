@@ -12,6 +12,6 @@ struct Gltf {
     int accessor_count;
     Gltf_Accessor *accessors;
 };
-void parse_gltf(const char *file_name, Gltf *gltf);
+Gltf parse_gltf(const char *file_name);
 
 #endif // include guard
