@@ -1,7 +1,3 @@
-#include "gltf.hpp"
-#include "file.hpp"
-#include "simd.hpp"
-
 /*
     After working on the problem more, I hav realised that a json parser would be very difficult. It would not be 
     hard to serialize the text data into a big block of mem with pointers into that memory mapped to keys. 
@@ -127,6 +123,70 @@ int main() {
 }
 */
 
+#include "gltf.hpp"
+#include "file.hpp"
+#include "simd.hpp"
+#include "builtin_wrappers.h"
+
+// string assumed 16 len
+int resolve_depth(u16 mask1, u16 mask2, int current_depth, int *results) {
+    u8 tz;
+    int open;
+    int index = 0;
+    while(mask1) {
+        tz = count_trailing_zeros_u16(mask1); 
+        open = pop_count16(mask2 << (16 - tz));
+
+        current_depth -= 1;
+        if (current_depth + open == 0) {
+            results[index] = tz; 
+            ++index;
+        }
+
+        mask1 ^= 1 << tz;
+    }
+    return index;
+}
+
+int get_object_array_len(const char *string, u64 *offset) {
+    int array_depth  = 0;
+    int object_depth = 0;
+    int object_count = 0;
+    int rd;
+    int rds[8];
+    u16 mask1;
+    u16 mask2;
+    while(true) {
+        // check array
+        mask1 = simd_match_char(string + *offset, ']');
+        mask2 = simd_match_char(string + *offset, '[');
+        if (array_depth - pop_count16(mask1) <= 0) {
+            rd = resolve_depth(mask1, mask2, array_depth, rds);
+            if(rd != 0) {
+                // check object within the end of the array
+                mask1 = simd_match_char(string + *offset, '}') << (16 - rds[0]);
+                mask2 = simd_match_char(string + *offset, '{') << (16 - rds[0]);
+                if (object_depth - pop_count16(mask1) <= 0) {
+                    object_count += resolve_depth(mask1, mask2, object_depth, rds);
+                }
+                *offset += rds[0];
+                return object_count;
+            }
+        }
+        array_depth += pop_count16(mask2) - pop_count16(mask1);
+
+        // check object
+        mask1 = simd_match_char(string + *offset, '}');
+        mask2 = simd_match_char(string + *offset, '{');
+        if (object_depth - pop_count16(mask1) <= 0) {
+            object_count += resolve_depth(mask1, mask2, object_depth, rds);
+        }
+        object_depth += pop_count16(mask2) - pop_count16(mask1);
+
+        *offset += 16;
+    }
+}
+
 enum Gltf_Key {
     GLTF_KEY_BUFFER_VIEW,
     GLTF_KEY_BYTE_OFFSET,
@@ -154,6 +214,11 @@ enum Gltf_Type {
     UNSIGNED_INT = 5125,
     FLOAT = 5126,
 };
+
+void skip_to_char(const char *data, u64 *offset, char c) {
+    while(data[*offset] != c)
+        *offset += 1;
+}
 
 void skip_passed_char(const char *data, u64 *offset, char c) {
     while(data[*offset] != c)
@@ -289,10 +354,18 @@ void parse_accessors(Gltf *gltf, const char *data, u64 *offset) {
 }
 
 Gltf parse_gltf(const char *filename) {
-    Gltf gltf;
-
     u64 size;
     const char *data = (const char*)file_read_char_heap(filename, &size);
+
+    u64 offset = 0;
+    skip_to_char(data, &offset, '[');
+    int len = get_object_array_len(data, &offset);
+    println("Len: %s", len);
+
+    Gltf gltf;
+    return gltf;
+    #if 0
+    Gltf gltf;
 
     char buf[16];
     u64 offset = 0;
@@ -301,6 +374,7 @@ Gltf parse_gltf(const char *filename) {
     Gltf_Accessor x = parse_accessor(data, &offset);
 
     return gltf;
+    #endif
 }
 
 #if 0
@@ -464,8 +538,8 @@ Static_Array<Gltf_Key> parse_accessors(Gltf *gltf, const char *data, u64 *offset
 
 void parse_gltf(const char *file_name, Gltf *gltf) {
     u64 size;
-    // @Todo pad file
-    const char *data = (const char*)file_read_char_heap(file_name, &size);
+    // pad file to not segfault off the end with simd
+    const char *data = (const char*)file_read_char_heap_padded(file_name, &size, 16);
     
     u64 offset = 0;
     skip_to_char(data, &offset, '"');

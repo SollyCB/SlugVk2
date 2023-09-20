@@ -2,7 +2,7 @@
     "accessors": [
         {
             "bufferView": 0,
-            "byteOffset": 0,
+            "byteOffset": 100,
             "componentType": 5123,
             "count": 12636,
             "max": [
@@ -15,7 +15,7 @@
         },
         {
             "bufferView": 1,
-            "byteOffset": 0,
+            "byteOffset": 200,
             "componentType": 5126,
             "count": 2399,
             "max": [
@@ -31,8 +31,8 @@
             "type": "VEC3"
         },
         {
-            "bufferView": 0,
-            "byteOffset": 0,
+            "bufferView": 2,
+            "byteOffset": 300,
             "componentType": 5123,
             "count": 12636,
             "type": "VEC3",
