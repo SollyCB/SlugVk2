@@ -63,6 +63,70 @@
     second pass can just call the functions in order.
 */
 
+/* **** Code example for calculating the length of json arrays with simd *****
+
+// string assumed 16 len
+inline static u16 simd_match_char(const char *string, char c) {
+    __m128i a = _mm_loadu_si128((__m128i*)string);
+    __m128i b = _mm_set1_epi8(c);
+    a = _mm_cmpeq_epi8(a, b);
+    return _mm_movemask_epi8(a);
+}
+
+inline static int pop_count(u16 mask) {
+    return __builtin_popcount(mask);
+}
+inline static int ctz(u16 mask) {
+    return __builtin_ctz(mask);
+}
+inline static int clzs(u16 mask) {
+    return __builtin_clzs(mask);
+}
+
+int resolve_depth(u16 mask1, u16 mask2, int current_depth) {
+    u8 tz;
+    int open;
+    while(mask1) {
+        tz = ctz(mask1); 
+        open = pop_count(mask2 << (16 - tz));
+
+        current_depth -= 1;
+        if (current_depth + open == 0)
+            return tz;
+
+        mask1 ^= 1 << tz;
+    }
+    return -1;
+}
+
+int get_obj_array_len(const char *string, u64 *offset) {
+    u16 mask1;
+    u16 mask2;
+    int array_depth = 0;
+    int ret;
+    while(true) {
+        mask1 = simd_match_char(string + *offset, ']');
+        mask2 = simd_match_char(string + *offset, '[');
+        if (array_depth - pop_count(mask1) <= 0) {
+            ret = resolve_depth(mask1, mask2, array_depth);
+            if(ret != -1)
+                return *offset + ret;
+        }
+        array_depth += pop_count(mask2) - pop_count(mask1);
+        *offset += 16;
+    }
+}
+int main() {
+    const char *d = "[[[[xxxxxxxxxxxxx]]]xxxxxxxxxxx]";
+
+    u64 offset = 0;
+    int x = get_obj_array_len(d, &offset);
+    printf("%i", x);
+
+    return 0;
+}
+*/
+
 enum Gltf_Key {
     GLTF_KEY_BUFFER_VIEW,
     GLTF_KEY_BYTE_OFFSET,
