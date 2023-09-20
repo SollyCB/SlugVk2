@@ -6,6 +6,7 @@
 #include "math.hpp"
 #include "image.hpp"
 #include "gltf.hpp"
+#include "simd.hpp"
 
 #if TEST
 #include "test.hpp"
@@ -363,6 +364,7 @@ int main() {
 #endif
 
     Gltf gltf = parse_gltf("test_gltf.gltf");
+
     
     kill_allocators();
     return 0;

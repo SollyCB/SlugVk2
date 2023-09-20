@@ -314,8 +314,11 @@ static int get_int(const char *data, u64 *offset) {
     }
     return accum;
 }
+// algorithms end
 
-Gltf_Accessor parse_accessor(const char *data, u64 *offset) {
+typedef void (*Gltf_Parser_Func)(Gltf *gltf, const char *data, u64 *offset);
+
+void parse_accessor(Gltf_Accessor *accessor, const char *data, u64 *offset) {
     Key_Pad keys[] = {
         {"bufferViewxxxxxx",  6},
         {"byteOffsetxxxxxx",  6},
@@ -328,53 +331,65 @@ Gltf_Accessor parse_accessor(const char *data, u64 *offset) {
     };
     int key_count = 8;
 
-    Gltf_Accessor accessor;
-    char buf[16];
+    Gltf_Parser_Func parser_funcs[] = {
+        // parse_bufferview
+        // ^^ this so small, just do it on the match probably
+    };
+
+// @TODO Current task:
+//      create list of function pointers to matching keys (see parse gltf function)
+//      write these parser functions
+
     int key_index;
     while(data[*offset] != '}') {
         skip_passed_char(data, offset, '"');
-        collect_string(data, offset, '"', buf);
 
-        key_index = find_string_in_list(buf, keys, key_count);
-        switch(key_index) {
-        case 1:
-        {
-            accessor.buffer_view = get_int(data, offset);
-            println("Buffer View: %u", accessor.buffer_view);
-            break;
+        if (simd_strcmp_short(data + *offset, keys[0].key, keys[0].padding) == 0) {
+            accessor->buffer_view = get_int(data, offset);
+            println("Buffer View: %u", accessor->buffer_view);
+            ASSERT(false, "Break For Now");
         }
-        default:
-            ASSERT(false, "Unimplemented Key");
-        }
+
     }
-    return accessor;
 }
 
 void parse_accessors(Gltf *gltf, const char *data, u64 *offset) {
+    u64 start = *offset;
+    gltf->accessor_count = get_object_array_len(data, offset);
+    gltf->accessors =
+        (Gltf_Accessor*)memory_allocate_temp( sizeof(Gltf_Accessor) * gltf->accessor_count, 8);
+    for(int i = 0; i < gltf->accessor_count; ++i) {
+        parse_accessor(&gltf->accessors[i], data, &start);
+    }
 }
 
 Gltf parse_gltf(const char *filename) {
     u64 size;
     const char *data = (const char*)file_read_char_heap(filename, &size);
-
-    u64 offset = 0;
-    skip_to_char(data, &offset, '[');
-    int len = get_object_array_len(data, &offset);
-    println("Len: %s", len);
-
     Gltf gltf;
-    return gltf;
-    #if 0
-    Gltf gltf;
-
     char buf[16];
     u64 offset = 0;
+
+    Key_Pad keys[] = {
+        {"accessorsxxxxxxx", 7},
+    };
+    const int key_count = 1;
+    int match_count = 0;
+
+    //void (*gltf_parser_func[])(Gltf *gltf, const char *data, u64 *offset) = {
+    Gltf_Parser_Func parser_funcs[] = {
+        &parse_accessors,
+    };
+
     skip_passed_char(data, &offset, '"');
-    collect_string(data, &offset, '"', buf);
-    Gltf_Accessor x = parse_accessor(data, &offset);
+
+    // @Note I could reshuffle the list on each match (swap the found one 
+    // with the one closest to the end which hasnt been found), but the list is so short
+    // and the branches so unpredictable that who cares...
+    int index = find_string_in_list(data + offset, keys, key_count);
+    (*parser_funcs[index])(&gltf, data, &offset);
 
     return gltf;
-    #endif
 }
 
 #if 0
@@ -536,13 +551,17 @@ Static_Array<Gltf_Key> parse_accessors(Gltf *gltf, const char *data, u64 *offset
     return {};
 }
 
+static void match_key(int count, const char **keys, const char *key, void **function_pointers) {
+    for(itn
+}
+
 void parse_gltf(const char *file_name, Gltf *gltf) {
     u64 size;
     // pad file to not segfault off the end with simd
     const char *data = (const char*)file_read_char_heap_padded(file_name, &size, 16);
     
     u64 offset = 0;
-    skip_to_char(data, &offset, '"');
+    skip_passed_char(data, &offset, '"');
 
     offset++;
     int key_len;
