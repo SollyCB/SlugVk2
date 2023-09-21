@@ -148,7 +148,7 @@ int resolve_depth(u16 mask1, u16 mask2, int current_depth, int *results) {
     return index;
 }
 
-int get_object_array_len(const char *string, u64 *offset) {
+int get_object_array_len(const char *string, u64 *offset, u64 *object_offsets) {
     int array_depth  = 0;
     int object_depth = 0;
     int object_count = 0;
@@ -156,6 +156,7 @@ int get_object_array_len(const char *string, u64 *offset) {
     int rds[8];
     u16 mask1;
     u16 mask2;
+    u16 temp_count;
     while(true) {
         // check array
         mask1 = simd_match_char(string + *offset, ']');
@@ -167,7 +168,10 @@ int get_object_array_len(const char *string, u64 *offset) {
                 mask1 = simd_match_char(string + *offset, '}') << (16 - rds[0]);
                 mask2 = simd_match_char(string + *offset, '{') << (16 - rds[0]);
                 if (object_depth - pop_count16(mask1) <= 0) {
+                    temp_count = object_count;
                     object_count += resolve_depth(mask1, mask2, object_depth, rds);
+                    for(int i = temp_count; i < object_count; ++i)
+                        object_offsets[i] = *offset + rds[i - temp_count];
                 }
                 *offset += rds[0];
                 return object_count;
@@ -179,7 +183,10 @@ int get_object_array_len(const char *string, u64 *offset) {
         mask1 = simd_match_char(string + *offset, '}');
         mask2 = simd_match_char(string + *offset, '{');
         if (object_depth - pop_count16(mask1) <= 0) {
+            temp_count = object_count;
             object_count += resolve_depth(mask1, mask2, object_depth, rds);
+            for(int i = temp_count; i < object_count; ++i)
+                object_offsets[i] = *offset + rds[i - temp_count];
         }
         object_depth += pop_count16(mask2) - pop_count16(mask1);
 
@@ -318,7 +325,7 @@ static int get_int(const char *data, u64 *offset) {
 
 typedef void (*Gltf_Parser_Func)(Gltf *gltf, const char *data, u64 *offset);
 
-void parse_accessor(Gltf_Accessor *accessor, const char *data, u64 *offset) {
+void parse_accessor(Gltf_Accessor *accessor, const char *data, u64 *offset, u64 limit) {
     Key_Pad keys[] = {
         {"bufferViewxxxxxx",  6},
         {"byteOffsetxxxxxx",  6},
@@ -342,7 +349,7 @@ void parse_accessor(Gltf_Accessor *accessor, const char *data, u64 *offset) {
 
     int key_index;
     while(data[*offset] != '}') {
-        skip_passed_char(data, offset, '"');
+        simd_skip_passed_char(data, offset, '"', limit);
 
         if (simd_strcmp_short(data + *offset, keys[0].key, keys[0].padding) == 0) {
             accessor->buffer_view = get_int(data, offset);
@@ -355,11 +362,14 @@ void parse_accessor(Gltf_Accessor *accessor, const char *data, u64 *offset) {
 
 void parse_accessors(Gltf *gltf, const char *data, u64 *offset) {
     u64 start = *offset;
-    gltf->accessor_count = get_object_array_len(data, offset);
+    u64 object_offsets[128]; // Assume 128 or fewer accessors
+
+    gltf->accessor_count = get_object_array_len(data, offset, object_offsets);
     gltf->accessors =
         (Gltf_Accessor*)memory_allocate_temp( sizeof(Gltf_Accessor) * gltf->accessor_count, 8);
+
     for(int i = 0; i < gltf->accessor_count; ++i) {
-        parse_accessor(&gltf->accessors[i], data, &start);
+        parse_accessor(&gltf->accessors[i], data, &start, object_offsets[i]);
     }
 }
 
@@ -381,7 +391,7 @@ Gltf parse_gltf(const char *filename) {
         &parse_accessors,
     };
 
-    skip_passed_char(data, &offset, '"');
+    simd_skip_passed_char(data, &offset, '"', size);
 
     // @Note I could reshuffle the list on each match (swap the found one 
     // with the one closest to the end which hasnt been found), but the list is so short
@@ -561,7 +571,7 @@ void parse_gltf(const char *file_name, Gltf *gltf) {
     const char *data = (const char*)file_read_char_heap_padded(file_name, &size, 16);
     
     u64 offset = 0;
-    skip_passed_char(data, &offset, '"');
+    simd_skip_passed_char(data, &offset, '"');
 
     offset++;
     int key_len;

@@ -1,8 +1,7 @@
 #ifndef SOL_ASSERT_H_INCLUDE_GUARD_
 #define SOL_ASSERT_H_INCLUDE_GUARD_
 
-#include <iostream>
-#include "print.hpp"
+#include <iostream> // i really dont want iostream but idk how else to print __file__ and __function__
 
 #ifndef _WIN32
     #define HALT_EXECUTION() __builtin_trap()
@@ -12,7 +11,8 @@
 
 #if DEBUG 
     #define ASSERT(predicate, fmt) if (!(predicate)) { \
-        std::cout << "ASSERT FAILED IN " << __FILE__ << ", " << __LINE__ << ": " << #predicate << '\n'; \
+        std::cout << "Assert Failed in " << __FILE__ << ", " << __FUNCTION__ << "(...), Line " \
+        << __LINE__ << ": " << #predicate << '\n'; \
         HALT_EXECUTION(); \
     }
 #else

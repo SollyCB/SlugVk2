@@ -15,7 +15,7 @@ struct Glfw {
 Glfw* get_glfw_instance();
 
 static void error_callback_glfw(int error, const char *description) {
-    std::cerr << "GLFW Error: " << description << '\n';
+    println("GLFW Error: ", description);
 }
 
 void init_glfw(); 

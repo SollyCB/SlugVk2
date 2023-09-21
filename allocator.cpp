@@ -1,4 +1,6 @@
+#include <cstdlib>
 #include "allocator.hpp"
+#include "print.hpp"
 
 const u64 DEFAULT_CAP_HEAP_ALLOCATOR = 32 * 1024 * 1024;
 const u64 DEFAULT_CAP_TEMP_ALLOCATOR = 32 * 1024 * 1024;
@@ -15,10 +17,9 @@ Linear_Allocator *get_instance_temp() {
 
 void init_allocators() {
     println("\nInitializing Allocators:");
-    std::cout << "    Initial Capacity (Heap Allocator): " <<  DEFAULT_CAP_HEAP_ALLOCATOR << '\n';
-    std::cout << "    Initial Capacity (Temp Allocator): " <<  DEFAULT_CAP_TEMP_ALLOCATOR << '\n';
-
-    std::cout << '\n';
+    println("    Initial Capacity (Heap Allocator): %u", DEFAULT_CAP_HEAP_ALLOCATOR);
+    println("    Initial Capacity (Temp Allocator): %u", DEFAULT_CAP_TEMP_ALLOCATOR);
+    println("");
     init_heap_allocator(DEFAULT_CAP_HEAP_ALLOCATOR);
     init_temp_allocator(DEFAULT_CAP_TEMP_ALLOCATOR);
 }
@@ -26,7 +27,7 @@ void kill_allocators() {
     println("\nShutting Down Allocators...");
     kill_heap_allocator();
     kill_temp_allocator();
-    std::cout << '\n';
+    println("");
 }
 
 void init_heap_allocator(u64 size) {
@@ -51,13 +52,13 @@ void kill_heap_allocator() {
     pool_t pool = tlsf_get_pool(allocator->tlsf_handle);
 
     tlsf_walk_pool(pool, NULL, (void*)&memory_stats);
-    std::cout << "    Remaining Size in Heap Allocator: " << allocator->used << '\n';
+    println("    Remaining Size in Heap Allocator: %u", allocator->used);
 #endif
 }
 void kill_temp_allocator() {
 #if DEBUG
     Linear_Allocator *allocator = get_instance_temp();
-    std::cout << "    Remaining Size in Temp Allocator: " <<  allocator->used << '\n';
+    println("    Remaining Size in Temp Allocator: %u", allocator->used);
 #endif
 }
 

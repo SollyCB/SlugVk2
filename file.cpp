@@ -4,7 +4,7 @@ const u8* file_read_bin_temp(const char *file_name, u64 *size) {
     FILE *file = fopen(file_name, "rb");
 
     if (!file) {
-        std::cerr << "FAILED TO READ FILE " << file_name << "!\n";
+        println("FAILED TO READ FILE %c", file_name);
         return nullptr;
     }
 
@@ -31,7 +31,7 @@ const u8* file_read_bin_heap(const char *file_name, u64 *size) {
     FILE *file = fopen(file_name, "rb");
 
     if (!file) {
-        std::cerr << "FAILED TO READ FILE " << file_name << "!\n";
+        println("FAILED TO READ FILE %c", file_name);
         return nullptr;
     }
 
@@ -46,7 +46,7 @@ const u8* file_read_bin_heap(const char *file_name, u64 *size) {
     size_t read = fread(contents, 1, *size, file);
 
     if (*size != read)
-        println("Failed to read entire file");
+        println("Failed to read entire file, %c", file_name);
 
     //ASSERT(read == *byte_count, "Failed to read entire file: read = %i, file_len = %i", read, *byte_count);
     fclose(file);
@@ -57,7 +57,7 @@ const u8* file_read_char_temp(const char *file_name, u64 *size) {
     FILE *file = fopen(file_name, "r");
 
     if (!file) {
-        std::cerr << "FAILED TO READ FILE " << file_name << "!\n";
+        println("Failed to read file %c", file_name);
         return nullptr;
     }
 
@@ -72,7 +72,7 @@ const u8* file_read_char_temp(const char *file_name, u64 *size) {
     size_t read = fread(contents, 1, *size, file);
 
     if (*size != read)
-        println("Failed to read entire file");
+        println("Failed to read entire file, %c", file_name);
 
     //ASSERT(read == *byte_count, "Failed to read entire file: read = %i, file_len = %i", read, *byte_count);
     fclose(file);
@@ -84,7 +84,7 @@ const u8* file_read_char_heap(const char *file_name, u64 *size) {
     FILE *file = fopen(file_name, "r");
 
     if (!file) {
-        std::cerr << "FAILED TO READ FILE " << file_name << "!\n";
+        println("FAILED TO READ FILE %c", file_name);
         return nullptr;
     }
 
@@ -111,7 +111,7 @@ const u8* file_read_char_heap_padded(const char *file_name, u64 *size, int pad_s
     FILE *file = fopen(file_name, "r");
 
     if (!file) {
-        std::cerr << "FAILED TO READ FILE " << file_name << "!\n";
+        println("FAILED TO READ FILE %c", file_name);
         return nullptr;
     }
 
@@ -126,7 +126,7 @@ const u8* file_read_char_heap_padded(const char *file_name, u64 *size, int pad_s
     size_t read = fread(contents, 1, *size, file);
 
     if (*size != read)
-        println("Failed to read entire file");
+        println("Failed to read entire file %c", file_name);
 
     //ASSERT(read == *byte_count, "Failed to read entire file: read = %i, file_len = %i", read, *byte_count);
     fclose(file);
