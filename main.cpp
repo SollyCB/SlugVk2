@@ -364,7 +364,6 @@ int main() {
 #endif
 
     Gltf gltf = parse_gltf("test_gltf.gltf");
-
     
     kill_allocators();
     return 0;

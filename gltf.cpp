@@ -1,4 +1,13 @@
+
 /*
+    Final Solution:
+        Loop the file once, parse as I go. No need to loop once to tokenize or get other info. Memory access
+        and branching will never be that clean for this task regardless of the method, and since I expect that
+        these files can get pretty large, only needing one pass seems like it would be fastest.
+*/
+
+
+/* ** Old Note See Above **
     After working on the problem more, I hav realised that a json parser would be very difficult. It would not be 
     hard to serialize the text data into a big block of mem with pointers into that memory mapped to keys. 
     Just iterate through keys or do a hash look up to find the matching key, deref its pointer to find its data.
@@ -148,7 +157,8 @@ int resolve_depth(u16 mask1, u16 mask2, int current_depth, int *results) {
     return index;
 }
 
-int get_object_array_len(const char *string, u64 *offset, u64 *object_offsets) {
+int parse_object_array_len(const char *string, u64 *offset, u64 *object_offsets) {
+    u64 inc = 0;
     int array_depth  = 0;
     int object_depth = 0;
     int object_count = 0;
@@ -159,38 +169,39 @@ int get_object_array_len(const char *string, u64 *offset, u64 *object_offsets) {
     u16 temp_count;
     while(true) {
         // check array
-        mask1 = simd_match_char(string + *offset, ']');
-        mask2 = simd_match_char(string + *offset, '[');
+        mask1 = simd_match_char(string + inc, ']');
+        mask2 = simd_match_char(string + inc, '[');
         if (array_depth - pop_count16(mask1) <= 0) {
             rd = resolve_depth(mask1, mask2, array_depth, rds);
             if(rd != 0) {
                 // check object within the end of the array
-                mask1 = simd_match_char(string + *offset, '}') << (16 - rds[0]);
-                mask2 = simd_match_char(string + *offset, '{') << (16 - rds[0]);
+                mask1 = simd_match_char(string + inc, '}') << (16 - rds[0]);
+                mask2 = simd_match_char(string + inc, '{') << (16 - rds[0]);
                 if (object_depth - pop_count16(mask1) <= 0) {
                     temp_count = object_count;
                     object_count += resolve_depth(mask1, mask2, object_depth, rds);
                     for(int i = temp_count; i < object_count; ++i)
-                        object_offsets[i] = *offset + rds[i - temp_count];
+                        object_offsets[i] = inc + rds[i - temp_count];
                 }
-                *offset += rds[0];
+                inc += rds[0];
+                *offset += inc; // deref offset only once just to keep cache as clean as possible
                 return object_count;
             }
         }
         array_depth += pop_count16(mask2) - pop_count16(mask1);
 
         // check object
-        mask1 = simd_match_char(string + *offset, '}');
-        mask2 = simd_match_char(string + *offset, '{');
+        mask1 = simd_match_char(string + inc, '}');
+        mask2 = simd_match_char(string + inc, '{');
         if (object_depth - pop_count16(mask1) <= 0) {
             temp_count = object_count;
             object_count += resolve_depth(mask1, mask2, object_depth, rds);
             for(int i = temp_count; i < object_count; ++i)
-                object_offsets[i] = *offset + rds[i - temp_count];
+                object_offsets[i] = inc + rds[i - temp_count];
         }
         object_depth += pop_count16(mask2) - pop_count16(mask1);
 
-        *offset += 16;
+        inc += 16;
     }
 }
 
@@ -206,43 +217,18 @@ enum Gltf_Key {
     GLTF_KEY_INDICES,
     GLTF_KEY_VALUES,
 };
-enum Gltf_Type {
-    SCALAR = 1,
-    VEC2   = 2,
-    VEC3   = 3,
-    VEC4   = 4,
-    MAT2   = 5,
-    MAT3   = 6,
-    MAT4   = 7,
-    BYTE = 5120,
-    UNSIGNED_BYTE = 5121,
-    SHORT = 5122,
-    UNSIGNED_SHORT = 5123,
-    UNSIGNED_INT = 5125,
-    FLOAT = 5126,
-};
-
-void skip_to_char(const char *data, u64 *offset, char c) {
-    while(data[*offset] != c)
-        *offset += 1;
-}
-
-void skip_passed_char(const char *data, u64 *offset, char c) {
-    while(data[*offset] != c)
-        *offset += 1;
-    *offset += 1;
-}
 
 // increments beyond end char
 void collect_string(const char *data, u64 *offset, char c, char *buf) {
     int i = 0;
-    while(data[*offset] != c) {
-        buf[i] = data[*offset];
-        *offset += 1;
-        i++;
+    u64 inc = 0;
+    while(data[inc] != c) {
+        buf[i] = data[inc];
+        ++inc;
+        ++i;
     }
     buf[i] = '\0';
-    *offset += 1;
+    *offset += inc + 1;
 }
 
 struct Key_Pad {
@@ -270,7 +256,7 @@ static int find_int(const char *data, u64 *offset) {
     return len;
 }
 
-static int match_int(char c) {
+inline static int match_int(char c) {
     switch(c) {
     case '0':
         return 0;
@@ -297,7 +283,23 @@ static int match_int(char c) {
     }
 }
 
-// @Note I am surprised that I cannot find a SSE intrinsic to do this.
+static inline int ascii_to_int(const char *data, u64 *offset) {
+    u64 start = 0;
+    if (!simd_skip_to_int(data, &start, 128))
+        ASSERT(false, "Failed to find an integer in search range");
+
+    data += start;
+    int accum = 0;
+    while(data[start] > '0' && data[start] < '9') {
+        accum *= 10;
+        accum += match_int(data[start]);
+        start++;
+    }
+    *offset += start;
+    return accum;
+}
+
+// @Note I am surprised that I cannot find an SSE intrinsic to do this.
 inline static int pow(int num, int exp) {
     int accum = 1;
     for(int i = 1; i < exp; ++i) {
@@ -308,6 +310,7 @@ inline static int pow(int num, int exp) {
 
 static int get_int(const char *data, u64 *offset) {
     int len = find_int(data, offset);
+    u64 inc = *offset;
 
     int num;
     int mul;
@@ -317,8 +320,9 @@ static int get_int(const char *data, u64 *offset) {
         mul = pow(10, i);
 
         accum += mul * num;
-        *offset += 1;
+        inc += 1;
     }
+    *offset += inc;
     return accum;
 }
 // algorithms end
@@ -326,22 +330,6 @@ static int get_int(const char *data, u64 *offset) {
 typedef void (*Gltf_Parser_Func)(Gltf *gltf, const char *data, u64 *offset);
 
 void parse_accessor(Gltf_Accessor *accessor, const char *data, u64 *offset, u64 limit) {
-    Key_Pad keys[] = {
-        {"bufferViewxxxxxx",  6},
-        {"byteOffsetxxxxxx",  6},
-        {"componentTypexxx",  3},
-        {"countxxxxxxxxxxx", 11},
-        {"maxxxxxxxxxxxxxx", 13},
-        {"minxxxxxxxxxxxxx", 13},
-        {"typexxxxxxxxxxxx", 12},
-        {"sparsexxxxxxxxxx", 10},
-    };
-    int key_count = 8;
-
-    Gltf_Parser_Func parser_funcs[] = {
-        // parse_bufferview
-        // ^^ this so small, just do it on the match probably
-    };
 
 // @TODO Current task:
 //      create list of function pointers to matching keys (see parse gltf function)
@@ -352,7 +340,7 @@ void parse_accessor(Gltf_Accessor *accessor, const char *data, u64 *offset, u64 
         simd_skip_passed_char(data, offset, '"', limit);
 
         if (simd_strcmp_short(data + *offset, keys[0].key, keys[0].padding) == 0) {
-            accessor->buffer_view = get_int(data, offset);
+            accessor->buffer_view = get_int(data, offset); // CHANGE
             println("Buffer View: %u", accessor->buffer_view);
             ASSERT(false, "Break For Now");
         }
@@ -360,17 +348,51 @@ void parse_accessor(Gltf_Accessor *accessor, const char *data, u64 *offset, u64 
     }
 }
 
-void parse_accessors(Gltf *gltf, const char *data, u64 *offset) {
-    u64 start = *offset;
-    u64 object_offsets[128]; // Assume 128 or fewer accessors
+Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int accessor_count) {
+    /*Key_Pad keys[] = {
+        {"bufferViewxxxxxx",  6},
+        {"byteOffsetxxxxxx",  6},
+        {"componentTypexxx",  3},
+        {"countxxxxxxxxxxx", 11},
+        {"maxxxxxxxxxxxxxx", 13},
+        {"minxxxxxxxxxxxxx", 13},
+        {"typexxxxxxxxxxxx", 12},
+        {"sparsexxxxxxxxxx", 10},
+    };
+    int key_count = 8; */
 
-    gltf->accessor_count = get_object_array_len(data, offset, object_offsets);
-    gltf->accessors =
-        (Gltf_Accessor*)memory_allocate_temp( sizeof(Gltf_Accessor) * gltf->accessor_count, 8);
+    // Temp allocation made for every accessor struct. Keeps shit packed, linear allocators are fast...
+    u64 inc = *offset;
 
-    for(int i = 0; i < gltf->accessor_count; ++i) {
-        parse_accessor(&gltf->accessors[i], data, &start, object_offsets[i]);
+    Gltf_Accessor *accessor; 
+    while(true) {
+        if (simd_search_for_char(data + inc, ']') < simd_search_for_char(data + inc, '{'))
+            break; // handle end
+
+        accessor = (Gltf_Accessor*)memory_allocate_temp(sizeof(Gltf_Accessor), 8);
+        
+        // I do not like all these branch misses, but I cant see a better way. Even if I make a system 
+        // to remove options if they have already been chosen, there would still be at least one branch
+        // with no improvement in predictability... (I think)
+        simd_skip_passed_char(data + inc, &inc, '"');
+        if (simd_strcmp_short(data + inc, "bufferViewxxxxxx", 6) == 0)
+            accessor->buffer_view = ascii_to_int(data + inc, &inc);
+        if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx", 6) == 0)
+            accessor->byte_offset = ascii_to_int(data + inc, &inc);
+        if (simd_strcmp_short(data + inc, "componentTypexxx",  3) == 0)
+            accessor->component_type = (Gltf_Type)ascii_to_int(data + inc, &inc);
+        if (simd_strcmp_short(data + inc, "countxxxxxxxxxxx", 11) == 0)
+            accessor->count = ascii_to_int(data + inc, &inc);
+        if (simd_strcmp_short(data + inc, "maxxxxxxxxxxxxxx", 13) == 0)
+            accessor->max = ascii_to_int(data + inc, &inc);
+        if (simd_strcmp_short(data + inc, "minxxxxxxxxxxxxx", 13) == 0)
+            accessor->min = ascii_to_int(data + inc, &inc);
+        if (simd_strcmp_short(data + inc, "typexxxxxxxxxxxx", 12) == 0)
+            accessor->type = ascii_to_int(data + inc, &inc);
+        if (simd_strcmp_short(data + inc, "sparsexxxxxxxxxx", 10) == 0)
+            accessor->sparse = ascii_to_int(data + inc, &inc);
     }
+    // handle end...
 }
 
 Gltf parse_gltf(const char *filename) {
@@ -386,12 +408,13 @@ Gltf parse_gltf(const char *filename) {
     const int key_count = 1;
     int match_count = 0;
 
-    //void (*gltf_parser_func[])(Gltf *gltf, const char *data, u64 *offset) = {
+    // Gltf_Parser_Func Function Sig: void (*gltf_parser_func)(Gltf *gltf, const char *data, u64 *offset);
     Gltf_Parser_Func parser_funcs[] = {
         &parse_accessors,
     };
 
-    simd_skip_passed_char(data, &offset, '"', size);
+    // this function could just return the byte count between offset and the char??
+    simd_skip_passed_char(data + offset, &offset, '"', size);
 
     // @Note I could reshuffle the list on each match (swap the found one 
     // with the one closest to the end which hasnt been found), but the list is so short
