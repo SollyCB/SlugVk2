@@ -23,7 +23,7 @@ enum Gltf_Type {
 struct Gltf_Accessor { // 64 bytes
     Gltf_Type type;
     Gltf_Type component_type;
-    Gltf_Type sparse_indices_component_type;
+    Gltf_Type indices_component_type;
     int indices_buffer_view;
     int values_buffer_view;
     int indices_byte_offset;
@@ -35,7 +35,7 @@ struct Gltf_Accessor { // 64 bytes
 
     // 'size' field is the total size of the Accessor struct accounting for the number of floats in the float
     // arrays: the float arrays are allocated in memory immediately following the main struct. 
-    int size;
+    int stride;
     float *max;
     float *min;
 }; // 64 bytes

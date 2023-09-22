@@ -12,7 +12,7 @@
 #if DEBUG 
     #define ASSERT(predicate, fmt) if (!(predicate)) { \
         std::cout << "Assert Failed in " << __FILE__ << ", " << __FUNCTION__ << "(...), Line " \
-        << __LINE__ << ": " << #predicate << '\n'; \
+        << __LINE__ << ": " << #predicate << ", " << fmt << '\n'; \
         HALT_EXECUTION(); \
     }
 #else

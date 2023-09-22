@@ -16,14 +16,14 @@
  *****************************************
 */
 
-inline static bool simd_find_char_interrupted(const char *string, char find, char interrupt) {
+inline static bool simd_find_char_interrupted(const char *string, char find, char interrupt, u64 *pos) {
     __m128i a = _mm_loadu_si128((__m128i*)string);
     __m128i b = _mm_set1_epi8(find);
     __m128i c = _mm_set1_epi8(interrupt);
     __m128i d = _mm_cmpeq_epi8(a, b);
-    u16 mask1 = _mm_movemask(d);
+    u16 mask1 = _mm_movemask_epi8(d);
     d = _mm_cmpeq_epi8(a, c);
-    u16 mask2 = _mm_movemask(d);
+    u16 mask2 = _mm_movemask_epi8(d);
 
     // @Note @Branching There is probably some smart way to do this to cut down branching...
     // Idk how to deal with the UB for mask == 0x0 other than branching... Maybe the compiler
@@ -33,20 +33,24 @@ inline static bool simd_find_char_interrupted(const char *string, char find, cha
         inc += 16;
         a = _mm_loadu_si128((__m128i*)string + inc);
         d = _mm_cmpeq_epi8(a, b);
-        mask1 = _mm_movemask(d);
+        mask1 = _mm_movemask_epi8(d);
         d = _mm_cmpeq_epi8(a, c);
-        mask2 = _mm_movemask(d);
+        mask2 = _mm_movemask_epi8(d);
     }
 
-    if (mask1 && !mask2) {
-        return true;
-    } else if (!mask1) {
-        return false;
-    } else {
-        int tz1 = count_trailing_zeros(mask1);
-        int tz2 = count_trailing_zeros(mask2);
+    // Intel optimisation manual: fallthrough condition chosen if nothing in btb
+    if (mask1 && mask2) {
+        int tz1 = count_trailing_zeros_u16(mask1);
+        int tz2 = count_trailing_zeros_u16(mask2);
+        *pos += count_trailing_zeros_u16(mask2 | mask1) + inc;
         return tz1 < tz2;
+    } else if (!mask1 && mask2) {
+        *pos += count_trailing_zeros_u16(mask2) + inc;
+        return false;
     }
+
+    *pos += count_trailing_zeros_u16(mask1);
+    return true;
 }
 
 // Must be safe to assume that x and y have len 16 bytes, must return u16
@@ -159,12 +163,12 @@ inline static void simd_skip_whitespace(const char *string, u64 *offset) {
 // Must be safe to assume string has len 16 bytes
 inline static bool simd_skip_to_int(const char *string, u64 *offset, u64 limit) {
     __m128i b = _mm_set1_epi8(47); // ascii 0 - 1
-    __m128i c = _mm_set1_epi8(59); // ascii 9 + 1
+    __m128i c = _mm_set1_epi8(58); // ascii 9 + 1
 
     __m128i a = _mm_loadu_si128((__m128i*)(string));
     __m128i d = _mm_cmpgt_epi8(a, b);
-    __m128i e = _mm_cmplt_epi8(a, c);
-    a = _mm_and_si128(d, e);
+    a = _mm_cmplt_epi8(a, c);
+    a = _mm_and_si128(d, a);
     u16 mask = _mm_movemask_epi8(a);
 
     u64 inc = 0;
@@ -178,14 +182,58 @@ inline static bool simd_skip_to_int(const char *string, u64 *offset, u64 limit) 
             
         a = _mm_loadu_si128((__m128i*)(string + inc));
         d = _mm_cmpgt_epi8(a, b);
-        e = _mm_cmplt_epi8(a, c);
-        a = _mm_and_si128(d, e);
+        a = _mm_cmplt_epi8(a, c);
+        a = _mm_and_si128(d, a);
         mask = _mm_movemask_epi8(a);
     }
 
     int tz = count_trailing_zeros_u16(mask);
     *offset += inc + tz;
 
+    return true;
+}
+
+// Must be safe to assume string has len 16
+inline static bool simd_find_int_interrupted(const char *string, char interrupt, u64 *pos) {
+    __m128i b = _mm_set1_epi8(47); // ascii 0 - 1
+    __m128i c = _mm_set1_epi8(58); // ascii 9 + 1
+    __m128i d = _mm_set1_epi8(interrupt);
+
+    __m128i a = _mm_loadu_si128((__m128i*)string);
+    __m128i e = _mm_cmpeq_epi8(a, d);
+    u16 mask2 = _mm_movemask_epi8(e);
+
+    e = _mm_cmpgt_epi8(a, b);
+    a = _mm_cmplt_epi8(a, c);
+    a = _mm_and_si128(a, e);
+    u16 mask1 = _mm_movemask_epi8(a);
+
+    u64 inc = 0;
+    // Intel optimisation manual: fallthrough condition chosen if nothing in btb
+    while(!mask1 && !mask2) {
+        inc += 16;
+        a = _mm_loadu_si128((__m128i*)string + inc);
+        e = _mm_cmpeq_epi8(a, d);
+        mask2 = _mm_movemask_epi8(e);
+
+        e = _mm_cmpgt_epi8(a, c);
+        a = _mm_cmplt_epi8(a, b);
+        mask1 = _mm_movemask_epi8(a);
+    }
+
+    if (mask1 && mask2) {
+        int tz1 = count_trailing_zeros_u16(mask1);
+        int tz2 = count_trailing_zeros_u16(mask2);
+        *pos += count_trailing_zeros_u16(mask1 | mask2) + inc; // avoid a branch
+        return tz1 < tz2;
+    }
+
+    if (!mask1 && mask2) {
+        *pos += count_trailing_zeros_u16(mask2) + inc;
+        return false;
+    }
+
+    *pos += count_trailing_zeros_u16(mask1) + inc;
     return true;
 }
 
