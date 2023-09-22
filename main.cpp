@@ -367,11 +367,37 @@ int main() {
     println("Accessor count: %u", gltf.accessor_count);
     Gltf_Accessor *accessor = gltf.accessors;
     for(int i = 0; i < gltf.accessor_count; ++i) {
-        println("i = %u", i);
-        println("accessor.type %u", accessor->type);
-        println("accessor.buffer_view %u", accessor->buffer_view);
-        println("accessor.byte_offset %u", accessor->byte_offset);
-        println("accessor.count %u", accessor->count);
+        std::cout << "i = " << i << '\n';
+        std::cout << "accessor.type " << accessor->type << '\n';
+        std::cout << "accessor.buffer_view " <<  accessor->buffer_view << '\n';
+        std::cout << "accessor.byte_offset " << accessor->byte_offset << '\n';
+        std::cout << "accessor.count " << accessor->count << '\n';
+        std::cout << "accessor.componentType " << accessor->component_type << '\n';
+
+        if (i == 0) {
+            for(int i = 0; i < 1; ++i) {
+                std::cout << "max: " << accessor->max[i] << '\n';
+            }
+            for(int i = 0; i < 1; ++i) {
+                std::cout << "min: " << accessor->min[i] << '\n';
+            }
+        }
+        if (i == 1) {
+            for(int i = 0; i < 3; ++i) {
+                std::cout << "max: " << accessor->max[i] << '\n';
+            }
+            for(int i = 0; i < 3; ++i) {
+                std::cout << "min: " << accessor->min[i] << '\n';
+            }
+        }
+
+        std::cout << "Sparse: " << '\n';
+        std::cout << "count " << accessor->sparse_count << '\n';
+        std::cout << "indices_buffer_view " << accessor->indices_buffer_view << '\n';
+        std::cout << "indices_byte_offset " << accessor->indices_byte_offset << '\n';
+        std::cout << "values_buffer_view " << accessor->values_buffer_view << '\n';
+        std::cout << "values_byte_offset " << accessor->values_byte_offset << '\n';
+
         accessor = (Gltf_Accessor*)((u8*)accessor + accessor->stride);
     }
 

@@ -68,198 +68,10 @@
     second pass can just call the functions in order.
 */
 
-/* **** Code example for calculating the length of json arrays with simd *****
-
-// string assumed 16 len
-inline static u16 simd_match_char(const char *string, char c) {
-    __m128i a = _mm_loadu_si128((__m128i*)string);
-    __m128i b = _mm_set1_epi8(c);
-    a = _mm_cmpeq_epi8(a, b);
-    return _mm_movemask_epi8(a);
-}
-
-inline static int pop_count(u16 mask) {
-    return __builtin_popcount(mask);
-}
-inline static int ctz(u16 mask) {
-    return __builtin_ctz(mask);
-}
-inline static int clzs(u16 mask) {
-    return __builtin_clzs(mask);
-}
-
-int resolve_depth(u16 mask1, u16 mask2, int current_depth) {
-    u8 tz;
-    int open;
-    while(mask1) {
-        tz = ctz(mask1); 
-        open = pop_count(mask2 << (16 - tz));
-
-        current_depth -= 1;
-        if (current_depth + open == 0)
-            return tz;
-
-        mask1 ^= 1 << tz;
-    }
-    return -1;
-}
-
-int get_obj_array_len(const char *string, u64 *offset) {
-    u16 mask1;
-    u16 mask2;
-    int array_depth = 0;
-    int ret;
-    while(true) {
-        mask1 = simd_match_char(string + *offset, ']');
-        mask2 = simd_match_char(string + *offset, '[');
-        if (array_depth - pop_count(mask1) <= 0) {
-            ret = resolve_depth(mask1, mask2, array_depth);
-            if(ret != -1)
-                return *offset + ret;
-        }
-        array_depth += pop_count(mask2) - pop_count(mask1);
-        *offset += 16;
-    }
-}
-int main() {
-    const char *d = "[[[[xxxxxxxxxxxxx]]]xxxxxxxxxxx]";
-
-    u64 offset = 0;
-    int x = get_obj_array_len(d, &offset);
-    printf("%i", x);
-
-    return 0;
-}
-*/
-
-/* 
-    ** Template Key Pad **
-
-    Key_Pad keys[] = {
-        {"bufferViewxxxxxx",  6},
-        {"byteOffsetxxxxxx",  6},
-        {"componentTypexxx",  3},
-        {"countxxxxxxxxxxx", 11},
-        {"maxxxxxxxxxxxxxx", 13},
-        {"minxxxxxxxxxxxxx", 13},
-        {"typexxxxxxxxxxxx", 12},
-        {"sparsexxxxxxxxxx", 10},
-    };
-    int key_count = 8; 
-*/
-
 #include "gltf.hpp"
 #include "file.hpp"
 #include "simd.hpp"
 #include "builtin_wrappers.h"
-
-// string assumed 16 len
-int resolve_depth(u16 mask1, u16 mask2, int current_depth, int *results) {
-    u8 tz;
-    int open;
-    int index = 0;
-    while(mask1) {
-        tz = count_trailing_zeros_u16(mask1); 
-        open = pop_count16(mask2 << (16 - tz));
-
-        current_depth -= 1;
-        if (current_depth + open == 0) {
-            results[index] = tz; 
-            ++index;
-        }
-
-        mask1 ^= 1 << tz;
-    }
-    return index;
-}
-
-int parse_object_array_len(const char *string, u64 *offset, u64 *object_offsets) {
-    u64 inc = 0;
-    int array_depth  = 0;
-    int object_depth = 0;
-    int object_count = 0;
-    int rd;
-    int rds[8];
-    u16 mask1;
-    u16 mask2;
-    u16 temp_count;
-    while(true) {
-        // check array
-        mask1 = simd_match_char(string + inc, ']');
-        mask2 = simd_match_char(string + inc, '[');
-        if (array_depth - pop_count16(mask1) <= 0) {
-            rd = resolve_depth(mask1, mask2, array_depth, rds);
-            if(rd != 0) {
-                // check object within the end of the array
-                mask1 = simd_match_char(string + inc, '}') << (16 - rds[0]);
-                mask2 = simd_match_char(string + inc, '{') << (16 - rds[0]);
-                if (object_depth - pop_count16(mask1) <= 0) {
-                    temp_count = object_count;
-                    object_count += resolve_depth(mask1, mask2, object_depth, rds);
-                    for(int i = temp_count; i < object_count; ++i)
-                        object_offsets[i] = inc + rds[i - temp_count];
-                }
-                inc += rds[0];
-                *offset += inc; // deref offset only once just to keep cache as clean as possible
-                return object_count;
-            }
-        }
-        array_depth += pop_count16(mask2) - pop_count16(mask1);
-
-        // check object
-        mask1 = simd_match_char(string + inc, '}');
-        mask2 = simd_match_char(string + inc, '{');
-        if (object_depth - pop_count16(mask1) <= 0) {
-            temp_count = object_count;
-            object_count += resolve_depth(mask1, mask2, object_depth, rds);
-            for(int i = temp_count; i < object_count; ++i)
-                object_offsets[i] = inc + rds[i - temp_count];
-        }
-        object_depth += pop_count16(mask2) - pop_count16(mask1);
-
-        inc += 16;
-    }
-}
-
-enum Gltf_Key {
-    GLTF_KEY_BUFFER_VIEW,
-    GLTF_KEY_BYTE_OFFSET,
-    GLTF_KEY_COMPONENT_TYPE,
-    GLTF_KEY_COUNT,
-    GLTF_KEY_MAX,
-    GLTF_KEY_MIN,
-    GLTF_KEY_TYPE,
-    GLTF_KEY_SPARSE,
-    GLTF_KEY_INDICES,
-    GLTF_KEY_VALUES,
-};
-
-// increments beyond end char
-void collect_string(const char *data, u64 *offset, char c, char *buf) {
-    int i = 0;
-    u64 inc = 0;
-    while(data[inc] != c) {
-        buf[i] = data[inc];
-        ++inc;
-        ++i;
-    }
-    buf[i] = '\0';
-    *offset += inc + 1;
-}
-
-struct Key_Pad {
-    const char *key;
-    u8 padding;
-};
-
-// string must be assumed 16 in len
-static int find_string_in_list(const char *string, const Key_Pad *keys, int count) {
-    for(int i = 0; i < count; ++i) {
-        if(simd_strcmp_short(string, keys[i].key, keys[i].padding) == 0)
-            return i;
-    }
-    return -1;
-}
 
 static int find_int(const char *data, u64 *offset) {
     while(data[*offset] < 48 || data[*offset] > 57)
@@ -316,7 +128,7 @@ static inline int ascii_to_int(const char *data, u64 *offset) {
 
 static float ascii_to_float(const char *data, u64 *offset) {
     u64 inc = 0;
-    if (!simd_skip_to_int(data, &inc, 128))
+    if (!simd_skip_to_int(data, &inc, Max_u64))
         ASSERT(false, "Failed to find an integer in search range");
 
     bool neg = data[inc - 1] == '-';
@@ -376,29 +188,48 @@ typedef void (*Gltf_Parser_Func)(Gltf *gltf, const char *data, u64 *offset);
 
 void parse_accessor_sparse(const char *data, u64 *offset, Gltf_Accessor *accessor) {
     u64 inc = 0;
+    simd_find_char_interrupted(data + inc, '{', '}', &inc); // find sparse start
     while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
-        inc++; // go passed the '"' found by find_char_inter...
-        //simd_skip_passed_char(data + inc, &inc, '"', Max_u64);
-        if (simd_strcmp_short(data + inc, "indicesxxxxxxxxx", 9) == 0) {
+        inc++; // go beyond the '"'
+        if (simd_strcmp_short(data + inc, "countxxxxxxxxxxx", 11) == 0)  {
+            accessor->sparse_count = ascii_to_int(data + inc, &inc);
+            continue;
+        } else if (simd_strcmp_short(data + inc, "indicesxxxxxxxxx", 9) == 0) {
+            simd_find_char_interrupted(data + inc, '{', '}', &inc); // find indices start
             while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
-                inc++; // go passed the '"' found by find_char_inter...
-                //simd_skip_passed_char(data + inc, &inc, '"', Max_u64);
-                if (simd_strcmp_short(data + inc, "bufferViewxxxxxx", 6) == 0)
+                inc++; // go passed the '"'
+                if (simd_strcmp_short(data + inc, "bufferViewxxxxxx", 6) == 0) {
                     accessor->indices_buffer_view = ascii_to_int(data + inc, &inc);
-                if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx", 6) == 0)
+                    continue;
+                }
+                if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx", 6) == 0) {
                     accessor->indices_byte_offset = ascii_to_int(data + inc, &inc);
-                if (simd_strcmp_short(data + inc, "componentTypexxx", 3) == 0)
+                    continue;
+                }
+                if (simd_strcmp_short(data + inc, "componentTypexxx", 3) == 0) {
                     accessor->indices_component_type = (Gltf_Type)ascii_to_int(data + inc, &inc);
+                    continue;
+                }
             }
-        } else if (simd_strcmp_short(data + inc, "valuesxxxxxxxxx", 9) == 0) {
+            simd_find_char_interrupted(data + inc, '}', '{', &inc); // find indices end
+            inc++; // go beyond
+            continue;
+        } else if (simd_strcmp_short(data + inc, "valuesxxxxxxxxx", 10) == 0) {
+            simd_find_char_interrupted(data + inc, '{', '}', &inc); // find values start
             while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
-                inc++; // go passed the '"' found by find_char_inter...
-                //simd_skip_passed_char(data + inc, &inc, '"', Max_u64);
-                if (simd_strcmp_short(data + inc, "bufferViewxxxxxx", 6) == 0)
+                inc++; // go passed the '"'
+                if (simd_strcmp_short(data + inc, "bufferViewxxxxxx", 6) == 0) {
                     accessor->values_buffer_view = ascii_to_int(data + inc, &inc);
-                if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx", 6) == 0)
+                    continue;
+                }
+                if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx", 6) == 0) {
                     accessor->values_byte_offset = ascii_to_int(data + inc, &inc);
+                    continue;
+                }
             }
+            simd_find_char_interrupted(data + inc, '}', '{', &inc); // find indices end
+            inc++; // go beyond
+            continue;
         }
     }
     *offset += inc + 1; // +1 go beyond the last curly brace in sparse object
@@ -487,21 +318,22 @@ Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int *accessor_coun
                 // Why are these types stored as strings?? Why are 'componentType's castable integers, 
                 // but these are strings?? This file format is a little insane, there must be a better way 
                 // to store this data, surely...???
-                if (simd_strcmp_short(data + inc, "SCALARxxxxxxxxxx", 10))
+                if (simd_strcmp_short(data + inc, "SCALARxxxxxxxxxx", 10) == 0)
                     accessor->type = GLTF_TYPE_SCALAR;
-                if (simd_strcmp_short(data + inc, "VEC2xxxxxxxxxxxx", 12))
-                    accessor->type = GLTF_TYPE_VEC2;
-                if (simd_strcmp_short(data + inc, "VEC3xxxxxxxxxxxx", 12))
-                    accessor->type = GLTF_TYPE_VEC3;
-                if (simd_strcmp_short(data + inc, "VEC4xxxxxxxxxxxx", 12))
-                    accessor->type = GLTF_TYPE_VEC4;
-                if (simd_strcmp_short(data + inc, "MAT2xxxxxxxxxxxx", 12))
-                    accessor->type = GLTF_TYPE_MAT2;
-                if (simd_strcmp_short(data + inc, "MAT3xxxxxxxxxxxx", 12))
-                    accessor->type = GLTF_TYPE_MAT3;
-                if (simd_strcmp_short(data + inc, "MAT4xxxxxxxxxxxx", 12))
+                else if (simd_strcmp_short(data + inc, "VEC2xxxxxxxxxxxx", 12) == 0)
+                     accessor->type = GLTF_TYPE_VEC2;
+                else if (simd_strcmp_short(data + inc, "VEC3xxxxxxxxxxxx", 12) == 0)
+                     accessor->type = GLTF_TYPE_VEC3;
+                else if (simd_strcmp_short(data + inc, "VEC4xxxxxxxxxxxx", 12) == 0)
+                     accessor->type = GLTF_TYPE_VEC4;
+                else if (simd_strcmp_short(data + inc, "MAT2xxxxxxxxxxxx", 12) == 0)
+                     accessor->type = GLTF_TYPE_MAT2;
+                else if (simd_strcmp_short(data + inc, "MAT3xxxxxxxxxxxx", 12) == 0)
+                     accessor->type = GLTF_TYPE_MAT3;
+                else if (simd_strcmp_short(data + inc, "MAT4xxxxxxxxxxxx", 12) == 0)
                     accessor->type = GLTF_TYPE_MAT4;
 
+                simd_skip_passed_char(data + inc, &inc, '"', Max_u64); // skip passed the value string
                 continue; // go to next key
             }
 
@@ -541,23 +373,22 @@ Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int *accessor_coun
                 continue; // go to next key
             }
 
-            if (min && max && accessor->type != GLTF_TYPE_NONE) {
-                // Have to be careful with memory alignment here: each accessor is allocated individually,
-                // so if the temp allocator fragments or packs wrong, reading from the first allocation 
-                // and treating the linear allocator as an array would break...
-                temp = align(sizeof(float) * min_max_len, 8);
-                accessor->max = (float*)memory_allocate_temp(temp * 2, 8); 
-                accessor->min = accessor->max + min_max_len;
-
-                memcpy(accessor->max, max, sizeof(float) * min_max_len);
-                memcpy(accessor->min, min, sizeof(float) * min_max_len);
-
-                accessor->stride = sizeof(Gltf_Accessor) + (temp * 2);
-            }
         }
-        // 'min' and 'max' arrays were not found, so stride is no bigger than main struct
-        if (accessor->stride == 0)
+        if (min_found && max_found && accessor->type != GLTF_TYPE_NONE) {
+            // Have to be careful with memory alignment here: each accessor is allocated individually,
+            // so if the temp allocator fragments or packs wrong, reading from the first allocation 
+            // and treating the linear allocator as an array would break...
+            temp = align(sizeof(float) * min_max_len * 2, 8);
+            accessor->max = (float*)memory_allocate_temp(temp, 8); 
+            accessor->min = accessor->max + min_max_len;
+
+            memcpy(accessor->max, max, sizeof(float) * min_max_len);
+            memcpy(accessor->min, min, sizeof(float) * min_max_len);
+
+            accessor->stride = sizeof(Gltf_Accessor) + (temp);
+        } else {
             accessor->stride = sizeof(Gltf_Accessor);
+        }
     }
     // handle end...
 
@@ -595,3 +426,194 @@ Gltf parse_gltf(const char *filename) {
 
     return gltf;
 }
+
+/* Below is old code related to this file. I am preserving it because it is cool code imo, does some cool things... */
+
+/* **** Code example for calculating the length of json arrays with simd *****
+
+// string assumed 16 len
+inline static u16 simd_match_char(const char *string, char c) {
+    __m128i a = _mm_loadu_si128((__m128i*)string);
+    __m128i b = _mm_set1_epi8(c);
+    a = _mm_cmpeq_epi8(a, b);
+    return _mm_movemask_epi8(a);
+}
+
+inline static int pop_count(u16 mask) {
+    return __builtin_popcount(mask);
+}
+inline static int ctz(u16 mask) {
+    return __builtin_ctz(mask);
+}
+inline static int clzs(u16 mask) {
+    return __builtin_clzs(mask);
+}
+
+int resolve_depth(u16 mask1, u16 mask2, int current_depth) {
+    u8 tz;
+    int open;
+    while(mask1) {
+        tz = ctz(mask1); 
+        open = pop_count(mask2 << (16 - tz));
+
+        current_depth -= 1;
+        if (current_depth + open == 0)
+            return tz;
+
+        mask1 ^= 1 << tz;
+    }
+    return -1;
+}
+
+int get_obj_array_len(const char *string, u64 *offset) {
+    u16 mask1;
+    u16 mask2;
+    int array_depth = 0;
+    int ret;
+    while(true) {
+        mask1 = simd_match_char(string + *offset, ']');
+        mask2 = simd_match_char(string + *offset, '[');
+        if (array_depth - pop_count(mask1) <= 0) {
+            ret = resolve_depth(mask1, mask2, array_depth);
+            if(ret != -1)
+                return *offset + ret;
+        }
+        array_depth += pop_count(mask2) - pop_count(mask1);
+        *offset += 16;
+    }
+}
+int main() {
+    const char *d = "[[[[xxxxxxxxxxxxx]]]xxxxxxxxxxx]";
+
+    u64 offset = 0;
+    int x = get_obj_array_len(d, &offset);
+    printf("%i", x);
+
+    return 0;
+}
+*/
+
+/* 
+    ** Template Key Pad **
+
+    Key_Pad keys[] = {
+        {"bufferViewxxxxxx",  6},
+        {"byteOffsetxxxxxx",  6},
+        {"componentTypexxx",  3},
+        {"countxxxxxxxxxxx", 11},
+        {"maxxxxxxxxxxxxxx", 13},
+        {"minxxxxxxxxxxxxx", 13},
+        {"typexxxxxxxxxxxx", 12},
+        {"sparsexxxxxxxxxx", 10},
+    };
+    int key_count = 8; 
+
+
+// Old but imo cool code, so I am preserving it
+int resolve_depth(u16 mask1, u16 mask2, int current_depth, int *results) {
+    u8 tz;
+    int open;
+    int index = 0;
+    while(mask1) {
+        tz = count_trailing_zeros_u16(mask1); 
+        open = pop_count16(mask2 << (16 - tz));
+
+        current_depth -= 1;
+        if (current_depth + open == 0) {
+            results[index] = tz; 
+            ++index;
+        }
+
+        mask1 ^= 1 << tz;
+    }
+    return index;
+}
+
+int parse_object_array_len(const char *string, u64 *offset, u64 *object_offsets) {
+    u64 inc = 0;
+    int array_depth  = 0;
+    int object_depth = 0;
+    int object_count = 0;
+    int rd;
+    int rds[8];
+    u16 mask1;
+    u16 mask2;
+    u16 temp_count;
+    while(true) {
+        // check array
+        mask1 = simd_match_char(string + inc, ']');
+        mask2 = simd_match_char(string + inc, '[');
+        if (array_depth - pop_count16(mask1) <= 0) {
+            rd = resolve_depth(mask1, mask2, array_depth, rds);
+            if(rd != 0) {
+                // check object within the end of the array
+                mask1 = simd_match_char(string + inc, '}') << (16 - rds[0]);
+                mask2 = simd_match_char(string + inc, '{') << (16 - rds[0]);
+                if (object_depth - pop_count16(mask1) <= 0) {
+                    temp_count = object_count;
+                    object_count += resolve_depth(mask1, mask2, object_depth, rds);
+                    for(int i = temp_count; i < object_count; ++i)
+                        object_offsets[i] = inc + rds[i - temp_count];
+                }
+                inc += rds[0];
+                *offset += inc; // deref offset only once just to keep cache as clean as possible
+                return object_count;
+            }
+        }
+        array_depth += pop_count16(mask2) - pop_count16(mask1);
+
+        // check object
+        mask1 = simd_match_char(string + inc, '}');
+        mask2 = simd_match_char(string + inc, '{');
+        if (object_depth - pop_count16(mask1) <= 0) {
+            temp_count = object_count;
+            object_count += resolve_depth(mask1, mask2, object_depth, rds);
+            for(int i = temp_count; i < object_count; ++i)
+                object_offsets[i] = inc + rds[i - temp_count];
+        }
+        object_depth += pop_count16(mask2) - pop_count16(mask1);
+
+        inc += 16;
+    }
+}
+enum Gltf_Key {
+    GLTF_KEY_BUFFER_VIEW,
+    GLTF_KEY_BYTE_OFFSET,
+    GLTF_KEY_COMPONENT_TYPE,
+    GLTF_KEY_COUNT,
+    GLTF_KEY_MAX,
+    GLTF_KEY_MIN,
+    GLTF_KEY_TYPE,
+    GLTF_KEY_SPARSE,
+    GLTF_KEY_INDICES,
+    GLTF_KEY_VALUES,
+};
+// increments beyond end char
+void collect_string(const char *data, u64 *offset, char c, char *buf) {
+    int i = 0;
+    u64 inc = 0;
+    while(data[inc] != c) {
+        buf[i] = data[inc];
+        ++inc;
+        ++i;
+    }
+    buf[i] = '\0';
+    *offset += inc + 1;
+}
+
+
+// string must be assumed 16 in len
+static int find_string_in_list(const char *string, const Key_Pad *keys, int count) {
+    for(int i = 0; i < count; ++i) {
+        if(simd_strcmp_short(string, keys[i].key, keys[i].padding) == 0)
+            return i;
+    }
+    return -1;
+}
+
+struct Key_Pad {
+    const char *key;
+    u8 padding;
+};
+
+*/

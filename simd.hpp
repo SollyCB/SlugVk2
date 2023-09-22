@@ -6,15 +6,20 @@
 #include "basic.h"
 #include "builtin_wrappers.h"
 
+/* 
+   *********************************************************
 
-/*
- *****************************************
+    WARNING! These functions have not been used enough to count as full stress tested. Normally I would be confident
+    enough not to warn, some these do relatively complex things, so I will put a little alert here to catch my eye 
+    in case of weird errors.
 
-    @Note Lots of (if not all) of these functions are inlined despite looking too long for inlining.
-    But in reality they only *look* long, because the number of instructions is very low, because of the intrinsics
-
- *****************************************
+   *********************************************************
 */
+
+//
+//  @Note Lots of (if not all) of these functions are inlined despite looking too long for inlining.
+//  But in reality they only *look* long, because the number of instructions is very low, because of the intrinsics
+//
 
 inline static bool simd_find_char_interrupted(const char *string, char find, char interrupt, u64 *pos) {
     __m128i a = _mm_loadu_si128((__m128i*)string);
@@ -31,7 +36,14 @@ inline static bool simd_find_char_interrupted(const char *string, char find, cha
     u64 inc = 0;
     while(!mask1 && !mask2) {
         inc += 16;
-        a = _mm_loadu_si128((__m128i*)string + inc);
+
+        // @HOLY FUCKING ANNOYING
+        // Before, this function looked like this: _mm_loadu_si128((__m128i*)string + inc);
+        // the cast was not wrapped... C++ casting rules / operator precedence is incredible.
+        // Like at least there should be a warning for this for ambiguous pointer arithmetic.
+        // In reality, why is pointer math not done in consistent units!!
+
+        a = _mm_loadu_si128((__m128i*)(string + inc));
         d = _mm_cmpeq_epi8(a, b);
         mask1 = _mm_movemask_epi8(d);
         d = _mm_cmpeq_epi8(a, c);
@@ -49,7 +61,7 @@ inline static bool simd_find_char_interrupted(const char *string, char find, cha
         return false;
     }
 
-    *pos += count_trailing_zeros_u16(mask1);
+    *pos += count_trailing_zeros_u16(mask1) + inc;
     return true;
 }
 
@@ -148,7 +160,7 @@ inline static void simd_skip_whitespace(const char *string, u64 *offset) {
     mask |= _mm_movemask_epi8(d);
     while(mask == 0xffff) {
         inc += 16;
-        a = _mm_loadu_si128((__m128i*)string + inc);
+        a = _mm_loadu_si128((__m128i*)(string + inc));
         d = _mm_cmpeq_epi8(a, b);
         mask = _mm_movemask_epi8(d);
         d = _mm_cmpeq_epi8(a, b);
@@ -205,22 +217,25 @@ inline static bool simd_find_int_interrupted(const char *string, char interrupt,
 
     e = _mm_cmpgt_epi8(a, b);
     a = _mm_cmplt_epi8(a, c);
-    a = _mm_and_si128(a, e);
-    u16 mask1 = _mm_movemask_epi8(a);
+    u16 mask1 = _mm_movemask_epi8(e);
+    u16 mask3 = _mm_movemask_epi8(a);
+    mask1 &= mask3;
 
     u64 inc = 0;
-    // Intel optimisation manual: fallthrough condition chosen if nothing in btb
     while(!mask1 && !mask2) {
         inc += 16;
-        a = _mm_loadu_si128((__m128i*)string + inc);
+        a = _mm_loadu_si128((__m128i*)(string + inc));
         e = _mm_cmpeq_epi8(a, d);
         mask2 = _mm_movemask_epi8(e);
 
-        e = _mm_cmpgt_epi8(a, c);
-        a = _mm_cmplt_epi8(a, b);
-        mask1 = _mm_movemask_epi8(a);
+        e = _mm_cmpgt_epi8(a, b);
+        a = _mm_cmplt_epi8(a, c);
+        mask1 = _mm_movemask_epi8(e);
+        mask3 = _mm_movemask_epi8(a);
+        mask1 &= mask3;
     }
 
+    // Intel optimisation manual: fallthrough condition chosen if nothing in btb
     if (mask1 && mask2) {
         int tz1 = count_trailing_zeros_u16(mask1);
         int tz2 = count_trailing_zeros_u16(mask2);

@@ -20,7 +20,7 @@
             "count": 2399,
             "max": [
                 0.961799,
-                1.6397,
+                -1.6397,
                 0.539252
             ],
             "min": [
@@ -28,25 +28,25 @@
                 0.0992937,
                 -0.613282
             ],
-            "type": "VEC3"
+            "type": "VEC2"
         },
         {
             "bufferView": 3,
             "byteOffset": 300,
             "componentType": 5123,
-            "count": 12636,
+            "count": 12001,
             "type": "VEC3",
             "sparse": {
+                "values": {
+                    "bufferView": 4,
+                    "byteOffset": 9999 
+                }
                 "count": 10,
                 "indices": {
-                    "bufferView": 1,
-                    "byteOffset": 0,
+                    "bufferView": 7,
+                    "byteOffset": 8888,
                     "componentType": 5123
                 },
-                "values": {
-                    "bufferView": 2,
-                    "byteOffset": 0
-                }
             }
         }
     ]
