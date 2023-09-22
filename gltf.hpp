@@ -4,23 +4,23 @@
 #include "basic.h"
 
 enum Gltf_Type {
-    NONE   = 0,
-    SCALAR = 1,
-    VEC2   = 2,
-    VEC3   = 3,
-    VEC4   = 4,
-    MAT2   = 5,
-    MAT3   = 6,
-    MAT4   = 7,
-    BYTE = 5120,
-    UNSIGNED_BYTE = 5121,
-    SHORT = 5122,
-    UNSIGNED_SHORT = 5123,
-    UNSIGNED_INT = 5125,
-    FLOAT = 5126,
+    GLTF_TYPE_NONE           = 0,
+    GLTF_TYPE_SCALAR         = 1,
+    GLTF_TYPE_VEC2           = 2,
+    GLTF_TYPE_VEC3           = 3,
+    GLTF_TYPE_VEC4           = 4,
+    GLTF_TYPE_MAT2           = 5,
+    GLTF_TYPE_MAT3           = 6,
+    GLTF_TYPE_MAT4           = 7,
+    GLTF_TYPE_BYTE           = 5120,
+    GLTF_TYPE_UNSIGNED_BYTE  = 5121,
+    GLTF_TYPE_SHORT          = 5122,
+    GLTF_TYPE_UNSIGNED_SHORT = 5123,
+    GLTF_TYPE_UNSIGNED_INT   = 5125,
+    GLTF_TYPE_FLOAT          = 5126,
 };
 
-struct Gltf_Accessor {
+struct Gltf_Accessor { // 64 bytes
     Gltf_Type type;
     Gltf_Type component_type;
     Gltf_Type sparse_indices_component_type;
@@ -32,9 +32,14 @@ struct Gltf_Accessor {
     int byte_offset;
     int count;
     int normalized;
-    float max[16];
-    float min[16];
-};
+
+    // 'size' field is the total size of the Accessor struct accounting for the number of floats in the float
+    // arrays: the float arrays are allocated in memory immediately following the main struct. 
+    int size;
+    float *max;
+    float *min;
+}; // 64 bytes
+
 struct Gltf {
     int accessor_count;
     Gltf_Accessor *accessors;

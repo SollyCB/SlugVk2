@@ -13,6 +13,81 @@
 void run_tests(); // defined below main
 #endif
 
+inline static int match_int(char c) {
+    switch(c) {
+    case '0':
+        return 0;
+    case '1':
+        return 1;
+    case '2':
+        return 2;
+    case '3':
+        return 3;
+    case '4':
+        return 4;
+    case '5':
+        return 5;
+    case '6':
+        return 6;
+    case '7':
+        return 7;
+    case '8':
+        return 8;
+    case '9':
+        return 9;
+    default:
+        ASSERT(false && "not an int", "");
+    }
+}
+
+static inline int ascii_to_int(const char *data, u64 *offset) {
+    u64 inc = 0;
+    if (!simd_skip_to_int(data, &inc, 128))
+        ASSERT(false, "Failed to find an integer in search range");
+
+    data += inc;
+    int accum = 0;
+    while(data[inc] > '0' && data[inc] < '9') {
+        accum *= 10;
+        accum += match_int(data[inc]);
+        inc++;
+    }
+    *offset += inc;
+    return accum;
+}
+
+inline static float ascii_to_float(const char *data, u64 *offset) {
+    u64 inc = 0;
+    if (!simd_skip_to_int(data, &inc, 128))
+        ASSERT(false, "Failed to find an integer in search range");
+
+    bool neg = data[inc - 1] == '-';
+    bool seen_dot = false;
+    int after_dot = 0;
+    float accum = 0;
+    int num;
+    while((data[inc] > '0' && data[inc] < '9') || data[inc] == '.') {
+        if (data[inc] == '.') {
+            seen_dot = true;
+            inc++;
+        }
+
+        if (seen_dot)
+            after_dot++;
+
+        num = match_int(data[inc]);
+        accum *= 10;
+        accum += num;
+
+        inc++;
+    }
+    for(int i = 0; i < after_dot; ++i)
+        accum /= 10;
+
+    *offset += inc;
+    return accum;
+}
+
 int main() {
     init_allocators();
 
@@ -364,7 +439,7 @@ int main() {
 #endif
 
     Gltf gltf = parse_gltf("test_gltf.gltf");
-    
+
     kill_allocators();
     return 0;
 }

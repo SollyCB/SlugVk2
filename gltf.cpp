@@ -132,6 +132,22 @@ int main() {
 }
 */
 
+/* 
+    ** Template Key Pad **
+
+    Key_Pad keys[] = {
+        {"bufferViewxxxxxx",  6},
+        {"byteOffsetxxxxxx",  6},
+        {"componentTypexxx",  3},
+        {"countxxxxxxxxxxx", 11},
+        {"maxxxxxxxxxxxxxx", 13},
+        {"minxxxxxxxxxxxxx", 13},
+        {"typexxxxxxxxxxxx", 12},
+        {"sparsexxxxxxxxxx", 10},
+    };
+    int key_count = 8; 
+*/
+
 #include "gltf.hpp"
 #include "file.hpp"
 #include "simd.hpp"
@@ -284,18 +300,54 @@ inline static int match_int(char c) {
 }
 
 static inline int ascii_to_int(const char *data, u64 *offset) {
-    u64 start = 0;
-    if (!simd_skip_to_int(data, &start, 128))
+    u64 inc = 0;
+    if (!simd_skip_to_int(data, &inc, 128))
         ASSERT(false, "Failed to find an integer in search range");
 
-    data += start;
+    data += inc;
     int accum = 0;
-    while(data[start] > '0' && data[start] < '9') {
+    while(data[inc] > '0' && data[inc] < '9') {
         accum *= 10;
-        accum += match_int(data[start]);
-        start++;
+        accum += match_int(data[inc]);
+        inc++;
     }
-    *offset += start;
+    *offset += inc;
+    return accum;
+}
+
+static float ascii_to_float(const char *data, u64 *offset) {
+    u64 inc = 0;
+    if (!simd_skip_to_int(data, &inc, 128))
+        ASSERT(false, "Failed to find an integer in search range");
+
+    bool neg = data[inc - 1] == '-';
+    bool seen_dot = false;
+    int after_dot = 0;
+    float accum = 0;
+    int num;
+    while((data[inc] > '0' && data[inc] < '9') || data[inc] == '.') {
+        if (data[inc] == '.') {
+            seen_dot = true;
+            inc++;
+        }
+
+        if (seen_dot)
+            after_dot++;
+
+        num = match_int(data[inc]);
+        accum *= 10;
+        accum += num;
+
+        inc++;
+    }
+    for(int i = 0; i < after_dot; ++i)
+        accum /= 10;
+
+    *offset += inc;
+
+    if (neg)
+        accum = -accum;
+
     return accum;
 }
 
@@ -308,47 +360,47 @@ inline static int pow(int num, int exp) {
     return accum;
 }
 
-static int get_int(const char *data, u64 *offset) {
-    int len = find_int(data, offset);
-    u64 inc = *offset;
-
-    int num;
-    int mul;
-    int accum = 0;
-    for(int i = len; i > 0; --i) {
-        num = match_int(data[*offset]);
-        mul = pow(10, i);
-
-        accum += mul * num;
-        inc += 1;
+inline static void parse_float_array(const char *data, u64 *offset, float *array, int count) {
+    u64 inc = 0;
+    for(int i = 0; i < count; ++i) {
+        // assume i will find another array member so no limit
+        simd_skip_to_int(data, &inc, Max_u64);
+        array[i] = ascii_to_float(data, &inc);
     }
     *offset += inc;
-    return accum;
 }
+
 // algorithms end
 
 typedef void (*Gltf_Parser_Func)(Gltf *gltf, const char *data, u64 *offset);
 
-void parse_accessor(Gltf_Accessor *accessor, const char *data, u64 *offset, u64 limit) {
-
-// @TODO Current task:
-//      create list of function pointers to matching keys (see parse gltf function)
-//      write these parser functions
-
-    int key_index;
-    while(data[*offset] != '}') {
-        simd_skip_passed_char(data, offset, '"', limit);
-
-        if (simd_strcmp_short(data + *offset, keys[0].key, keys[0].padding) == 0) {
-            accessor->buffer_view = get_int(data, offset); // CHANGE
-            println("Buffer View: %u", accessor->buffer_view);
-            ASSERT(false, "Break For Now");
+void parse_accessor_sparse(const char *data, u64 *offset, Gltf_Accessor *accessor) {
+    u64 inc = 0;
+    while(simd_find_char_interrupted(data + inc, '"', '}')) {
+        simd_skip_passed_char(data + inc, &inc, '"', Max_u64);
+        if (simd_strcmp_short(data + inc, "indicesxxxxxxxxx", 9) == 0) {
+            while(simd_find_char_interrupted(data + inc, '"', '}')) {
+                simd_skip_passed_char(data + inc, &inc, '"', Max_u64);
+                if (simd_strcmp_short(data + inc, "bufferViewxxxxxx", 6) == 0)
+                    accessor->indices_buffer_view = ascii_to_int(data + inc, &inc);
+                if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx", 6) == 0)
+                    accessor->indices_byte_offset = ascii_to_int(data + inc, &inc);
+                if (simd_strcmp_short(data + inc, "componentTypexxx", 3) == 0)
+                    accessor->indices_component_type = (Gltf_Type)ascii_to_int(data + inc, &inc);
+            }
+        } else if (simd_strcmp_short(data + inc, "valuesxxxxxxxxx", 9) == 0) {
+            while(simd_find_char_interrupted(data + inc, '"', '}')) {
+                simd_skip_passed_char(data + inc, &inc, '"', Max_u64);
+                if (simd_strcmp_short(data + inc, "bufferViewxxxxxx", 6) == 0)
+                    accessor->values_buffer_view = ascii_to_int(data + inc, &inc);
+                if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx", 6) == 0)
+                    accessor->values_byte_offset = ascii_to_int(data + inc, &inc);
+            }
         }
-
     }
 }
 
-Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int accessor_count) {
+Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int *accessor_count) {
     /*Key_Pad keys[] = {
         {"bufferViewxxxxxx",  6},
         {"byteOffsetxxxxxx",  6},
@@ -361,38 +413,241 @@ Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int accessor_count
     };
     int key_count = 8; */
 
-    // Temp allocation made for every accessor struct. Keeps shit packed, linear allocators are fast...
-    u64 inc = *offset;
 
+    u64 inc = 0; // track position in file
+    int count = 0; // accessor count
+    int min_max_len = 0;
     Gltf_Accessor *accessor; 
-    while(true) {
-        if (simd_search_for_char(data + inc, ']') < simd_search_for_char(data + inc, '{'))
-            break; // handle end
 
+    // This loop searches at the list level, stopping if it finds a closing square bracket before it finds
+    // an opening curly brace - (all closing square brackets below accessor list level will be skipped by 
+    // the inner loop that searches objects for keys)
+    while(simd_find_char_interrupted(data + inc, '{', ']')) {
+
+        // Temp allocation made for every accessor struct. Keeps shit packed, linear allocators are fast...
         accessor = (Gltf_Accessor*)memory_allocate_temp(sizeof(Gltf_Accessor), 8);
-        
-        // I do not like all these branch misses, but I cant see a better way. Even if I make a system 
-        // to remove options if they have already been chosen, there would still be at least one branch
-        // with no improvement in predictability... (I think)
-        simd_skip_passed_char(data + inc, &inc, '"');
-        if (simd_strcmp_short(data + inc, "bufferViewxxxxxx", 6) == 0)
-            accessor->buffer_view = ascii_to_int(data + inc, &inc);
-        if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx", 6) == 0)
-            accessor->byte_offset = ascii_to_int(data + inc, &inc);
-        if (simd_strcmp_short(data + inc, "componentTypexxx",  3) == 0)
-            accessor->component_type = (Gltf_Type)ascii_to_int(data + inc, &inc);
-        if (simd_strcmp_short(data + inc, "countxxxxxxxxxxx", 11) == 0)
-            accessor->count = ascii_to_int(data + inc, &inc);
-        if (simd_strcmp_short(data + inc, "maxxxxxxxxxxxxxx", 13) == 0)
-            accessor->max = ascii_to_int(data + inc, &inc);
-        if (simd_strcmp_short(data + inc, "minxxxxxxxxxxxxx", 13) == 0)
-            accessor->min = ascii_to_int(data + inc, &inc);
-        if (simd_strcmp_short(data + inc, "typexxxxxxxxxxxx", 12) == 0)
-            accessor->type = ascii_to_int(data + inc, &inc);
-        if (simd_strcmp_short(data + inc, "sparsexxxxxxxxxx", 10) == 0)
-            accessor->sparse = ascii_to_int(data + inc, &inc);
+
+        // This loop searches objects for keys, it stops if it finds a closing brace before a key.
+        // Curly braces not at the accessor object level (such as accessor.sparse) are skipped inside the loop
+        while (simd_find_char_interrupted(string + inc, '"', '}') {
+
+            simd_skip_passed_char(data + inc, &inc, '"', Max_u64); // skip to beginning of key
+            
+            //
+            // I do not like all these branch misses, but I cant see a better way. Even if I make a system 
+            // to remove options if they have already been chosen, there would still be at least one branch
+            // with no improvement in predictability... (I think)
+            //
+            // ...I think this is just how parsing text goes...
+            //
+
+            // match keys to parse methods
+            if (simd_strcmp_short(data + inc, "bufferViewxxxxxx",  6) == 0) {
+                accessor->buffer_view = ascii_to_int(data + inc, &inc);
+                continue; // go to next key
+            }
+            if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx",  6) == 0) {
+                accessor->byte_offset = ascii_to_int(data + inc, &inc);
+                continue; // go to next key
+            }
+            if (simd_strcmp_short(data + inc, "countxxxxxxxxxxx", 11) == 0) {
+                accessor->count = ascii_to_int(data + inc, &inc);
+                continue; // go to next key
+            }
+            if (simd_strcmp_short(data + inc, "componentTypexxx",  3) == 0) {
+                accessor->component_type = (Gltf_Type)ascii_to_int(data + inc, &inc);
+                continue; // go to next key
+            }
+
+            // match type key to a Gltf_Type
+            if (simd_strcmp_short(data + inc, "typexxxxxxxxxxxx", 12) == 0) {
+                simd_skip_passed_char(data + inc, &inc, '"', Max_u64);
+                if (simd_strcmp_short(data + inc, "SCALARxxxxxxxxxx", 10)
+                    accessor->type = GLTF_TYPE_SCALAR;
+                if (simd_strcmp_short(data + inc, "VEC2xxxxxxxxxxxx", 12)
+                    accessor->type = GLTF_TYPE_VEC2;
+                if (simd_strcmp_short(data + inc, "VEC3xxxxxxxxxxxx", 12)
+                    accessor->type = GLTF_TYPE_VEC3;
+                if (simd_strcmp_short(data + inc, "VEC4xxxxxxxxxxxx", 12)
+                    accessor->type = GLTF_TYPE_VEC4;
+                if (simd_strcmp_short(data + inc, "MAT2xxxxxxxxxxxx", 12)
+                    accessor->type = GLTF_TYPE_MAT2;
+                if (simd_strcmp_short(data + inc, "MAT3xxxxxxxxxxxx", 12)
+                    accessor->type = GLTF_TYPE_MAT3;
+                if (simd_strcmp_short(data + inc, "MAT4xxxxxxxxxxxx", 12)
+                    accessor->type = GLTF_TYPE_MAT4;
+
+                continue; // go to next key
+            }
+
+            // why the fuck are bools represented as ascii strings hahhahahahah wtf!!!
+            // just use 1 or 0!!! Its just wasting space! Human readable, but so much dumber to parse!!!
+            if (simd_strcmp_short(data + inc, "normalizedxxxxxx", 6) == 0) {
+                simd_skip_passed_char(data + inc, &inc, ':', Max_u64
+                simd_skip_whitespace(data + inc, &inc);
+                if (simd_strcmp_short(data + inc, "truexxxxxxxxxxxx", 12) == 0) {
+                    accessor.normalized = 1;
+                    inc += 5; // go passed the 'true' in the file (no quotation marks to skip)
+                }
+                else {
+                    accessor.normalized = 0;
+                    inc += 6; // go passed the 'false' in the file (no quotation marks to skip)
+                }
+                
+                continue; // go to next key
+            }
+
+            // sparse object gets its own function
+            if (simd_strcmp_short(data + inc, "sparsexxxxxxxxxx", 10) == 0) {
+                parse_accessor_sparse(data + inc, &inc. accessor);
+                continue; // go to next key
+            }
+
+            // @Robustness The allocations in these if blocks assume that the 'type' field
+            // is already full (accessors.type came before max and min in the file). Idk 
+            // if this is reliable, but it would be slightly more annyoing to implement
+            // without this assumption, so I will stick with it for now...??
+            if (simd_strcmp_short(data + inc, "maxxxxxxxxxxxxxx", 13) == 0) {
+
+                // Why are these types stored as strings?? Why are 'componentType's castable integers, 
+                // but these are strings?? This file format is a little insane, there must be a better way 
+                // to store this data, surely...???
+                switch(accessor->type) {
+                case GLTF_TYPE_SCALAR:
+                {
+                    // round the size allocated up to an 8 byte aligned size. This should
+                    // be done by the linear allocator allocate function, but best to be safe...
+                    accessor->max = (float*)memory_allocate_temp(sizeof(float) * 2, 8);
+                    min_max_len = 1;
+                    accessor->stride = sizeof(Gltf_Accessor) + 8;
+                    break;
+                }
+                case GLTF_TYPE_VEC2:
+                {
+                    accessor->max = (float*)memory_allocate_temp(sizeof(float) * 2, 8);
+                    min_max_len = 2;
+                    accessor->stride = sizeof(Gltf_Accessor) + 8;
+                    break;
+                }
+                case GLTF_TYPE_VEC3:
+                {
+                    accessor->max = (float*)memory_allocate_temp(sizeof(float) * 4, 8);
+                    min_max_len = 3;
+                    accessor->stride = sizeof(Gltf_Accessor) + 16;
+                    break;
+                }
+                case GLTF_TYPE_VEC4:
+                {
+                    accessor->max = (float*)memory_allocate_temp(sizeof(float) * 4, 8);
+                    min_max_len = 4;
+                    accessor->stride = sizeof(Gltf_Accessor) + 16;
+                    break;
+                }
+                case GLTF_TYPE_MAT2:
+                {
+                    accessor->max = (float*)memory_allocate_temp(sizeof(float) * 4, 8);
+                    min_max_len = 4;
+                    accessor->stride = sizeof(Gltf_Accessor) + 16;
+                    break;
+                }
+                case GLTF_TYPE_MAT3:
+                {
+                    accessor->max = (float*)memory_allocate_temp(sizeof(float) * 10, 8);
+                    min_max_len = 9;
+                    accessor->stride = sizeof(Gltf_Accessor) + 40;
+                    break;
+                }
+                case GLTF_TYPE_MAT4:
+                {
+                    accessor->max = (float*)memory_allocate_temp(sizeof(float) * 16, 8);
+                    min_max_len = 16;
+                    accessor->stride = sizeof(Gltf_Accessor) + 64;
+                    break;
+                }
+                default:
+                    ASSERT(false, "This is not a valid Gltf Type");
+                }
+                parse_float_array(data + inc, &inc, accessor->max, min_max_count);
+                continue; // go to next key
+            }
+            if (simd_strcmp_short(data + inc, "minxxxxxxxxxxxxx", 13) == 0) {
+                switch(accessor->type) {
+                case GLTF_TYPE_SCALAR:
+                {
+                    // round the size allocated up to an 8 byte aligned size. This should
+                    // be done by the linear allocator allocate function, but best to be safe...
+                    accessor->min = (float*)memory_allocate_temp(sizeof(float) * 1, 8);
+                    min_max_len = 1;
+                    accessor->stride = sizeof(Gltf_Accessor) + 8;
+                    break;
+                }
+                case GLTF_TYPE_VEC2:
+                {
+                    accessor->min = (float*)memory_allocate_temp(sizeof(float) * 2, 8);
+                    min_max_len = 2;
+                    accessor->stride = sizeof(Gltf_Accessor) + 8;
+                    break;
+                }
+                case GLTF_TYPE_VEC3:
+                {
+                    accessor->min = (float*)memory_allocate_temp(sizeof(float) * 3, 8);
+                    min_max_len = 3;
+                    accessor->stride = sizeof(Gltf_Accessor) + 16;
+                    break;
+                }
+                case GLTF_TYPE_VEC4:
+                {
+                    accessor->min = (float*)memory_allocate_temp(sizeof(float) * 4, 8);
+                    min_max_len = 4;
+                    accessor->stride = sizeof(Gltf_Accessor) + 16;
+                    break;
+                }
+                case GLTF_TYPE_MAT2:
+                {
+                    accessor->min = (float*)memory_allocate_temp(sizeof(float) * 4, 8);
+                    min_max_len = 4;
+                    accessor->stride = sizeof(Gltf_Accessor) + 16;
+                    break;
+                }
+                case GLTF_TYPE_MAT3:
+                {
+                    accessor->min = (float*)memory_allocate_temp(sizeof(float) * 9, 8);
+                    min_max_len = 9;
+                    accessor->stride = sizeof(Gltf_Accessor) + 40;
+                    break;
+                }
+                case GLTF_TYPE_MAT4:
+                {
+                    accessor->min = (float*)memory_allocate_temp(sizeof(float) * 16, 8);
+                    min_max_len = 16;
+                    accessor->stride = sizeof(Gltf_Accessor) + 64;
+                    break;
+                }
+                default:
+                    ASSERT(false, "This is not a valid Gltf Type");
+                }
+                parse_float_array(data + inc, &inc, accessor->min, min_max_count);
+
+                continue; // go to next key
+            }
+        }
+        // 'min' and 'max' arrays were not found, so stride is is no bigger than main struct
+        if (accessor->stride == 0)
+            accessor->stride = sizeof(Gltf_Accessor);
     }
     // handle end...
+
+    // @Note @Memalign
+    //
+    // ** If accessor info is garbled shit, come back here **
+    //
+    // The way the list is handled is I make an allocation for every accessor, and then decrement the final
+    // accessor pointer to point to the first allocation, because the allocations are made in a linear allocator.
+    // I think that this works despite alignment rules, as in indexing by accessor will work fine, because
+    // there will not be alignment problems in the linear allocator.
+    *accessor_count = count;
+    *offset += inc;
+    return accessor - count; // point the returned pointer to the beginning of the list
 }
 
 Gltf parse_gltf(const char *filename) {
@@ -402,213 +657,17 @@ Gltf parse_gltf(const char *filename) {
     char buf[16];
     u64 offset = 0;
 
-    Key_Pad keys[] = {
+    /*Key_Pad keys[] = {
         {"accessorsxxxxxxx", 7},
     };
-    const int key_count = 1;
-    int match_count = 0;
+    const int key_count = 1; */
 
-    // Gltf_Parser_Func Function Sig: void (*gltf_parser_func)(Gltf *gltf, const char *data, u64 *offset);
-    Gltf_Parser_Func parser_funcs[] = {
-        &parse_accessors,
-    };
-
-    // this function could just return the byte count between offset and the char??
     simd_skip_passed_char(data + offset, &offset, '"', size);
 
-    // @Note I could reshuffle the list on each match (swap the found one 
-    // with the one closest to the end which hasnt been found), but the list is so short
-    // and the branches so unpredictable that who cares...
-    int index = find_string_in_list(data + offset, keys, key_count);
-    (*parser_funcs[index])(&gltf, data, &offset);
+    if (simd_strcmp_short(data + offset, "accessorsxxxxxxx", 7) == 0) {
+        gltf.accessors = parse_accessors(data, &offset, &gltf.accessor_count);
+        ASSERT(false, "Halt for now...");
+    }
 
     return gltf;
 }
-
-#if 0
-
-*********************************************
-enum Gltf_Key {
-    GLTF_KEY_INVALID,
-    GLTF_KEY_ACCESSORS,
-};
-
-int str_len(const char *str, char c) {
-    int i = 0;
-    while(str[i] != c)
-        ++i;
-    return i;
-}
-bool cmp_str(const char *a, const char *b, int len) {
-    for(int i = 0; i < len; ++i)
-        if (a[i] != b[i])
-            return false;
-    return true;
-}
-
-Gltf_Key match_key(const char *key, int *len) {
-    if (cmp_str(key, "accessors", 9)) {
-        if (len)
-            *len = str_len("accessors", '\0');
-        return GLTF_KEY_ACCESSORS;
-    }
-
-    ASSERT(false, "Invalid key");
-    return GLTF_KEY_INVALID;
-}
-
-enum Gltf_Value {
-    GLTF_VALUE_INT    = 1,
-    GLTF_VALUE_FLOAT  = 2,
-    GLTF_VALUE_ARRAY  = 3,
-    GLTF_VALUE_OBJECT = 4,
-};
-
-void skip_to_char(const char *data, u64 *offset, char c) {
-    while(data[*offset] != c)
-        *offset += 1;
-}
-
-bool look_ahead_for_char(const char *data, char c, char s) {
-    for(int i = 0; true; ++i) {
-        if (data[i] == c)
-            return true;
-        if (data[i] != s)
-            return false;
-    }
-}
-
-void skip_white_space(const char *data, u64 *offset) {
-    while(data[*offset] == ' ' || data[*offset] == '\n')
-        *offset += 1;
-}
-void skip_useless_chars(const char *data, u64 *offset) {
-    while(true) {
-        skip_white_space(data, offset);
-        switch(data[*offset]) {
-        case '0':
-        case '1':
-        case '2':
-        case '3':
-        case '4':
-        case '5':
-        case '6':
-        case '7':
-        case '8':
-        case '9':
-        case '-':
-        case '.':
-        case ',':
-            *offset += 1;
-            continue;
-        case ':':
-        {
-            *offset += 1;
-            skip_white_space(data, offset);
-            switch(data[*offset]) {
-            case '"':
-            {
-                *offset += 1;
-                skip_to_char(data, offset, '"');
-                *offset += 1;
-                continue;
-            }
-            case '[':
-            {
-                skip_to_char(data, offset, ']');
-                *offset += 1;
-                continue;
-            }
-            default:
-                continue;
-            }
-        }
-        default:
-            return;
-        } // switch data[*offset]
-    }
-}
-
-void collect_string(const char *data, u64 *offset, char *buf) {
-    int i = 0;
-    while(data[*offset] != '"') {
-        buf[i] = data[*offset];
-        i++;
-        *offset += 1;
-    }
-    buf[i] = '\0';
-}
-
-// This can spit out a list of keys, and a list of values.
-Static_Array<Gltf_Key> parse_accessors(Gltf *gltf, const char *data, u64 *offset) {
-    skip_to_char(data, offset, '[');
-    *offset += 1;
-
-    int depth = 0;
-    int key_count = 0;
-    char key_buf[16];
-    gltf->accessor_count = 0;
-    while(true) {
-        skip_useless_chars(data, offset);
-
-        if (data[*offset] == '{') {
-            if (depth == 0) {
-                gltf->accessor_count++;
-            }
-            *offset += 1;
-            depth++;
-            continue;
-        } else if (data[*offset] == '}') {
-            *offset += 1;
-            depth--;
-            continue;
-        }
-
-        if (data[*offset] == '"') {
-            *offset += 1;
-            collect_string(data, offset, key_buf); 
-            key_count++;
-            *offset += 1;
-            continue;
-        }
-
-        if (data[*offset] == ']' && depth == 0)
-            break;
-    }
-
-    gltf->accessors = (Gltf_Accessor*)memory_allocate_temp(sizeof(Gltf_Accessor) * gltf->accessor_count, 8);
-
-    println("Accessor Count: %u", gltf->accessor_count);
-    println("Key Count: %u", key_count);
-    //CAP_TO_LEN_STATIC_ARRAY(keys);
-    return {};
-}
-
-static void match_key(int count, const char **keys, const char *key, void **function_pointers) {
-    for(itn
-}
-
-void parse_gltf(const char *file_name, Gltf *gltf) {
-    u64 size;
-    // pad file to not segfault off the end with simd
-    const char *data = (const char*)file_read_char_heap_padded(file_name, &size, 16);
-    
-    u64 offset = 0;
-    simd_skip_passed_char(data, &offset, '"');
-
-    offset++;
-    int key_len;
-    Gltf_Key key = match_key(data + offset, &key_len);
-    offset += key_len + 1;
-
-    switch(key) {
-    case GLTF_KEY_ACCESSORS:
-    {
-        parse_accessors(gltf, data, &offset);
-        break;
-    }
-    default:
-        ASSERT(false, "Unimplemented Key");
-    }
-}
-#endif

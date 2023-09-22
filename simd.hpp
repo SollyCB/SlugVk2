@@ -16,6 +16,39 @@
  *****************************************
 */
 
+inline static bool simd_find_char_interrupted(const char *string, char find, char interrupt) {
+    __m128i a = _mm_loadu_si128((__m128i*)string);
+    __m128i b = _mm_set1_epi8(find);
+    __m128i c = _mm_set1_epi8(interrupt);
+    __m128i d = _mm_cmpeq_epi8(a, b);
+    u16 mask1 = _mm_movemask(d);
+    d = _mm_cmpeq_epi8(a, c);
+    u16 mask2 = _mm_movemask(d);
+
+    // @Note @Branching There is probably some smart way to do this to cut down branching...
+    // Idk how to deal with the UB for mask == 0x0 other than branching... Maybe the compiler
+    // will figure out smtg smart, @Todo check godbolt for this
+    u64 inc = 0;
+    while(!mask1 && !mask2) {
+        inc += 16;
+        a = _mm_loadu_si128((__m128i*)string + inc);
+        d = _mm_cmpeq_epi8(a, b);
+        mask1 = _mm_movemask(d);
+        d = _mm_cmpeq_epi8(a, c);
+        mask2 = _mm_movemask(d);
+    }
+
+    if (mask1 && !mask2) {
+        return true;
+    } else if (!mask1) {
+        return false;
+    } else {
+        int tz1 = count_trailing_zeros(mask1);
+        int tz2 = count_trailing_zeros(mask2);
+        return tz1 < tz2;
+    }
+}
+
 // Must be safe to assume that x and y have len 16 bytes, must return u16
 inline static u64 simd_search_for_char(const char *string, char c) {
     __m128i a =  _mm_loadu_si128((const __m128i*)string);
@@ -92,6 +125,35 @@ inline static bool simd_skip_passed_char(const char *string, u64 *offset, char c
     int tz = count_trailing_zeros_u32(mask);
     *offset += tz + 1 + inc;
     return true;
+}
+
+inline static void simd_skip_whitespace(const char *string, u64 *offset) {
+    u64 inc = 0;
+    __m128i a = _mm_loadu_si128((__m128i*)string);
+    __m128i b = _mm_set1_epi8(' ');
+    __m128i c = _mm_set1_epi8('\n');
+    // Idk if checking tabs is necessary but I think it is because for some reason tabs exist...
+    // THEY ARE JUST SOME NUMBER OF SPACES! THERE ISNT EVEN CONSENSUS ON  HOW MANY SPACES!! JSUT SOME NUMBER OF THEM!
+    __m128i e = _mm_set1_epi8('\t');
+    __m128i d;
+    d = _mm_cmpeq_epi8(a, b);
+    u16 mask = _mm_movemask_epi8(d);
+    d = _mm_cmpeq_epi8(a, e);
+    mask |= _mm_movemask_epi8(d);
+    d = _mm_cmpeq_epi8(a, c);
+    mask |= _mm_movemask_epi8(d);
+    while(mask == 0xffff) {
+        inc += 16;
+        a = _mm_loadu_si128((__m128i*)string + inc);
+        d = _mm_cmpeq_epi8(a, b);
+        mask = _mm_movemask_epi8(d);
+        d = _mm_cmpeq_epi8(a, b);
+        mask |= _mm_movemask_epi8(d);
+        d = _mm_cmpeq_epi8(a, e);
+        mask |= _mm_movemask_epi8(d);
+    }
+    int tz = count_trailing_zeros_u16(mask);
+    *offset += inc + tz;
 }
 
 // Must be safe to assume string has len 16 bytes
