@@ -73,15 +73,13 @@
 #include "simd.hpp"
 #include "builtin_wrappers.h"
 
-static int find_int(const char *data, u64 *offset) {
-    while(data[*offset] < 48 || data[*offset] > 57)
-        *offset += 1;
-
-    int len = 0;
-    while(data[*offset + len] > 48 && data[*offset] < 57)
-        len++;
-
-    return len;
+// @Note I am surprised that I cannot find an SSE intrinsic to do this.
+inline static int pow(int num, int exp) {
+    int accum = 1;
+    for(int i = 0; i < exp; ++i) {
+        accum *= num;
+    }
+    return accum;
 }
 
 inline static int match_int(char c) {
@@ -151,23 +149,21 @@ static float ascii_to_float(const char *data, u64 *offset) {
 
         inc++; // will point beyond the last int at the end of the loop, no need for +1
     }
-    for(int i = 0; i < after_dot; ++i)
-        accum /= 10;
+
+    // The line below this comment used to say...
+    //
+    // for(int i = 0; i < after_dot; ++i)
+    //     accum /= 10;
+    // 
+    // ...It is little pieces of code like this that make me worry my code is actually slow while
+    // I am believing it to be fast lol
+    accum /= pow(10, after_dot);
 
     *offset += inc;
 
     if (neg)
         accum = -accum;
 
-    return accum;
-}
-
-// @Note I am surprised that I cannot find an SSE intrinsic to do this.
-inline static int pow(int num, int exp) {
-    int accum = 1;
-    for(int i = 1; i < exp; ++i) {
-        accum *= num;
-    }
     return accum;
 }
 
@@ -183,8 +179,6 @@ inline static int parse_float_array(const char *data, u64 *offset, float *array)
 }
 
 // algorithms end
-
-typedef void (*Gltf_Parser_Func)(Gltf *gltf, const char *data, u64 *offset);
 
 void parse_accessor_sparse(const char *data, u64 *offset, Gltf_Accessor *accessor) {
     u64 inc = 0;
@@ -236,19 +230,6 @@ void parse_accessor_sparse(const char *data, u64 *offset, Gltf_Accessor *accesso
 }
 
 Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int *accessor_count) {
-    /*Key_Pad keys[] = {
-        {"bufferViewxxxxxx",  6},
-        {"byteOffsetxxxxxx",  6},
-        {"componentTypexxx",  3},
-        {"countxxxxxxxxxxx", 11},
-        {"maxxxxxxxxxxxxxx", 13},
-        {"minxxxxxxxxxxxxx", 13},
-        {"typexxxxxxxxxxxx", 12},
-        {"sparsexxxxxxxxxx", 10},
-    };
-    int key_count = 8; */
-
-
     u64 inc = 0; // track position in file
     simd_skip_passed_char(data, &inc, '[', Max_u64);
 
@@ -392,9 +373,11 @@ Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int *accessor_coun
     }
     // handle end...
 
+    // sol - 23 Sept 2023
     // @Note @Memalign
     //
-    // ** If accessor info is garbled shit, come back here **
+    // ** If accessor info is garbled shit, come back here ** -- Update: It seems to work fine, but I wont feel sure
+    //                                                                   for a little bit.
     //
     // The way the list is handled is I make an allocation for every accessor, and then decrement the final
     // accessor pointer to point to the first allocation, because the allocations are made in a linear allocator.
