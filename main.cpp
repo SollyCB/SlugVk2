@@ -397,6 +397,11 @@ int main() {
     }
     #endif
 
+    const char *s = "bbbbbbbbbbbbbbbbaabbaaaaaaaaaaaa";
+    u64 inc = 0;
+    simd_skip_passed_char_count(s, 'a', 4, &inc);
+    println("inc: %u", inc);
+
     kill_allocators();
     return 0;
 }

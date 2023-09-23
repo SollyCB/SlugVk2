@@ -246,13 +246,19 @@ static Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int *access
     int temp;
     bool min_found;
     bool max_found;
+
+    // aligned pointer to return
+    Gltf_Accessor *ret = (Gltf_Accessor*)memory_allocate_temp(0, 8);
+    // pointer for allocating to in loops
     Gltf_Accessor *accessor; 
 
-    Gltf_Accessor *ret = (Gltf_Accessor*)memory_allocate_temp(0, 8);
 
-    // This loop searches at the list level, stopping if it finds a closing square bracket before it finds
-    // an opening curly brace - (all closing square brackets below accessor list level will be skipped by 
-    // the inner loop that searches objects for keys)
+    //
+    // Function Method:
+    //     outer loop jumps through the objects in the list,
+    //     inner loop jumps through the keys in the objects
+    //
+
     while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
         count++; // increment accessor count
 
@@ -264,8 +270,6 @@ static Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int *access
         min_found = false;
         max_found = false;
 
-        // This loop searches objects for keys, it stops if it finds a closing brace before a key.
-        // Curly braces not at the accessor object level (such as accessor.sparse) are skipped inside the loop
         while (simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
             inc++; // go beyond the '"' found by find_char_inter...
             //simd_skip_passed_char(data + inc, &inc, '"', Max_u64); // skip to beginning of key
@@ -382,8 +386,8 @@ static Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int *access
     // sol - 23 Sept 2023
     // @Note @Memalign
     //
-    // ** If accessor info is garbled shit, come back here ** -- Update: It seems to work fine, but I wont feel sure
-    //                                                                   for a little bit.
+    // ** If accessor info is garbled shit, come back here **
+    // -- Update: It seems to work fine, but I wont feel sure for a little bit. --
     //
     // The way the list is handled is I make an allocation for every accessor, and then decrement the final
     // accessor pointer to point to the first allocation, because the allocations are made in a linear allocator.
@@ -395,45 +399,140 @@ static Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int *access
 } // function parse_accessors(..)
 
 // `Animations
-static Gltf_Animation* parse_animations(const char *data, u64 *offset, int *animation_count) {
-    u64 inc = 0;
-    int count = 0;
-    // get beginning of allocation / align allocator
-    Gltf_Animation *animation = (Gltf_Animation*)memory_allocate_temp(0, 8);
-    //  while still keys in list, jump to the start of the first key and loop
-    while(simd_find_char_interrupted(data + inc, '"', ']', &inc)) {
-        ++inc; // go beyond the '"'
-        if (simd_strcmp_short(data + inc, "namexxxxxxxxxxxx", 12) == 0) {
-            // skip names. Have to jump 3 quotation marks.
-            //for(int i = 0; i < 3; ++i)
-                //simd_find_char_
+static Gltf_Animation_Channel* parse_animation_channels(const char *data, u64 *offset, int *channel_count) {
+    // Aligned pointer to return
+    Gltf_Animation_Channel *channels = (Gltf_Animation_Channel*)memory_allocate_temp(0, 8);
+    // pointer for allocating to in loops
+    Gltf_Animation_Channel *channel;
 
-            continue;
+    //
+    // Function Method:
+    //     outer loop to jump through the list of objects
+    //     inner loop to jump through the keys in an object
+    //
+
+    u64 inc = 0;   // track pos in file
+    int count = 0; // track object count
+
+    while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
+        channel = (Gltf_Animation_Channel*)memory_allocate_temp(sizeof(Gltf_Animation_Channel), 8);
+        count++;
+        while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) { // channel loop
+            inc++; // go beyond opening '"' in key
+            if (simd_strcmp_short(data + inc, "samplerxxxxxxxxx",  9) == 0) {
+                channel->sampler = ascii_to_int(data + inc, &inc);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "targetxxxxxxxxxx", 10) == 0) {
+                // loop through 'target' object's keys
+                while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+                    inc++;
+                    if (simd_strcmp_short(data + inc, "nodexxxxxxxxxxxx", 12) == 0) {
+                       channel->target_node = ascii_to_int(data + inc, &inc);
+                       continue;
+                    } else if (simd_strcmp_short(data + inc, "pathxxxxxxxxxxxx", 12) == 0) {
+
+                        //
+                        // string keys + string values are brutal for error proneness...
+                        // have to consider everytime what you are skipping
+                        //
+
+                        // skip passed closing '"' in 'path' key, skip passed opening '"' in the value string
+                        simd_skip_passed_char_count(data + inc, '"', 2, &inc);
+                        if(simd_strcmp_short(data + inc, "translationxxxxx", 5) == 0) {
+                            channel->path = GLTF_ANIMATION_PATH_TRANSLATION;
+                            continue;
+                        } else if(simd_strcmp_short(data + inc, "rotationxxxxxxxx", 8) == 0) {
+                            channel->path = GLTF_ANIMATION_PATH_ROTATION;
+                            continue;
+                        } else if(simd_strcmp_short(data + inc, "scalexxxxxxxxxxx", 11) == 0) {
+                            channel->path = GLTF_ANIMATION_PATH_SCALE;
+                            continue;
+                        } else if(simd_strcmp_short(data + inc, "weightsxxxxxxxxx", 9) == 0) {
+                            channel->path = GLTF_ANIMATION_PATH_WEIGHTS;
+                            continue;
+                        }
+                    }
+                }
+                inc++; // go passed closing brace of 'target' object to avoid early 'channel' loop exit
+            }
         }
-        //else if (simd_strcmp_short(data + 
     }
 
-    *animation_count = count; // store animation count
-    *offset += inc; // set place in gltf file
+    *channel_count = count;
+    *offset += inc;
+    return channels;
+}
+static Gltf_Animation_Sampler* parse_animation_samplers(const char *data, u64 *offset, int *sampler_count) {
+    Gltf_Animation_Sampler *samplers;
+    // @TODO Current task...
+    return samplers;
+}
+static Gltf_Animation* parse_animations(const char *data, u64 *offset, int *animation_count) {
+    //
+    // Function Method:
+    //     outer loop jumps through the list of animation objects
+    //     inner loop jumps through the keys in each object
+    //
+
+    Gltf_Animation *animations = (Gltf_Animation*)memory_allocate_temp(0, 8); // get aligned pointer to return
+    Gltf_Animation *animation; // pointer for allocating to in loops
+    
+    u64 inc = 0;   // track pos in file
+    int count = 0; // track object count
+
+    while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) { // jump to object start
+        ++count;
+        animation = (Gltf_Animation*)memory_allocate_temp(sizeof(Gltf_Animation), 8);
+        while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+            inc++; // enter the key
+            if (simd_strcmp_short(data + inc, "namexxxxxxxxxxxx", 12) == 0) {
+                // skip "name" key. Have to jump 3 quotation marks: key end, value both
+                simd_skip_passed_char_count(data + inc, '"', 3, &inc);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "channelsxxxxxxxx", 8) == 0) {
+                animation->channels = parse_animation_channels(data + inc, &inc, &animation->channel_count);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "samplersxxxxxxxx", 8) == 0) {
+                animation->samplers = parse_animation_samplers(data + inc, &inc, &animation->sampler_count);
+                continue;
+            }
+        }
+        animation->stride = (sizeof(Gltf_Animation_Channel) * animation->channel_count) + 
+                            (sizeof(Gltf_Animation_Sampler) * animation->sampler_count);
+    }
+
+    *animation_count = count;
+    *offset += inc;
+    return animations;
 }
 
 Gltf parse_gltf(const char *filename) {
+
+    //
+    // Function Method:
+    //     While there is a '"' before a closing brace in the file, jump to the '"' as '"' means a key;
+    //     match the key and call its parser function.
+    //
+    //     Each parser function increments the file offset to point to the end of whatver it parsed, 
+    //     so if a closing brace is ever found before a key, there must be no keys left in the file. 
+    //
+
     u64 size;
     const char *data = (const char*)file_read_char_heap_padded(filename, &size, 16);
     Gltf gltf;
     char buf[16];
     u64 offset = 0;
 
-    simd_skip_passed_char(data + offset, &offset, '"', size);
-
-    if (simd_strcmp_short(data + offset, "accessorsxxxxxxx", 7) == 0) {
-        gltf.accessors = parse_accessors(data + offset, &offset, &gltf.accessor_count);
-        return gltf;
-    } else if (simd_strcmp_short(data + offset, "animationsxxxxxx", 6) == 0) {
-        gltf.animations = parse_animations(data + offset, &offset, &gltf.animation_count);
-        return gltf;
-    } else {
-        ASSERT(false, "This is not a level 1 gltf key"); 
+    while (simd_find_char_interrupted(data + offset, '"', '}', &offset)) {
+        if (simd_strcmp_short(data + offset, "accessorsxxxxxxx", 7) == 0) {
+            gltf.accessors = parse_accessors(data + offset, &offset, &gltf.accessor_count);
+            return gltf;
+        } else if (simd_strcmp_short(data + offset, "animationsxxxxxx", 6) == 0) {
+            gltf.animations = parse_animations(data + offset, &offset, &gltf.animation_count);
+            return gltf;
+        } else {
+            ASSERT(false, "This is not a top level gltf key"); 
+        }
     }
 
     return gltf;

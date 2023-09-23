@@ -21,8 +21,50 @@
 //  But in reality they only *look* long, because the number of instructions is very low, because of the intrinsics
 //
 
+//
+// @Note some of the if statements look a little weird as they wrap while loops.
+// The point of this is that in the Intel Optimization Manual, it states that fall through
+// paths are predicted as being taken if there is not info in the branch buffer. Idk if this
+// actually helps optimisation, as it adds a comparison, but this comparison is always the same
+// as the next comparison (the while loop test)? I am trying it out anyway. One day I will test it,
+// but I imagine it is completely negligible...
+//
+
+// @Todo better document what these functions are doing. Some of the operations might look confusing
+// if I come to them after not using simd for a while or smtg
+
 inline static void simd_skip_passed_char_count(const char *string, char skip, int skip_count, u64 *pos) {
-    // @redo
+    __m128i a = _mm_loadu_si128((__m128i*)string);
+    __m128i b = _mm_set1_epi8(skip);
+    a = _mm_cmpeq_epi8(a, b);
+    u16 mask = _mm_movemask_epi8(a);
+    int count = pop_count16(mask);
+
+    u64 inc = 0;
+    while(count < skip_count) {
+        inc += 16;
+        a = _mm_loadu_si128((__m128i*)(string + inc));
+        a = _mm_cmpeq_epi8(a, b);
+        mask = _mm_movemask_epi8(a);
+        count += pop_count16(mask);
+    }
+
+    // if count > skip_count,
+    // find the index of the last matched char in the group which when added to count makes count == skip_count
+    int lz = count_leading_zeros_u16(mask);
+    if (count > skip_count) {
+        int temp = count - pop_count16(mask);
+        while(count > skip_count) {
+            count = temp;
+            mask ^= 0x8000 >> lz; // xor off the matched char at the highest index in the string
+            count += pop_count16(mask);
+            lz = count_leading_zeros_u16(mask);
+        }
+    }
+
+    // when count == skip_count, 
+    // position in file += total increment + the distance to the last matched char in the group
+    *pos += inc + (16 - lz);
 }
 
 inline static bool simd_find_char_interrupted(const char *string, char find, char interrupt, u64 *pos) {
@@ -123,6 +165,23 @@ inline static bool simd_skip_to_char(const char *string, u64 *offset, char c, u6
     return true;
 }
 
+// Must be safe to assume string has len 16 bytes
+inline static void simd_skip_passed_char(const char *string, u64 *offset, char c) {
+    u64 inc = 0;
+    __m128i a = _mm_loadu_si128((__m128i*)(string + inc));
+    __m128i b = _mm_set1_epi8(c);
+    a = _mm_cmpeq_epi8(a, b);
+    u16 mask = _mm_movemask_epi8(a);
+    // if mask is empty, no character was matched in the 16 bytes
+    while(!mask) {
+        inc += 16;
+        a = _mm_loadu_si128((__m128i*)(string + inc));
+        a = _mm_cmpeq_epi8(a, b);
+        mask = _mm_movemask_epi8(a);
+    }
+    int tz = count_trailing_zeros_u32(mask);
+    *offset += tz + 1 + inc;
+}
 // Must be safe to assume string has len 16 bytes
 inline static bool simd_skip_passed_char(const char *string, u64 *offset, char c, u64 limit) {
     u64 inc = 0;

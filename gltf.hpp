@@ -20,10 +20,13 @@ enum Gltf_Type {
     GLTF_TYPE_FLOAT          = 5126,
 };
 
-struct Gltf_Accessor { // 68 bytes - ewww it was 64 before i remebered sparse count 
-    Gltf_Type type;   // (maybe the enum is less than 32bit acutally);
+struct Gltf_Accessor {
+    Gltf_Type type;
     Gltf_Type component_type;
     Gltf_Type indices_component_type;
+
+    int stride;
+
     int indices_buffer_view;
     int values_buffer_view;
     int indices_byte_offset;
@@ -34,9 +37,6 @@ struct Gltf_Accessor { // 68 bytes - ewww it was 64 before i remebered sparse co
     int count;
     int sparse_count;
 
-    // 'size' field is the total size of the Accessor struct accounting for the number of floats in the float
-    // arrays: the float arrays are allocated in memory immediately following the main struct. 
-    int stride;
     float *max;
     float *min;
 };
@@ -63,9 +63,11 @@ struct Gltf_Animation_Sampler {
     int output;
     Gltf_Animation_Interp interp;
 };
-// @Todo @AccessPatterns
-// Come back here when I am actaully loading and using models: should samplers and channels be interleaved?
 struct Gltf_Animation {
+    int stride;
+
+    // @AccessPattern I wonder if there is a nice way to pack these. Without use case, I dont know if interleaving
+    // might be useful. For now it seems not to be.
     int channel_count;
     int sampler_count;
     Gltf_Animation_Channel *channels;
@@ -73,6 +75,12 @@ struct Gltf_Animation {
 };
 
 struct Gltf {
+    // Each arrayed field has a 'stride' member, which is the byte count required to reach 
+    // the next array member;
+    //
+    // Explain: all strides can be calculated from the other info in the struct, but some of these algorithms 
+    // are weird and incur unclear overhead. So for consistency's sake they will just be included, 
+    // regardless of the ease with which the strides can be calculated. 
     int accessor_count;
     Gltf_Accessor *accessors;
     int animation_count;
