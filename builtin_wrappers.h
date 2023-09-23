@@ -10,6 +10,9 @@ inline int count_trailing_zeros_u16(u16 num) {
 inline int count_trailing_zeros_u32(u32 num) {
     return __builtin_ctzl(num);
 }
+inline int count_leading_zeros_u16(u16 mask) {
+    return __builtin_clzs(mask);
+}
 inline int count_leading_zeros_u32(u32 mask) {
     return __builtin_clzl(mask);
 }

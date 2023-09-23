@@ -363,16 +363,11 @@ int main() {
     kill_glfw(glfw);
 #endif
 
-    Gltf gltf = parse_gltf("test_gltf.gltf");
-    println("Accessor count: %u", gltf.accessor_count);
-    Gltf_Accessor *accessor = gltf.accessors;
+    // @Todo move these prints into a test function...
+    #if 0
+
     for(int i = 0; i < gltf.accessor_count; ++i) {
         std::cout << "i = " << i << '\n';
-        std::cout << "accessor.type " << accessor->type << '\n';
-        std::cout << "accessor.buffer_view " <<  accessor->buffer_view << '\n';
-        std::cout << "accessor.byte_offset " << accessor->byte_offset << '\n';
-        std::cout << "accessor.count " << accessor->count << '\n';
-        std::cout << "accessor.componentType " << accessor->component_type << '\n';
 
         if (i == 0) {
             for(int i = 0; i < 1; ++i) {
@@ -400,6 +395,7 @@ int main() {
 
         accessor = (Gltf_Accessor*)((u8*)accessor + accessor->stride);
     }
+    #endif
 
     kill_allocators();
     return 0;
@@ -410,6 +406,7 @@ void run_tests() {
     load_tests();
 
     test_spirv();
+    test_gltf();
 
     end_tests();
 }

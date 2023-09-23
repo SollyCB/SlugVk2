@@ -41,10 +41,47 @@ struct Gltf_Accessor { // 68 bytes - ewww it was 64 before i remebered sparse co
     float *min;
 };
 
+enum Gltf_Animation_Path {
+    GLTF_ANIMATION_PATH_NONE        = 0,
+    GLTF_ANIMATION_PATH_TRANSLATION = 1,
+    GLTF_ANIMATION_PATH_ROTATION    = 2,
+    GLTF_ANIMATION_PATH_SCALE       = 3,
+    GLTF_ANIMATION_PATH_WEIGHTS     = 4,
+};
+enum Gltf_Animation_Interp {
+    GLTF_ANIMATION_INTERP_LINEAR,
+    GLTF_ANIMATION_INTERP_STEP,
+    GLTF_ANIMATION_INTERP_CUBICSPLINE,
+};
+struct Gltf_Animation_Channel {
+    int sampler;
+    int target_node;
+    Gltf_Animation_Path path;
+};
+struct Gltf_Animation_Sampler {
+    int input;
+    int output;
+    Gltf_Animation_Interp interp;
+};
+// @Todo @AccessPatterns
+// Come back here when I am actaully loading and using models: should samplers and channels be interleaved?
+struct Gltf_Animation {
+    int channel_count;
+    int sampler_count;
+    Gltf_Animation_Channel *channels;
+    Gltf_Animation_Sampler *samplers;
+};
+
 struct Gltf {
     int accessor_count;
     Gltf_Accessor *accessors;
+    int animation_count;
+    Gltf_Animation *animations;
 };
 Gltf parse_gltf(const char *file_name);
+
+#if TEST
+    void test_gltf();
+#endif
 
 #endif // include guard

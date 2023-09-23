@@ -73,6 +73,10 @@
 #include "simd.hpp"
 #include "builtin_wrappers.h"
 
+#if TEST
+    #include "test.hpp"
+#endif
+
 // @Note I am surprised that I cannot find an SSE intrinsic to do this.
 inline static int pow(int num, int exp) {
     int accum = 1;
@@ -166,6 +170,7 @@ static float ascii_to_float(const char *data, u64 *offset) {
 
     return accum;
 }
+// algorithms end
 
 inline static int parse_float_array(const char *data, u64 *offset, float *array) {
     int i = 0;
@@ -177,10 +182,11 @@ inline static int parse_float_array(const char *data, u64 *offset, float *array)
     *offset += inc + 1; // +1 go beyond the cloasing square bracket (prevent early exit at accessors list level)
     return i;
 }
-
 // algorithms end
 
-void parse_accessor_sparse(const char *data, u64 *offset, Gltf_Accessor *accessor) {
+
+// `Accessors
+static void parse_accessor_sparse(const char *data, u64 *offset, Gltf_Accessor *accessor) {
     u64 inc = 0;
     simd_find_char_interrupted(data + inc, '{', '}', &inc); // find sparse start
     while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
@@ -229,7 +235,7 @@ void parse_accessor_sparse(const char *data, u64 *offset, Gltf_Accessor *accesso
     *offset += inc + 1; // +1 go beyond the last curly brace in sparse object
 }
 
-Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int *accessor_count) {
+static Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int *accessor_count) {
     u64 inc = 0; // track position in file
     simd_skip_passed_char(data, &inc, '[', Max_u64);
 
@@ -386,6 +392,29 @@ Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int *accessor_coun
     *accessor_count = count;
     *offset += inc;
     return ret; // point the returned pointer to the beginning of the list
+} // function parse_accessors(..)
+
+// `Animations
+static Gltf_Animation* parse_animations(const char *data, u64 *offset, int *animation_count) {
+    u64 inc = 0;
+    int count = 0;
+    // get beginning of allocation / align allocator
+    Gltf_Animation *animation = (Gltf_Animation*)memory_allocate_temp(0, 8);
+    //  while still keys in list, jump to the start of the first key and loop
+    while(simd_find_char_interrupted(data + inc, '"', ']', &inc)) {
+        ++inc; // go beyond the '"'
+        if (simd_strcmp_short(data + inc, "namexxxxxxxxxxxx", 12) == 0) {
+            // skip names. Have to jump 3 quotation marks.
+            //for(int i = 0; i < 3; ++i)
+                //simd_find_char_
+
+            continue;
+        }
+        //else if (simd_strcmp_short(data + 
+    }
+
+    *animation_count = count; // store animation count
+    *offset += inc; // set place in gltf file
 }
 
 Gltf parse_gltf(const char *filename) {
@@ -395,20 +424,74 @@ Gltf parse_gltf(const char *filename) {
     char buf[16];
     u64 offset = 0;
 
-    /*Key_Pad keys[] = {
-        {"accessorsxxxxxxx", 7},
-    };
-    const int key_count = 1; */
-
     simd_skip_passed_char(data + offset, &offset, '"', size);
 
     if (simd_strcmp_short(data + offset, "accessorsxxxxxxx", 7) == 0) {
         gltf.accessors = parse_accessors(data + offset, &offset, &gltf.accessor_count);
         return gltf;
+    } else if (simd_strcmp_short(data + offset, "animationsxxxxxx", 6) == 0) {
+        gltf.animations = parse_animations(data + offset, &offset, &gltf.animation_count);
+        return gltf;
+    } else {
+        ASSERT(false, "This is not a level 1 gltf key"); 
     }
 
     return gltf;
 }
+
+#if TEST
+static void test_accessors(Gltf_Accessor *accessor);
+
+void test_gltf() {
+    Gltf gltf = parse_gltf("test_gltf.gltf");
+    Gltf_Accessor *accessor = gltf.accessors;
+
+    test_accessors(gltf.accessors);
+}
+
+static void test_accessors(Gltf_Accessor *accessor) {
+    BEGIN_TEST_MODULE("Gltf_Accessor", true, false);   
+
+    TEST_EQ("accessor[0].type", (int)accessor->type, 1, false);
+    TEST_EQ("accessor[0].componentType", (int)accessor->component_type, 5123, false);
+    TEST_EQ("accessor[0].buffer_view", accessor->buffer_view, 1, false);
+    TEST_EQ("accessor[0].byte_offset", accessor->byte_offset, 100, false);
+    TEST_EQ("accessor[0].count", accessor->count, 12636, false);
+    TEST_EQ("accessor[0].max[0]", accessor->max[0], 4212, false);
+    TEST_EQ("accessor[0].min[0]", accessor->min[0], 0, false);
+
+    accessor = (Gltf_Accessor*)((u8*)accessor + accessor->stride);
+    TEST_EQ("accessor[1].type", (int)accessor->type, 2, false);
+    TEST_EQ("accessor[1].componentType", (int)accessor->component_type, 5126, false);
+    TEST_EQ("accessor[1].buffer_view", accessor->buffer_view, 2, false);
+    TEST_EQ("accessor[1].byte_offset", accessor->byte_offset, 200, false);
+    TEST_EQ("accessor[1].count", accessor->count, 2399, false);
+
+    float inaccuracy = 0.0000001;
+    TEST_LT("accessor[1].max[0]", accessor->max[0] - 0.961799,  inaccuracy, false);
+    TEST_LT("accessor[1].max[1]", accessor->max[1] - -1.6397,   inaccuracy, false);
+    TEST_LT("accessor[1].max[2]", accessor->max[2] - 0.539252,  inaccuracy, false);
+    TEST_LT("accessor[1].min[0]", accessor->min[0] - -0.692985, inaccuracy, false);
+    TEST_LT("accessor[1].min[1]", accessor->min[1] - 0.0992937, inaccuracy, false);
+    TEST_LT("accessor[1].min[2]", accessor->min[2] - -0.613282, inaccuracy, false);
+
+    accessor = (Gltf_Accessor*)((u8*)accessor + accessor->stride);
+    TEST_EQ("accessor[2].type", (int)accessor->type, 3, false);
+    TEST_EQ("accessor[2].componentType", (int)accessor->component_type, 5123, false);
+    TEST_EQ("accessor[2].buffer_view", accessor->buffer_view, 3, false);
+    TEST_EQ("accessor[2].byte_offset", accessor->byte_offset, 300, false);
+    TEST_EQ("accessor[2].count", accessor->count, 12001, false);
+
+    TEST_EQ("accessor[2].sparse_count", accessor->sparse_count, 10, false);
+    TEST_EQ("accessor[2].indices_comp_type", (int)accessor->indices_component_type, 5123, false);
+    TEST_EQ("accessor[2].indices_buffer_view", accessor->indices_buffer_view, 7, false);
+    TEST_EQ("accessor[2].values_buffer_view", accessor->values_buffer_view, 4, false);
+    TEST_EQ("accessor[2].indices_byte_offset", accessor->indices_byte_offset, 8888, false);
+    TEST_EQ("accessor[2].values_byte_offset", accessor->values_byte_offset, 9999, false);
+
+    END_TEST_MODULE();   
+}
+#endif
 
 /* Below is old code related to this file. I am preserving it because it is cool code imo, does some cool things... */
 

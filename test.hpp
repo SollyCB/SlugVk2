@@ -106,6 +106,40 @@ void test_eq(Test_Module *mod, const char *test_name, const char *function_name,
 
     return;
 }
+template<typename Arg1, typename Arg2>
+void test_lt(Test_Module *mod, const char *test_name, const char *function_name,
+        const char *arg1_name, const char *arg2_name,
+        Arg1 arg1, Arg2 arg2, bool broken) 
+{
+    if (broken) {
+        TEST_MSG_BROKEN(test_name);
+        Heap_String_Buffer *tmp = append_to_dyn_array<Heap_String_Buffer>(&mod->broken_test_names);
+        *tmp = build_heap_string_buffer(1, &test_name);
+        return;
+    }
+
+    // @Todo more efficient to use copy heres rather than build
+    if (mod->skipped) {
+        if (broken) {
+            Heap_String_Buffer *tmp = append_to_dyn_array<Heap_String_Buffer>(&mod->skipped_broken_test_names);
+            *tmp = build_heap_string_buffer(1, &test_name); // a build (not a copy here - see above)
+        }
+        TEST_MSG_SKIPPED(test_name);
+        Heap_String_Buffer *tmp = append_to_dyn_array<Heap_String_Buffer>(&mod->skipped_test_names);
+        *tmp = build_heap_string_buffer(1, &test_name);
+        return;
+    }
+
+    if (arg1 < arg2)
+        return;
+
+    Heap_String_Buffer *tmp = append_to_dyn_array<Heap_String_Buffer>(&mod->failed_test_names);
+    *tmp = build_heap_string_buffer(1, &test_name);
+
+    TEST_MSG_FAIL(test_name, arg1_name, arg2_name, arg1, arg2);
+
+    return;
+}
 
 #define BEGIN_TEST_MODULE(name, broken, skipped) \
     Test_Module *test_module = append_to_dyn_array(&get_test_tracker_instance()->modules); \
@@ -117,6 +151,8 @@ void test_eq(Test_Module *mod, const char *test_name, const char *function_name,
 
 #define TEST_EQ(test_name, arg1, arg2, broken) \
     test_eq(test_module, test_name, __FUNCTION__, #arg1, #arg2, arg1, arg2, broken);
+#define TEST_LT(test_name, arg1, arg2, broken) \
+    test_lt(test_module, test_name, __FUNCTION__, #arg1, #arg2, arg1, arg2, broken);
 
 
 #endif // include guard

@@ -21,6 +21,10 @@
 //  But in reality they only *look* long, because the number of instructions is very low, because of the intrinsics
 //
 
+inline static void simd_skip_passed_char_count(const char *string, char skip, int skip_count, u64 *pos) {
+    // @redo
+}
+
 inline static bool simd_find_char_interrupted(const char *string, char find, char interrupt, u64 *pos) {
     __m128i a = _mm_loadu_si128((__m128i*)string);
     __m128i b = _mm_set1_epi8(find);
