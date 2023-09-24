@@ -281,7 +281,6 @@ static Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int *access
     // pointer for allocating to in loops
     Gltf_Accessor *accessor; 
 
-
     //
     // Function Method:
     //     outer loop jumps through the objects in the list,
@@ -452,7 +451,7 @@ static Gltf_Animation_Channel* parse_animation_channels(const char *data, u64 *o
                 channel->sampler = ascii_to_int(data + inc, &inc);
                 continue;
             } else if (simd_strcmp_short(data + inc, "targetxxxxxxxxxx", 10) == 0) {
-                simd_skip_passed_char(data + inc, &inc, '"');
+                simd_skip_passed_char(data + inc, &inc, '{');
                 // loop through 'target' object's keys
                 while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
                     inc++;
@@ -470,17 +469,14 @@ static Gltf_Animation_Channel* parse_animation_channels(const char *data, u64 *o
                         simd_skip_passed_char_count(data + inc, '"', 2, &inc);
                         if(simd_strcmp_short(data + inc, "translationxxxxx", 5) == 0) {
                             channel->path = GLTF_ANIMATION_PATH_TRANSLATION;
-                            continue;
                         } else if(simd_strcmp_short(data + inc, "rotationxxxxxxxx", 8) == 0) {
                             channel->path = GLTF_ANIMATION_PATH_ROTATION;
-                            continue;
                         } else if(simd_strcmp_short(data + inc, "scalexxxxxxxxxxx", 11) == 0) {
                             channel->path = GLTF_ANIMATION_PATH_SCALE;
-                            continue;
                         } else if(simd_strcmp_short(data + inc, "weightsxxxxxxxxx", 9) == 0) {
                             channel->path = GLTF_ANIMATION_PATH_WEIGHTS;
-                            continue;
                         }
+                        simd_skip_passed_char(data + inc, &inc, '"');
                     }
                 }
                 inc++; // go passed closing brace of 'target' object to avoid early 'channel' loop exit
@@ -489,7 +485,7 @@ static Gltf_Animation_Channel* parse_animation_channels(const char *data, u64 *o
     }
 
     *channel_count = count;
-    *offset += inc;
+    *offset += inc + 1; // go beyond array closing char
     return channels;
 }
 static Gltf_Animation_Sampler* parse_animation_samplers(const char *data, u64 *offset, int *sampler_count) {
@@ -511,19 +507,25 @@ static Gltf_Animation_Sampler* parse_animation_samplers(const char *data, u64 *o
         while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
             inc++; // go beyond opening '"' of key
             if (simd_strcmp_short(data + inc, "inputxxxxxxxxxxx", 11) == 0) {
-                ascii_to_int(data + inc, &inc);
+                sampler->input = ascii_to_int(data + inc, &inc);
                 continue; // Idk if continue and else if is destroying some branch predict algorithm, I hope not...
             } else if (simd_strcmp_short(data + inc, "outputxxxxxxxxxx", 10) == 0) {
-                ascii_to_int(data + inc, &inc);
+                sampler->output = ascii_to_int(data + inc, &inc);
                 continue;
             } else if (simd_strcmp_short(data + inc, "interpolationxxx", 3) == 0) {
                 simd_skip_passed_char_count(data + inc, '"', 2, &inc); // jump into value string
                 if (simd_strcmp_short(data + inc, "LINEARxxxxxxxxxx", 10) == 0) {
                     sampler->interp = GLTF_ANIMATION_INTERP_LINEAR;
+                    simd_skip_passed_char(data + inc, &inc, '"'); // skip passed the end of the value
+                    continue;
                 } else if (simd_strcmp_short(data + inc, "STEPxxxxxxxxxxxx", 12) == 0) {
                     sampler->interp = GLTF_ANIMATION_INTERP_STEP;
+                    simd_skip_passed_char(data + inc, &inc, '"'); // skip passed the end of the value
+                    continue;
                 } else if (simd_strcmp_short(data + inc, "CUBICSPLINExxxxx", 5) == 0) {
                     sampler->interp = GLTF_ANIMATION_INTERP_CUBICSPLINE;
+                    simd_skip_passed_char(data + inc, &inc, '"'); // skip passed the end of the value
+                    continue;
                 } else {
                     ASSERT(false, "This is not a valid interpolation type");
                 }
@@ -534,7 +536,7 @@ static Gltf_Animation_Sampler* parse_animation_samplers(const char *data, u64 *o
     }
 
     *sampler_count = count;
-    *offset = inc;
+    *offset += inc + 1; // go beyond array closing char
     return samplers;
 }
 static Gltf_Animation* parse_animations(const char *data, u64 *offset, int *animation_count) {
@@ -567,7 +569,8 @@ static Gltf_Animation* parse_animations(const char *data, u64 *offset, int *anim
                 continue;
             }
         }
-        animation->stride = (sizeof(Gltf_Animation_Channel) * animation->channel_count) + 
+        animation->stride =  sizeof(Gltf_Animation) + 
+                            (sizeof(Gltf_Animation_Channel) * animation->channel_count) + 
                             (sizeof(Gltf_Animation_Sampler) * animation->sampler_count);
     }
 
@@ -607,6 +610,7 @@ Gltf parse_gltf(const char *filename) {
         }
     }
 
+    memory_free_heap((void*)data);
     return gltf;
 }
 
@@ -614,35 +618,7 @@ Gltf parse_gltf(const char *filename) {
 
 #define TO_STRING(x) #x
 static void test_accessors(Gltf_Accessor *accessor);
-static void test_animations(int count, Gltf_Animation *animation) {
-    BEGIN_TEST_MODULE("Gltf_Accessor", true, false);   
-
-    TEST_EQ("animation[0].channels[0].sampler", animation->channels    [0].sampler,     0, false);
-    TEST_EQ("animation[0].channels[0].target_node", animation->channels[0].target_node, 1, false);
-    TEST_EQ("animation[0].channels[0].path", animation->channels       [0].path, GLTF_ANIMATION_PATH_ROTATION, false);
-
-    TEST_EQ("animation[0].channels[1].sampler", animation->channels    [1].sampler,     1, false);
-    TEST_EQ("animation[0].channels[1].target_node", animation->channels[1].target_node, 2, false);
-    TEST_EQ("animation[0].channels[1].path", animation->channels       [1].path, GLTF_ANIMATION_PATH_SCALE, false);
-
-    TEST_EQ("animation[0].channels[2].sampler", animation->channels    [2].sampler,     2, false);
-    TEST_EQ("animation[0].channels[2].target_node", animation->channels[2].target_node, 3, false);
-    TEST_EQ("animation[0].channels[2].path", animation->channels       [2].path, GLTF_ANIMATION_PATH_TRANSLATION, false);
-
-    TEST_EQ("animation[0].samplers[0].input",  animation->samplers[0].input,  4, false);
-    TEST_EQ("animation[0].samplers[0].output", animation->samplers[0].output, 5, false);
-    TEST_EQ("animation[0].samplers[0].interp", animation->samplers[0].interp, GLTF_ANIMATION_INTERP_LINEAR, false);
-
-    TEST_EQ("animation[0].samplers[1].input",  animation->samplers[1].input,  4, false);
-    TEST_EQ("animation[0].samplers[1].output", animation->samplers[1].output, 6, false);
-    TEST_EQ("animation[0].samplers[1].interp", animation->samplers[1].interp, GLTF_ANIMATION_INTERP_CUBICSPLINE, false);
-
-    TEST_EQ("animation[0].samplers[2].input",  animation->samplers[2].input,  4, false);
-    TEST_EQ("animation[0].samplers[2].output", animation->samplers[2].output, 7, false);
-    TEST_EQ("animation[0].samplers[2].interp", animation->samplers[2].interp, GLTF_ANIMATION_INTERP_STEP, false);
-
-    END_TEST_MODULE();
-}
+static void test_animations(int count, Gltf_Animation *animation);
 
 void test_gltf() {
     Gltf gltf = parse_gltf("test_gltf.gltf");
@@ -693,6 +669,70 @@ static void test_accessors(Gltf_Accessor *accessor) {
     TEST_EQ("accessor[2].values_byte_offset", accessor->values_byte_offset, 9999, false);
 
     END_TEST_MODULE();   
+}
+
+static void test_animations(int count, Gltf_Animation *animation) {
+    BEGIN_TEST_MODULE("Gltf_Accessor", true, false);   
+
+    TEST_EQ("animation[0].channels[0].sampler", animation->channels    [0].sampler,     0, false);
+    TEST_EQ("animation[0].channels[0].target_node", animation->channels[0].target_node, 1, false);
+    TEST_EQ("animation[0].channels[0].path", animation->channels       [0].path, GLTF_ANIMATION_PATH_ROTATION, false);
+    TEST_EQ("animation[0].channels[1].sampler", animation->channels    [1].sampler,     1, false);
+    TEST_EQ("animation[0].channels[1].target_node", animation->channels[1].target_node, 2, false);
+    TEST_EQ("animation[0].channels[1].path", animation->channels       [1].path, GLTF_ANIMATION_PATH_SCALE, false);
+    TEST_EQ("animation[0].channels[2].sampler", animation->channels    [2].sampler,     2, false);
+    TEST_EQ("animation[0].channels[2].target_node", animation->channels[2].target_node, 3, false);
+    TEST_EQ("animation[0].channels[2].path", animation->channels       [2].path, GLTF_ANIMATION_PATH_TRANSLATION,false);
+    TEST_EQ("animation[0].samplers[0].input",  animation->samplers[0].input,  888, false);
+    TEST_EQ("animation[0].samplers[0].output", animation->samplers[0].output, 5, false);
+    TEST_EQ("animation[0].samplers[0].interp", animation->samplers[0].interp, GLTF_ANIMATION_INTERP_LINEAR, false);
+    TEST_EQ("animation[0].samplers[1].input",  animation->samplers[1].input,  4, false);
+    TEST_EQ("animation[0].samplers[1].output", animation->samplers[1].output, 6, false);
+    TEST_EQ("animation[0].samplers[1].interp", animation->samplers[1].interp, GLTF_ANIMATION_INTERP_CUBICSPLINE, false);
+    TEST_EQ("animation[0].samplers[2].input",  animation->samplers[2].input,  4, false);
+    TEST_EQ("animation[0].samplers[2].output", animation->samplers[2].output, 7, false);
+    TEST_EQ("animation[0].samplers[2].interp", animation->samplers[2].interp, GLTF_ANIMATION_INTERP_STEP, false);
+
+    animation = (Gltf_Animation*)((u8*)animation + animation->stride);
+    TEST_EQ("animation[1].channels[0].sampler", animation->channels    [0].sampler,     0, false);
+    TEST_EQ("animation[1].channels[0].target_node", animation->channels[0].target_node, 0, false);
+    TEST_EQ("animation[1].channels[0].path", animation->channels       [0].path, GLTF_ANIMATION_PATH_ROTATION, false);
+    TEST_EQ("animation[1].channels[1].sampler", animation->channels    [1].sampler,     1, false);
+    TEST_EQ("animation[1].channels[1].target_node", animation->channels[1].target_node, 1, false);
+    TEST_EQ("animation[1].channels[1].path", animation->channels       [1].path, GLTF_ANIMATION_PATH_ROTATION, false);
+    TEST_EQ("animation[1].samplers[0].input",  animation->samplers[0].input,  0, false);
+    TEST_EQ("animation[1].samplers[0].output", animation->samplers[0].output, 1, false);
+    TEST_EQ("animation[1].samplers[0].interp", animation->samplers[0].interp, GLTF_ANIMATION_INTERP_LINEAR, false);
+    TEST_EQ("animation[1].samplers[1].input",  animation->samplers[1].input,  2, false);
+    TEST_EQ("animation[1].samplers[1].output", animation->samplers[1].output, 3, false);
+    TEST_EQ("animation[1].samplers[1].interp", animation->samplers[1].interp, GLTF_ANIMATION_INTERP_LINEAR, false);
+
+    animation = (Gltf_Animation*)((u8*)animation + animation->stride);
+    TEST_EQ("animation[2].channels[0].sampler", animation->channels    [0].sampler,     1000, false);
+    TEST_EQ("animation[2].channels[0].target_node", animation->channels[0].target_node, 2000, false);
+    TEST_EQ("animation[2].channels[0].path", animation->channels       [0].path, GLTF_ANIMATION_PATH_TRANSLATION,false);
+    TEST_EQ("animation[2].channels[1].sampler", animation->channels    [1].sampler,     799, false);
+    TEST_EQ("animation[2].channels[1].target_node", animation->channels[1].target_node, 899, false);
+    TEST_EQ("animation[2].channels[1].path", animation->channels       [1].path, GLTF_ANIMATION_PATH_WEIGHTS, false);
+    TEST_EQ("animation[2].samplers[0].input",  animation->samplers[0].input,  676, false);
+    TEST_EQ("animation[2].samplers[0].output", animation->samplers[0].output, 472, false);
+    TEST_EQ("animation[2].samplers[0].interp", animation->samplers[0].interp, GLTF_ANIMATION_INTERP_STEP, false);
+
+    animation = (Gltf_Animation*)((u8*)animation + animation->stride);
+    TEST_EQ("animation[3].channels[0].sampler", animation->channels    [0].sampler,     24, false);
+    TEST_EQ("animation[3].channels[0].target_node", animation->channels[0].target_node, 27, false);
+    TEST_EQ("animation[3].channels[0].path", animation->channels       [0].path, GLTF_ANIMATION_PATH_ROTATION, false);
+    TEST_EQ("animation[3].channels[1].sampler", animation->channels    [1].sampler,     31, false);
+    TEST_EQ("animation[3].channels[1].target_node", animation->channels[1].target_node, 36, false);
+    TEST_EQ("animation[3].channels[1].path", animation->channels       [1].path, GLTF_ANIMATION_PATH_WEIGHTS, false);
+    TEST_EQ("animation[3].samplers[0].input",  animation->samplers[0].input,  999, false);
+    TEST_EQ("animation[3].samplers[0].output", animation->samplers[0].output, 753, false);
+    TEST_EQ("animation[3].samplers[0].interp", animation->samplers[0].interp, GLTF_ANIMATION_INTERP_LINEAR, false);
+    TEST_EQ("animation[3].samplers[1].input",  animation->samplers[1].input,  4, false);
+    TEST_EQ("animation[3].samplers[1].output", animation->samplers[1].output, 6, false);
+    TEST_EQ("animation[3].samplers[1].interp", animation->samplers[1].interp, GLTF_ANIMATION_INTERP_LINEAR, false);
+
+    END_TEST_MODULE();
 }
 #endif
 

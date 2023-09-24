@@ -78,7 +78,7 @@
             ],
             "samplers": [
                 {
-                    "input": 4,
+                    "input": 888,
                     "interpolation": "LINEAR",
                     "output": 5
                 },
@@ -129,25 +129,25 @@
             "name": "Animate two nodes with the same sampler",
             "channels": [
                 {
-                    "sampler": 0,
+                    "sampler": 1000,
                     "target": {
-                        "node": 0,
-                        "path": "rotation"
+                        "node": 2000,
+                        "path": "translation"
                     }
                 },
                 {
-                    "sampler": 0,
+                    "sampler": 799,
                     "target": {
-                        "node": 1,
-                        "path": "rotation"
+                        "node": 899,
+                        "path": "weights"
                     }
                 }
             ],
             "samplers": [
                 {
-                    "input": 0,
-                    "interpolation": "LINEAR",
-                    "output": 1
+                    "input": 676,
+                    "interpolation": "STEP",
+                    "output": 472 
                 }
             ]
         },
@@ -155,25 +155,25 @@
             "name": "Animate a node rotation channel and the weights of a Morph Target it instantiates",
             "channels": [
                 {
-                    "sampler": 0,
+                    "sampler": 24,
                     "target": {
-                        "node": 1,
+                        "node": 27,
                         "path": "rotation"
                     }
                 },
                 {
-                    "sampler": 1,
+                    "sampler": 31,
                     "target": {
-                        "node": 1,
+                        "node": 36,
                         "path": "weights"
                     }
                 }
             ],
             "samplers": [
                 {
-                    "input": 4,
+                    "input": 999,
                     "interpolation": "LINEAR",
-                    "output": 5
+                    "output": 753 
                 },
                 {
                     "input": 4,

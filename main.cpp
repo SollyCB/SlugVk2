@@ -363,45 +363,6 @@ int main() {
     kill_glfw(glfw);
 #endif
 
-    // @Todo move these prints into a test function...
-    #if 0
-
-    for(int i = 0; i < gltf.accessor_count; ++i) {
-        std::cout << "i = " << i << '\n';
-
-        if (i == 0) {
-            for(int i = 0; i < 1; ++i) {
-                std::cout << "max: " << accessor->max[i] << '\n';
-            }
-            for(int i = 0; i < 1; ++i) {
-                std::cout << "min: " << accessor->min[i] << '\n';
-            }
-        }
-        if (i == 1) {
-            for(int i = 0; i < 3; ++i) {
-                std::cout << "max: " << accessor->max[i] << '\n';
-            }
-            for(int i = 0; i < 3; ++i) {
-                std::cout << "min: " << accessor->min[i] << '\n';
-            }
-        }
-
-        std::cout << "Sparse: " << '\n';
-        std::cout << "count " << accessor->sparse_count << '\n';
-        std::cout << "indices_buffer_view " << accessor->indices_buffer_view << '\n';
-        std::cout << "indices_byte_offset " << accessor->indices_byte_offset << '\n';
-        std::cout << "values_buffer_view " << accessor->values_buffer_view << '\n';
-        std::cout << "values_byte_offset " << accessor->values_byte_offset << '\n';
-
-        accessor = (Gltf_Accessor*)((u8*)accessor + accessor->stride);
-    }
-    #endif
-
-    const char *s = "bbbbbbbbbbbbbbbbaabbaaaaaaaaaaaa";
-    u64 inc = 0;
-    simd_skip_passed_char_count(s, 'a', 4, &inc);
-    println("inc: %u", inc);
-
     kill_allocators();
     return 0;
 }

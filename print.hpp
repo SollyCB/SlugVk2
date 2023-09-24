@@ -11,6 +11,13 @@ static const u64 PRINT_FORMATTER_BUF_LEN = 1024;
 
 static inline s32 print_parse_signed_int(const char *str, u32 len, char *buf, s64 num) {
     u32 end = 0;
+    char rev[200];
+
+    if (num == 0) {
+        rev[0] = '0';
+        end++;
+        goto loop_end; // @Hack
+    }
 
     if (num < 0) {
         buf[0] = '-';
@@ -18,11 +25,9 @@ static inline s32 print_parse_signed_int(const char *str, u32 len, char *buf, s6
         num = -num;
     }
 
-    char rev[200];
-
     char c;
     u8 val;
-    while(num > 0) {
+    while(num >= 0) {
         val = num % 10;
         num /= 10;
         switch(val) {
@@ -83,6 +88,7 @@ static inline s32 print_parse_signed_int(const char *str, u32 len, char *buf, s6
         end++;
     }
 
+    loop_end:
     for(int i = 0; i < end; ++i) {
         buf[i] = rev[(end - 1) - i];
     }
@@ -96,6 +102,12 @@ static inline s32 print_parse_unsigned_int(const char *str, u32 len, char *buf, 
 
     char c;
     u8 val;
+    if (num == 0) {
+        rev[0] = '0';
+        end++;
+        goto loop_end; // @Hack
+    }
+
     while(num > 0) {
         val = num % 10;
         num /= 10;
@@ -157,6 +169,7 @@ static inline s32 print_parse_unsigned_int(const char *str, u32 len, char *buf, 
         end++;
     }
 
+    loop_end: // goto label
     for(int i = 0; i < end; ++i) {
         buf[i] = rev[(end - 1) - i];
     }

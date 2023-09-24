@@ -57,11 +57,13 @@ struct Gltf_Animation_Channel {
     int sampler;
     int target_node;
     Gltf_Animation_Path path;
+    char pad[4]; // align to 8 bytes, this makes regular indexing work for this array
 };
 struct Gltf_Animation_Sampler {
     int input;
     int output;
     Gltf_Animation_Interp interp;
+    char pad[4]; // align to 8 bytes, this makes regular indexing work for the array
 };
 struct Gltf_Animation {
     int stride;
@@ -72,6 +74,8 @@ struct Gltf_Animation {
     int sampler_count;
     Gltf_Animation_Channel *channels;
     Gltf_Animation_Sampler *samplers;
+
+    char pad[4]; // align to 8 bytes, this helps with array indexing rules
 };
 
 struct Gltf {
