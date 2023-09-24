@@ -1,3 +1,32 @@
+// This file is gltf file parser. It reads a gltf file and turns the information into usable C++.
+// It does so in a potentially unorthodox way, in the interest of consistency, simplicity, speed and code size.
+// There are not more general helper functions such as "find_key(..)". The reason for this is that for functions
+// like these to work, much more jumping back and forth in the file takes place, for an equivalent number of
+// compare and branch operations, if not more.
+//
+// The implementation instead uses helper functions for jumping to characters. In this way, the file never stops
+// being traversed forwards. And as the file is traversed, the C++ structs are filled at the same time.
+//
+// The workflow takes the form: define a char of interest, define a break char, jump to the next char of interest
+// while they come before the closing char in the file. This is more complicated and error prone than saying "find 
+// me this key", but such function would be expensive, as you could not go through the whole file in one clean parse:
+// you have to look ahead for the string matching the key, and then return it. Then to get the next key you have to
+// do the same, then when all keys are collected, do a big jump passed all the keys. This can be a big jump for some
+// objects.
+//
+// While my method is potentially error prone, it is super clean to debug and understand, as you know exactly
+// where it is in the file at any point, how much progress it has made, what char or string has tripped it up etc.
+// It is simple to understand as the same short clear functions are used everywhere: "jump to char x, unless y is
+// in the way", simple. The call stack is super small, so you only have to check a few functions at any time for a bug.
+//
+// Finally it seems fast. One pass through the file, when you reach the end everything is done, no more work. And the
+// work during the file is super cheap and cache friendly: match the current key against a small list of the possible
+// keys that can exist in the current object, call the specific parse function for its specific value. Move forward.
+// Zero Generality (which is what makes it error prone, as everything has to be considered its own thing, and then
+// coded as such, but man up! GO FAST!)
+
+
+/*** Below Comments: Notes On Design of this file (Often Rambling, Stream of thoughts) ***/
 
 /*
     Final Solution:
@@ -5,7 +34,6 @@
         and branching will never be that clean for this task regardless of the method, and since I expect that
         these files can get pretty large, only needing one pass seems like it would be fastest.
 */
-
 
 /* ** Old Note See Above **
     After working on the problem more, I hav realised that a json parser would be very difficult. It would not be 
@@ -235,6 +263,7 @@ static void parse_accessor_sparse(const char *data, u64 *offset, Gltf_Accessor *
     *offset += inc + 1; // +1 go beyond the last curly brace in sparse object
 }
 
+// @Todo check that all defaults are being properly set
 static Gltf_Accessor* parse_accessors(const char *data, u64 *offset, int *accessor_count) {
     u64 inc = 0; // track position in file
     simd_skip_passed_char(data, &inc, '[', Max_u64);
@@ -423,6 +452,7 @@ static Gltf_Animation_Channel* parse_animation_channels(const char *data, u64 *o
                 channel->sampler = ascii_to_int(data + inc, &inc);
                 continue;
             } else if (simd_strcmp_short(data + inc, "targetxxxxxxxxxx", 10) == 0) {
+                simd_skip_passed_char(data + inc, &inc, '"');
                 // loop through 'target' object's keys
                 while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
                     inc++;
@@ -463,8 +493,48 @@ static Gltf_Animation_Channel* parse_animation_channels(const char *data, u64 *o
     return channels;
 }
 static Gltf_Animation_Sampler* parse_animation_samplers(const char *data, u64 *offset, int *sampler_count) {
-    Gltf_Animation_Sampler *samplers;
-    // @TODO Current task...
+    //
+    // Function Method:
+    //     outer loop to jump through the list of objects
+    //     inner loop to jump through the keys in an object
+    //
+    Gltf_Animation_Sampler *samplers = (Gltf_Animation_Sampler*)memory_allocate_temp(0, 8); // get pointer to beginning of sampler allocations
+    Gltf_Animation_Sampler *sampler; // temp pointer to allocate to in loops
+
+    u64 inc = 0;   // track file pos
+    int count = 0; // track sampler count
+
+    while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
+        sampler = (Gltf_Animation_Sampler*)memory_allocate_temp(sizeof(Gltf_Animation_Sampler), 8);
+        count++;
+        sampler->interp = GLTF_ANIMATION_INTERP_LINEAR;
+        while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+            inc++; // go beyond opening '"' of key
+            if (simd_strcmp_short(data + inc, "inputxxxxxxxxxxx", 11) == 0) {
+                ascii_to_int(data + inc, &inc);
+                continue; // Idk if continue and else if is destroying some branch predict algorithm, I hope not...
+            } else if (simd_strcmp_short(data + inc, "outputxxxxxxxxxx", 10) == 0) {
+                ascii_to_int(data + inc, &inc);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "interpolationxxx", 3) == 0) {
+                simd_skip_passed_char_count(data + inc, '"', 2, &inc); // jump into value string
+                if (simd_strcmp_short(data + inc, "LINEARxxxxxxxxxx", 10) == 0) {
+                    sampler->interp = GLTF_ANIMATION_INTERP_LINEAR;
+                } else if (simd_strcmp_short(data + inc, "STEPxxxxxxxxxxxx", 12) == 0) {
+                    sampler->interp = GLTF_ANIMATION_INTERP_STEP;
+                } else if (simd_strcmp_short(data + inc, "CUBICSPLINExxxxx", 5) == 0) {
+                    sampler->interp = GLTF_ANIMATION_INTERP_CUBICSPLINE;
+                } else {
+                    ASSERT(false, "This is not a valid interpolation type");
+                }
+                simd_skip_passed_char(data + inc, &inc, '"');
+                continue;
+            }
+        }
+    }
+
+    *sampler_count = count;
+    *offset = inc;
     return samplers;
 }
 static Gltf_Animation* parse_animations(const char *data, u64 *offset, int *animation_count) {
@@ -501,8 +571,9 @@ static Gltf_Animation* parse_animations(const char *data, u64 *offset, int *anim
                             (sizeof(Gltf_Animation_Sampler) * animation->sampler_count);
     }
 
-    *animation_count = count;
+    inc++; // go passed closing ']'
     *offset += inc;
+    *animation_count = count;
     return animations;
 }
 
@@ -524,12 +595,13 @@ Gltf parse_gltf(const char *filename) {
     u64 offset = 0;
 
     while (simd_find_char_interrupted(data + offset, '"', '}', &offset)) {
+        offset++; // skip into key
         if (simd_strcmp_short(data + offset, "accessorsxxxxxxx", 7) == 0) {
             gltf.accessors = parse_accessors(data + offset, &offset, &gltf.accessor_count);
-            return gltf;
+            continue;
         } else if (simd_strcmp_short(data + offset, "animationsxxxxxx", 6) == 0) {
             gltf.animations = parse_animations(data + offset, &offset, &gltf.animation_count);
-            return gltf;
+            continue;
         } else {
             ASSERT(false, "This is not a top level gltf key"); 
         }
@@ -539,13 +611,45 @@ Gltf parse_gltf(const char *filename) {
 }
 
 #if TEST
+
+#define TO_STRING(x) #x
 static void test_accessors(Gltf_Accessor *accessor);
+static void test_animations(int count, Gltf_Animation *animation) {
+    BEGIN_TEST_MODULE("Gltf_Accessor", true, false);   
+
+    TEST_EQ("animation[0].channels[0].sampler", animation->channels    [0].sampler,     0, false);
+    TEST_EQ("animation[0].channels[0].target_node", animation->channels[0].target_node, 1, false);
+    TEST_EQ("animation[0].channels[0].path", animation->channels       [0].path, GLTF_ANIMATION_PATH_ROTATION, false);
+
+    TEST_EQ("animation[0].channels[1].sampler", animation->channels    [1].sampler,     1, false);
+    TEST_EQ("animation[0].channels[1].target_node", animation->channels[1].target_node, 2, false);
+    TEST_EQ("animation[0].channels[1].path", animation->channels       [1].path, GLTF_ANIMATION_PATH_SCALE, false);
+
+    TEST_EQ("animation[0].channels[2].sampler", animation->channels    [2].sampler,     2, false);
+    TEST_EQ("animation[0].channels[2].target_node", animation->channels[2].target_node, 3, false);
+    TEST_EQ("animation[0].channels[2].path", animation->channels       [2].path, GLTF_ANIMATION_PATH_TRANSLATION, false);
+
+    TEST_EQ("animation[0].samplers[0].input",  animation->samplers[0].input,  4, false);
+    TEST_EQ("animation[0].samplers[0].output", animation->samplers[0].output, 5, false);
+    TEST_EQ("animation[0].samplers[0].interp", animation->samplers[0].interp, GLTF_ANIMATION_INTERP_LINEAR, false);
+
+    TEST_EQ("animation[0].samplers[1].input",  animation->samplers[1].input,  4, false);
+    TEST_EQ("animation[0].samplers[1].output", animation->samplers[1].output, 6, false);
+    TEST_EQ("animation[0].samplers[1].interp", animation->samplers[1].interp, GLTF_ANIMATION_INTERP_CUBICSPLINE, false);
+
+    TEST_EQ("animation[0].samplers[2].input",  animation->samplers[2].input,  4, false);
+    TEST_EQ("animation[0].samplers[2].output", animation->samplers[2].output, 7, false);
+    TEST_EQ("animation[0].samplers[2].interp", animation->samplers[2].interp, GLTF_ANIMATION_INTERP_STEP, false);
+
+    END_TEST_MODULE();
+}
 
 void test_gltf() {
     Gltf gltf = parse_gltf("test_gltf.gltf");
     Gltf_Accessor *accessor = gltf.accessors;
 
     test_accessors(gltf.accessors);
+    test_animations(gltf.animation_count, gltf.animations);
 }
 
 static void test_accessors(Gltf_Accessor *accessor) {
