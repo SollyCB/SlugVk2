@@ -87,6 +87,19 @@ struct Gltf_Buffer {
     char *uri;
 };
 
+enum Gltf_Buffer_Type {
+    GLTF_BUFFER_TYPE_ARRAY_BUFFER         = 34962,
+    GLTF_BUFFER_TYPE_ELEMENT_ARRAY_BUFFER = 34963,
+};
+struct Gltf_Buffer_View {
+    int stride;
+    int buffer;
+    int byte_offset;
+    int byte_length;
+    int byte_stride;
+    Gltf_Buffer_Type buffer_type;
+};
+
 struct Gltf {
     // Each arrayed field has a 'stride' member, which is the byte count required to reach 
     // the next array member;
@@ -100,6 +113,8 @@ struct Gltf {
     Gltf_Animation *animations;
     int buffer_count;
     Gltf_Buffer *buffers;
+    int buffer_view_count;
+    Gltf_Buffer_View *buffer_views;
 };
 Gltf parse_gltf(const char *file_name);
 

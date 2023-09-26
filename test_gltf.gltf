@@ -205,4 +205,32 @@
            "uri": "duck5.bin"
        }
     ],
+    "bufferViews": [
+        {
+            "buffer": 1,
+            "byteLength": 25272,
+            "byteOffset": 2,
+            "target": 34963
+        },
+        {
+            "buffer": 6,
+            "byteLength": 76768,
+            "byteOffset": 25272,
+            "byteStride": 32,
+            "target": 34962
+        },
+        {
+            "buffer": 9999,
+            "byteLength": 99907654,
+            "byteOffset": 6969,
+            "target": 34962
+        },
+        {
+            "buffer": 9,
+            "byteLength": 76768,
+            "byteOffset": 25272,
+            "byteStride": 32,
+            "target": 34963
+        }
+    ],
 }
