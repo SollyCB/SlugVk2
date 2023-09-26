@@ -6,6 +6,10 @@
 #include "typedef.h"
 #include "assert.h"
 
+// @DebugVsRelease @CompileWarning Be careful using strings in systems where consistent size matters:
+// A string compiled in debug mode will be bigger than one compiled in release mode...
+// (Idk if this is a dumb optimisation and will just cause more problems than it is worth...)
+
 struct Heap_String_Buffer {
     u32 len;
     char *data;
@@ -25,8 +29,8 @@ struct Temp_String_Buffer {
 Heap_String_Buffer build_heap_string_buffer(u32 cstr_count, const char **list_of_cstrs);
 Temp_String_Buffer build_temp_string_buffer(u32 cstr_count, const char **list_of_cstrs);
 
-void init_heap_string_buffer(Heap_String_Buffer *string_buffer, u32 size);
-void init_temp_string_buffer(Temp_String_Buffer *string_buffer, u32 size);
+int init_heap_string_buffer(Heap_String_Buffer *string_buffer, u32 size);
+int init_temp_string_buffer(Temp_String_Buffer *string_buffer, u32 size);
 
 // Inlines
 inline void kill_heap_string_buffer(Heap_String_Buffer *string_buffer) {

@@ -33,6 +33,25 @@
 // @Todo better document what these functions are doing. Some of the operations might look confusing
 // if I come to them after not using simd for a while or smtg
 
+// assumes safe to deref data up to 16 bytes, counts bytes up to a closing char
+inline static int simd_strlen(const char *string, char close) {
+    __m128i a = _mm_loadu_si128((__m128i*)string);
+    __m128i b = _mm_set1_epi8(close);
+    a = _mm_cmpeq_epi8(a, b);
+    u16 mask = _mm_movemask_epi8(a);
+    int count = pop_count16(mask);
+    int inc = 0;
+    if (!mask) {
+        while(!mask) {
+            inc += 16;
+            a = _mm_loadu_si128((__m128i*)(string + inc));
+            a = _mm_cmpeq_epi8(a, b);
+            mask = _mm_movemask_epi8(a);
+        }
+    }
+    return count_trailing_zeros_u16(mask) + inc;
+}
+
 inline static void simd_skip_passed_char_count(const char *string, char skip, int skip_count, u64 *pos) {
     __m128i a = _mm_loadu_si128((__m128i*)string);
     __m128i b = _mm_set1_epi8(skip);

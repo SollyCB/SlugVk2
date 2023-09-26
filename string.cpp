@@ -48,19 +48,21 @@ Temp_String_Buffer build_temp_string_buffer(u32 cstr_count, const char **list_of
     return ret;
 }
 
-void init_heap_string_buffer(Heap_String_Buffer *string_buffer, u32 size) {
+int init_heap_string_buffer(Heap_String_Buffer *string_buffer, u32 size) {
     string_buffer->data = (char*)memory_allocate_heap(size + 1, 1);
     string_buffer->len = 0;
 
 #if DEBUG
     string_buffer->cap = size;
 #endif
+    return size + 1;
 }
-void init_temp_string_buffer(Temp_String_Buffer *string_buffer, u32 size) {
+int init_temp_string_buffer(Temp_String_Buffer *string_buffer, u32 size) {
     string_buffer->data = (char*)memory_allocate_temp(size + 1, 1);
     string_buffer->len = 0;
 
 #if DEBUG
     string_buffer->cap = size;
 #endif
+    return size + 1;
 }

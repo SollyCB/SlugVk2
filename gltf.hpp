@@ -2,6 +2,7 @@
 #define SOL_GLTF_HPP_INCLUDE_GUARD_
 
 #include "basic.h"
+#include "string.hpp"
 
 enum Gltf_Type {
     GLTF_TYPE_NONE           = 0,
@@ -57,13 +58,17 @@ struct Gltf_Animation_Channel {
     int sampler;
     int target_node;
     Gltf_Animation_Path path;
-    char pad[4]; // align to 8 bytes, this makes regular indexing work for this array
+    // align this struct to 8 bytes, saves having to use a stride field, instead can just use
+    // regular indexing (because the allocation in the linear allocator is aligned to 8 bytes)
+    char pad[4];
 };
 struct Gltf_Animation_Sampler {
     int input;
     int output;
     Gltf_Animation_Interp interp;
-    char pad[4]; // align to 8 bytes, this makes regular indexing work for the array
+    // align this struct to 8 bytes, saves having to use a stride field, instead can just use
+    // regular indexing (because the allocation in the linear allocator is aligned to 8 bytes)
+    char pad[4];
 };
 struct Gltf_Animation {
     int stride;
@@ -74,21 +79,27 @@ struct Gltf_Animation {
     int sampler_count;
     Gltf_Animation_Channel *channels;
     Gltf_Animation_Sampler *samplers;
+};
 
-    char pad[4]; // align to 8 bytes, this helps with array indexing rules
+struct Gltf_Buffer {
+    int stride; // accounts for the length of the uri string
+    int byte_length;
+    char *uri;
 };
 
 struct Gltf {
     // Each arrayed field has a 'stride' member, which is the byte count required to reach 
     // the next array member;
     //
-    // Explain: all strides can be calculated from the other info in the struct, but some of these algorithms 
+    // All strides can be calculated from the other info in the struct, but some of these algorithms 
     // are weird and incur unclear overhead. So for consistency's sake they will just be included, 
     // regardless of the ease with which the strides can be calculated. 
     int accessor_count;
     Gltf_Accessor *accessors;
     int animation_count;
     Gltf_Animation *animations;
+    int buffer_count;
+    Gltf_Buffer *buffers;
 };
 Gltf parse_gltf(const char *file_name);
 

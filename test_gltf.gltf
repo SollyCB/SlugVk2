@@ -182,5 +182,27 @@
                 }
             ]
         }
-    ]
+    ],
+    "buffers": [
+       {
+           "byteLength": 10001,
+           "uri": "duck1.bin"
+       },
+       {
+           "byteLength": 10002,
+           "uri": "duck2.bin"
+       },
+       {
+           "byteLength": 10003,
+           "uri": "duck3.bin"
+       },
+       {
+           "byteLength": 10004,
+           "uri": "duck4.bin"
+       },
+       {
+           "byteLength": 10005,
+           "uri": "duck5.bin"
+       }
+    ],
 }
