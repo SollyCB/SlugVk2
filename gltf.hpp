@@ -116,6 +116,44 @@ struct Gltf_Image {
     char *uri;
 };
 
+enum Gltf_Alpha_Mode {
+    GLTF_ALPHA_MODE_OPAQUE = 0,
+    GLTF_ALPHA_MODE_MASK   = 1,
+    GLTF_ALPHA_MODE_BLEND  = 2,
+};
+struct Gltf_Material {
+    int stride;
+
+    // pbr_metallic_roughness
+    float base_color_factor[4] = {1, 1, 1, 1};
+    float metallic_factor      = 1;
+    float roughness_factor     = 1;
+    int base_color_texture_index;
+    int base_color_tex_coord;
+    int metallic_roughness_texture_index;
+    int metallic_roughness_tex_coord;
+
+    // normal_texture
+    float normal_scale = 1;
+    int normal_texture_index;
+    int normal_tex_coord;
+
+    // occlusion_texture
+    float occlusion_strength = 1;
+    int occlusion_texture_index;
+    int occlusion_tex_coord;
+
+    // emissive_texture
+    float emissive_factor[3] = {0, 0, 0};
+    int emissive_texture_index;
+    int emissive_tex_coord;
+
+    // alpha
+    Gltf_Alpha_Mode alpha_mode = GLTF_ALPHA_MODE_OPAQUE;
+    float alpha_cutoff = 0.5;
+    int double_sided; // @BoolsInStructs big bool
+};
+
 struct Gltf {
     // Each arrayed field has a 'stride' member, which is the byte count required to reach 
     // the next array member;
@@ -135,6 +173,8 @@ struct Gltf {
     Gltf_Camera *cameras;
     int image_count;
     Gltf_Image *images;
+    int material_count;
+    Gltf_Material *materials;
 };
 Gltf parse_gltf(const char *file_name);
 

@@ -64,12 +64,15 @@ Gltf parse_gltf(const char *filename) {
         } else if (simd_strcmp_short(data + offset, "imagesxxxxxxxxxx", 10) == 0) {
             gltf.images = gltf_parse_images(data + offset, &offset, &gltf.image_count);
             continue;
+        } else if (simd_strcmp_short(data + offset, "materialsxxxxxxx", 7) == 0) {
+            gltf.materials = gltf_parse_materials(data + offset, &offset, &gltf.material_count);
+            continue;
         } else {
             ASSERT(false, "This is not a top level gltf key"); 
         }
     }
 
-    memory_free_heap((void*)data);
+    memory_free_heap((void*)data); // free file data
     return gltf;
 }
 
@@ -721,6 +724,24 @@ Gltf_Image* gltf_parse_images(const char *data, u64 *offset, int *image_count) {
     return images;
 }
 
+Gltf_Material* gltf_parse_materials(const char *data, u64 *offset, int material_count) {
+    Gltf_Material *materials = (Gltf_Material*)memory_allocate_temp(0, 8);
+    Gltf_Material *material;
+
+    u64 inc = 0;
+    int count = 0;
+    while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
+        count++;
+        material = (Gltf_Material*)memory_allocate_temp(sizeof(Gltf_Material), 8);
+        *material = {}; // make sure defaults are properly initialized
+        while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {}
+    }
+
+    *offset += inc;
+    *material_count = count;
+    return materials
+}
+
 #if TEST
 static void test_accessors(Gltf_Accessor *accessor);
 static void test_animations(Gltf_Animation *animation);
@@ -728,6 +749,7 @@ static void test_buffers(Gltf_Buffer *buffers);
 static void test_buffer_views(Gltf_Buffer_View *buffer_views);
 static void test_cameras(Gltf_Camera *cameras);
 static void test_images(Gltf_Image *images);
+static void test_materials(Gltf_Material *materials);
 
 void test_gltf() {
     Gltf gltf = parse_gltf("test_gltf.gltf");
@@ -745,6 +767,8 @@ void test_gltf() {
     ASSERT(gltf.camera_count == 3, "Incorrect Camera View Count");
     test_images(gltf.images);
     ASSERT(gltf.image_count == 3, "Incorrect Image Count");
+    test_materials(gltf.materials);
+    ASSERT(gltf.material_count == 0, "Incorrect Material Count");
 }
 
 static void test_accessors(Gltf_Accessor *accessor) {
@@ -951,6 +975,13 @@ static void test_images(Gltf_Image *images) {
 
     image = (Gltf_Image*)((u8*)image + image->stride); 
     TEST_STREQ("images[2].uri", image->uri, "duck_but_better.jpeg", false);
+
+    END_TEST_MODULE();
+}
+static void test_materials(Gltf_Material *materials) {
+    BEGIN_TEST_MODULE("Gltf_Image", true, false);
+
+    Gltf_Material *material = materials;
 
     END_TEST_MODULE();
 }
