@@ -3,6 +3,7 @@
 
 #include <nmmintrin.h>
 #include <emmintrin.h>
+#include <immintrin.h>
 #include "basic.h"
 #include "builtin_wrappers.h"
 
@@ -32,6 +33,8 @@
 
 // @Todo better document what these functions are doing. Some of the operations might look confusing
 // if I come to them after not using simd for a while or smtg
+
+// @Todo come up with more aesthetic, general string compares
 
 // assumes safe to deref data up to 16 bytes, counts bytes up to a closing char
 inline static int simd_strlen(const char *string, char close) {
@@ -154,6 +157,16 @@ inline static u16 simd_strcmp_short(const char *x, const char *y, int pad) {
     a = _mm_cmpeq_epi8(a, b);
     return (_mm_movemask_epi8(a) << pad) ^ (0xffff << pad);
 }
+// Assumes strings are at least len 16, use only for 16 < strlen < 32
+inline static u32 simd_strcmp_long(const char *x, const char *y, int pad) {
+    __m256i a =  _mm256_loadu_si256((const __m256i*)x);
+    __m256i b =  _mm256_loadu_si256((const __m256i*)y);
+    a = _mm256_cmpeq_epi8(a, b);
+
+    u32 mask = _mm256_movemask_epi8(a);
+    return (mask << pad) ^ (0xffffffff << pad);
+}
+
 // Must be safe to assume that x has len 16 bytes
 inline static u16 simd_match_char(const char *string, char c) {
     __m128i a = _mm_loadu_si128((__m128i*)string);

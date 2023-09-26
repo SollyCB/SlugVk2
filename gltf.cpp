@@ -29,6 +29,9 @@ Gltf_Camera* gltf_parse_cameras(const char *data, u64 *offset, int *camera_count
 
 Gltf_Image* gltf_parse_images(const char *data, u64 *offset, int *image_count);
 
+Gltf_Material* gltf_parse_materials(const char *data, u64 *offset, int *material_count);
+void gltf_parse_texture_info(const char *data, u64 *offset, int *index, int *tex_coord, float *scale, float *strength);
+
 Gltf parse_gltf(const char *filename) {
     //
     // Function Method:
@@ -176,54 +179,6 @@ inline int gltf_parse_float_array(const char *data, u64 *offset, float *array) {
 
 
 // `Accessors
-void gltf_parse_accessor_sparse(const char *data, u64 *offset, Gltf_Accessor *accessor) {
-    u64 inc = 0;
-    simd_find_char_interrupted(data + inc, '{', '}', &inc); // find sparse start
-    while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
-        inc++; // go beyond the '"'
-        if (simd_strcmp_short(data + inc, "countxxxxxxxxxxx", 11) == 0)  {
-            accessor->sparse_count = gltf_ascii_to_int(data + inc, &inc);
-            continue;
-        } else if (simd_strcmp_short(data + inc, "indicesxxxxxxxxx", 9) == 0) {
-            simd_find_char_interrupted(data + inc, '{', '}', &inc); // find indices start
-            while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
-                inc++; // go passed the '"'
-                if (simd_strcmp_short(data + inc, "bufferViewxxxxxx", 6) == 0) {
-                    accessor->indices_buffer_view = gltf_ascii_to_int(data + inc, &inc);
-                    continue;
-                }
-                if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx", 6) == 0) {
-                    accessor->indices_byte_offset = gltf_ascii_to_int(data + inc, &inc);
-                    continue;
-                }
-                if (simd_strcmp_short(data + inc, "componentTypexxx", 3) == 0) {
-                    accessor->indices_component_type = (Gltf_Type)gltf_ascii_to_int(data + inc, &inc);
-                    continue;
-                }
-            }
-            simd_find_char_interrupted(data + inc, '}', '{', &inc); // find indices end
-            inc++; // go beyond
-            continue;
-        } else if (simd_strcmp_short(data + inc, "valuesxxxxxxxxx", 10) == 0) {
-            simd_find_char_interrupted(data + inc, '{', '}', &inc); // find values start
-            while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
-                inc++; // go passed the '"'
-                if (simd_strcmp_short(data + inc, "bufferViewxxxxxx", 6) == 0) {
-                    accessor->values_buffer_view = gltf_ascii_to_int(data + inc, &inc);
-                    continue;
-                }
-                if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx", 6) == 0) {
-                    accessor->values_byte_offset = gltf_ascii_to_int(data + inc, &inc);
-                    continue;
-                }
-            }
-            simd_find_char_interrupted(data + inc, '}', '{', &inc); // find indices end
-            inc++; // go beyond
-            continue;
-        }
-    }
-    *offset += inc + 1; // +1 go beyond the last curly brace in sparse object
-}
 
 // @Todo check that all defaults are being properly set
 Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor_count) {
@@ -387,6 +342,54 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
     *offset += inc;
     return ret; // point the returned pointer to the beginning of the list
 } // function parse_accessors(..)
+void gltf_parse_accessor_sparse(const char *data, u64 *offset, Gltf_Accessor *accessor) {
+    u64 inc = 0;
+    simd_find_char_interrupted(data + inc, '{', '}', &inc); // find sparse start
+    while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+        inc++; // go beyond the '"'
+        if (simd_strcmp_short(data + inc, "countxxxxxxxxxxx", 11) == 0)  {
+            accessor->sparse_count = gltf_ascii_to_int(data + inc, &inc);
+            continue;
+        } else if (simd_strcmp_short(data + inc, "indicesxxxxxxxxx", 9) == 0) {
+            simd_find_char_interrupted(data + inc, '{', '}', &inc); // find indices start
+            while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+                inc++; // go passed the '"'
+                if (simd_strcmp_short(data + inc, "bufferViewxxxxxx", 6) == 0) {
+                    accessor->indices_buffer_view = gltf_ascii_to_int(data + inc, &inc);
+                    continue;
+                }
+                if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx", 6) == 0) {
+                    accessor->indices_byte_offset = gltf_ascii_to_int(data + inc, &inc);
+                    continue;
+                }
+                if (simd_strcmp_short(data + inc, "componentTypexxx", 3) == 0) {
+                    accessor->indices_component_type = (Gltf_Type)gltf_ascii_to_int(data + inc, &inc);
+                    continue;
+                }
+            }
+            simd_find_char_interrupted(data + inc, '}', '{', &inc); // find indices end
+            inc++; // go beyond
+            continue;
+        } else if (simd_strcmp_short(data + inc, "valuesxxxxxxxxx", 10) == 0) {
+            simd_find_char_interrupted(data + inc, '{', '}', &inc); // find values start
+            while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+                inc++; // go passed the '"'
+                if (simd_strcmp_short(data + inc, "bufferViewxxxxxx", 6) == 0) {
+                    accessor->values_buffer_view = gltf_ascii_to_int(data + inc, &inc);
+                    continue;
+                }
+                if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx", 6) == 0) {
+                    accessor->values_byte_offset = gltf_ascii_to_int(data + inc, &inc);
+                    continue;
+                }
+            }
+            simd_find_char_interrupted(data + inc, '}', '{', &inc); // find indices end
+            inc++; // go beyond
+            continue;
+        }
+    }
+    *offset += inc + 1; // +1 go beyond the last curly brace in sparse object
+}
 
 // `Animations
 Gltf_Animation_Channel* gltf_parse_animation_channels(const char *data, u64 *offset, int *channel_count) {
@@ -724,7 +727,7 @@ Gltf_Image* gltf_parse_images(const char *data, u64 *offset, int *image_count) {
     return images;
 }
 
-Gltf_Material* gltf_parse_materials(const char *data, u64 *offset, int material_count) {
+Gltf_Material* gltf_parse_materials(const char *data, u64 *offset, int *material_count) {
     Gltf_Material *materials = (Gltf_Material*)memory_allocate_temp(0, 8);
     Gltf_Material *material;
 
@@ -734,12 +737,104 @@ Gltf_Material* gltf_parse_materials(const char *data, u64 *offset, int material_
         count++;
         material = (Gltf_Material*)memory_allocate_temp(sizeof(Gltf_Material), 8);
         *material = {}; // make sure defaults are properly initialized
-        while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {}
+        while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+            inc++;
+            if (simd_strcmp_long(data + inc, "pbrMetallicRoughnessxxxxxxxxxxxx", 12) == 0) {
+                simd_skip_passed_char(data + inc, &inc, '"');
+                while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+                    inc++;
+                    if (simd_strcmp_short(data + inc, "baseColorFactorx", 1) == 0) {
+                        gltf_parse_float_array(data + inc, &inc, &material->base_color_factor[0]);
+                        continue;
+                    } else if (simd_strcmp_short(data + inc, "metallicFactorxx", 2) == 0) {
+                        material->metallic_factor = gltf_ascii_to_float(data + inc, &inc);
+                        continue;
+                    } else if (simd_strcmp_short(data + inc, "roughnessFactorx", 1) == 0) {
+                        material->roughness_factor = gltf_ascii_to_float(data + inc, &inc);
+                        continue;
+                    } else if (simd_strcmp_short(data + inc, "baseColorTexture", 0) == 0) {
+                        simd_skip_passed_char(data + inc, &inc, '"');
+                        gltf_parse_texture_info(data + inc, &inc, &material->base_color_texture_index, 
+                                                &material->base_color_tex_coord, NULL, NULL);
+                        continue;
+                    } else if (simd_strcmp_long(data + inc, "metallicRoughnessTexturexxxxxxxx", 8) == 0) {
+                        simd_skip_passed_char(data + inc, &inc, '"');
+                        gltf_parse_texture_info(data + inc, &inc, &material->metallic_roughness_texture_index, 
+                                                &material->metallic_roughness_tex_coord, NULL, NULL);
+                        continue;
+                    }
+                }
+                inc++; // go beyond closing curly
+                continue;
+            } else if (simd_strcmp_short(data + inc, "normalTexturexxx", 3) == 0) {
+                simd_skip_passed_char(data + inc, &inc, '"');
+                gltf_parse_texture_info(data + inc, &inc, &material->normal_texture_index, &material->normal_tex_coord,                                        &material->normal_scale, NULL);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "occlusionTexture", 0) == 0) {
+                simd_skip_passed_char(data + inc, &inc, '"');
+                gltf_parse_texture_info(data + inc, &inc, &material->normal_texture_index, &material->normal_tex_coord, 
+                                        NULL, &material->occlusion_strength);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "emissiveFactorxx", 2) == 0) {
+                gltf_parse_float_array(data + inc, &inc, &material->emissive_factor[0]);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "emissiveTexturex", 1) == 0) {
+                simd_skip_passed_char(data + inc, &inc, '"');
+                gltf_parse_texture_info(data + inc, &inc, &material->emissive_texture_index, 
+                                        &material->emissive_tex_coord, NULL, NULL);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "alphaModexxxxxxx", 7) == 0) {
+                simd_skip_passed_char_count(data + inc, '"', 2, &inc);
+                if (simd_strcmp_short(data + inc, "OPAQUExxxxxxxxxx", 10) == 0) {
+                    material->alpha_mode = GLTF_ALPHA_MODE_OPAQUE;
+                } else if (simd_strcmp_short(data + inc, "MASKxxxxxxxxxxxx", 12) == 0) {
+                    material->alpha_mode = GLTF_ALPHA_MODE_MASK;
+                } else if (simd_strcmp_short(data + inc, "BLENDxxxxxxxxxxxx", 11) == 0) {
+                    material->alpha_mode = GLTF_ALPHA_MODE_BLEND;
+                }
+                simd_skip_passed_char(data + inc, &inc, '"');
+                continue;
+            } else if (simd_strcmp_short(data + inc, "alphaCutoffxxxxx", 5) == 0) {
+                material->alpha_cutoff = gltf_ascii_to_float(data + inc, &inc);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "doubleSidedxxxxx", 5) == 0) {
+                simd_skip_passed_char(data + inc, &inc, ':');
+                simd_skip_whitespace(data + inc, &inc);
+                if (simd_strcmp_short(data + inc, "truexxxxxxxxxxxx", 12) == 0) {
+                    material->double_sided = 1;
+                    continue;
+                } else {
+                    material->double_sided = 0;
+                    continue;
+                }
+            }
+        }
+        material->stride = sizeof(Gltf_Material);
     }
 
     *offset += inc;
     *material_count = count;
-    return materials
+    return materials;
+}
+void gltf_parse_texture_info(const char *data, u64 *offset, int *index, int *tex_coord, float *scale, float *strength) {
+    u64 inc = 0;
+    while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+        inc++;
+        if (simd_strcmp_short(data + inc, "indexxxxxxxxxxxx", 11) == 0) {
+            *index = gltf_ascii_to_int(data + inc, &inc);
+            continue;
+        } else if (simd_strcmp_short(data + inc, "texCoordxxxxxxxx", 8) == 0) {
+            *tex_coord = gltf_ascii_to_int(data + inc, &inc);
+            continue;
+        } else if (simd_strcmp_short(data + inc, "scalexxxxxxxxxxx", 11) == 0) {
+            *scale = gltf_ascii_to_float(data + inc, &inc);
+            continue;
+        } else if (simd_strcmp_short(data + inc, "strengthxxxxxxxx", 8) == 0) {
+            *strength = gltf_ascii_to_float(data + inc, &inc);
+            continue;
+        }
+    }
+    *offset += inc + 1; // +1 go beyond closing curly
 }
 
 #if TEST
@@ -768,7 +863,7 @@ void test_gltf() {
     test_images(gltf.images);
     ASSERT(gltf.image_count == 3, "Incorrect Image Count");
     test_materials(gltf.materials);
-    ASSERT(gltf.material_count == 0, "Incorrect Material Count");
+    ASSERT(gltf.material_count == 1, "Incorrect Material Count");
 }
 
 static void test_accessors(Gltf_Accessor *accessor) {
@@ -981,7 +1076,13 @@ static void test_images(Gltf_Image *images) {
 static void test_materials(Gltf_Material *materials) {
     BEGIN_TEST_MODULE("Gltf_Image", true, false);
 
+    float inaccuracy = 0.0000001;
+
     Gltf_Material *material = materials;
+    TEST_EQ("materials[0].base_color_texture_index", material->base_color_texture_index, 1, false);
+    TEST_LT("materials[0].emissive_factor[0]", material->emissive_factor[0] - 0.2, inaccuracy, false);
+    TEST_LT("materials[0].emissive_factor[1]", material->emissive_factor[1] - 0.1, inaccuracy, false);
+    TEST_LT("materials[0].emissive_factor[2]", material->emissive_factor[2] - 0.0, inaccuracy, false);
 
     END_TEST_MODULE();
 }
