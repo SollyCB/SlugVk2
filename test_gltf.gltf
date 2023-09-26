@@ -233,4 +233,46 @@
             "target": 34963
         }
     ],
+    "cameras": [
+        {
+            "name": "Finite perspective camera",
+            "type": "perspective",
+            "perspective": {
+                "aspectRatio": 1.5,
+                "yfov": 0.646464,
+                "zfar": 100,
+                "znear": 0.01
+            }
+        },
+        {
+            "name": "Infinite perspective camera",
+            "type": "perspective",
+            "perspective": {
+                "aspectRatio": 1.9,
+                "yfov": 0.797979,
+                "znear": 0.02
+            }
+        },
+        {
+            "name": "An ortho camera",
+            "type": "orthographic",
+            "perspective": {
+                "xmag": 1.822,
+                "ymag": 0.489,
+                "znear": 0.01
+            }
+        }
+    ],
+    "images": [
+        {
+            "uri": "duckCM.png"
+        },
+        {
+            "bufferView": 14,
+            "mimeType": "image/jpeg"
+        },
+        {
+            "uri": "duck_but_better.jpeg"
+        },
+    ]
 }

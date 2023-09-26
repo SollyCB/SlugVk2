@@ -8,6 +8,10 @@
     #include "test.hpp"
 #endif
 
+/*
+    WARNING!! This parser has very strict memory alignment rules!!
+*/
+
 // Notes on file implementation and old code at the bottom of the file
 Gltf parse_gltf(const char *filename);
 
@@ -19,8 +23,11 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
 void gltf_parse_accessor_sparse(const char *data, u64 *offset, Gltf_Accessor *accessor);
 
 Gltf_Buffer* gltf_parse_buffers(const char *data, u64 *offset, int *buffer_count);
-
 Gltf_Buffer_View* gltf_parse_buffer_views(const char *data, u64 *offset, int *buffer_view_count);
+
+Gltf_Camera* gltf_parse_cameras(const char *data, u64 *offset, int *camera_count);
+
+Gltf_Image* gltf_parse_images(const char *data, u64 *offset, int *image_count);
 
 Gltf parse_gltf(const char *filename) {
     //
@@ -50,6 +57,12 @@ Gltf parse_gltf(const char *filename) {
             continue;
         } else if (simd_strcmp_short(data + offset, "bufferViewsxxxxx", 5) == 0) {
             gltf.buffer_views = gltf_parse_buffer_views(data + offset, &offset, &gltf.buffer_view_count);
+            continue;
+        } else if (simd_strcmp_short(data + offset, "camerasxxxxxxxxx", 9) == 0) {
+            gltf.cameras = gltf_parse_cameras(data + offset, &offset, &gltf.camera_count);
+            continue;
+        } else if (simd_strcmp_short(data + offset, "imagesxxxxxxxxxx", 10) == 0) {
+            gltf.images = gltf_parse_images(data + offset, &offset, &gltf.image_count);
             continue;
         } else {
             ASSERT(false, "This is not a top level gltf key"); 
@@ -597,20 +610,141 @@ Gltf_Buffer_View* gltf_parse_buffer_views(const char *data, u64 *offset, int *bu
     return buffer_views;
 }
 
+Gltf_Camera* gltf_parse_cameras(const char *data, u64 *offset, int *camera_count) {
+    Gltf_Camera *cameras = (Gltf_Camera*)memory_allocate_temp(0, 8);
+    Gltf_Camera *camera;
+
+    u64 inc = 0;
+    int count = 0;
+    while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
+        camera = (Gltf_Camera*)memory_allocate_temp(sizeof(Gltf_Camera), 8);
+        count++;
+        while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+            inc++; // step into key
+            if (simd_strcmp_short(data + inc, "typexxxxxxxxxxxx", 12) == 0) {
+                simd_skip_passed_char_count(data + inc, '"', 2, &inc);
+                if (simd_strcmp_short(data + inc, "orthographicxxxx", 4) == 0) {
+                    camera->ortho = true;
+                    simd_skip_passed_char(data + inc, &inc, '"');
+                    continue;
+                } else {
+                    camera->ortho = false;
+                    simd_skip_passed_char(data + inc, &inc, '"');
+                    continue;
+                } 
+            } else if (simd_strcmp_short(data + inc, "orthographicxxxx", 4) == 0) {
+                simd_skip_passed_char(data + inc, &inc, '"');
+                while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+                    inc++;
+                    if (simd_strcmp_short(data + inc, "xmagxxxxxxxxxxxx", 12) == 0) {
+                        camera->x_factor = gltf_ascii_to_float(data + inc, &inc);
+                        continue;
+                    } else if (simd_strcmp_short(data + inc, "ymagxxxxxxxxxxxx", 12) == 0) {
+                        camera->y_factor = gltf_ascii_to_float(data + inc, &inc);
+                        continue;
+                    } else if (simd_strcmp_short(data + inc, "zfarxxxxxxxxxxxx", 12) == 0) {
+                        camera->zfar = gltf_ascii_to_float(data + inc, &inc);
+                        continue;
+                    } else if (simd_strcmp_short(data + inc, "znearxxxxxxxxxxx", 11) == 0) {
+                        camera->znear = gltf_ascii_to_float(data + inc, &inc);
+                        continue;
+                    }
+                }
+            } else if (simd_strcmp_short(data + inc, "perspectivexxxxx", 5) == 0) {
+                simd_skip_passed_char(data + inc, &inc, '"');
+                while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+                    inc++;
+                    if (simd_strcmp_short(data + inc, "aspectRatioxxxxx", 5) == 0) {
+                        camera->x_factor = gltf_ascii_to_float(data + inc, &inc);
+                        continue;
+                    } else if (simd_strcmp_short(data + inc, "yfovxxxxxxxxxxxx", 12) == 0) {
+                        camera->y_factor = gltf_ascii_to_float(data + inc, &inc);
+                        continue;
+                    } else if (simd_strcmp_short(data + inc, "zfarxxxxxxxxxxxx", 12) == 0) {
+                        camera->zfar = gltf_ascii_to_float(data + inc, &inc);
+                        continue;
+                    } else if (simd_strcmp_short(data + inc, "znearxxxxxxxxxxx", 11) == 0) {
+                        camera->znear = gltf_ascii_to_float(data + inc, &inc);
+                        continue;
+                    }
+                }
+            }
+        }
+        camera->stride = sizeof(Gltf_Camera);
+    }
+
+    *offset += inc;
+    *camera_count = count;
+    return cameras;
+}
+
+Gltf_Image* gltf_parse_images(const char *data, u64 *offset, int *image_count) {
+    Gltf_Image *images = (Gltf_Image*)memory_allocate_temp(0, 8);
+    Gltf_Image *image;
+
+    u64 inc = 0;
+    int count = 0;
+    int uri_len;
+    while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
+        count++;
+        image = (Gltf_Image*)memory_allocate_temp(sizeof(Gltf_Image), 8);
+        while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+            inc++;
+            if (simd_strcmp_short(data + inc, "urixxxxxxxxxxxxx", 13) == 0) {
+                simd_skip_passed_char_count(data + inc, '"', 2, &inc);
+                uri_len = simd_strlen(data + inc, '"') + 1;
+                image->uri = (char*)memory_allocate_temp(uri_len, 1);
+                memcpy(image->uri, data + inc, uri_len);
+                image->uri[uri_len - 1] = '\0';
+                simd_skip_passed_char(data + inc, &inc, '"');
+                continue;
+            } else if (simd_strcmp_short(data + inc, "mimeTypexxxxxxxx", 8) == 0) {
+                uri_len = 0;
+                image->uri = NULL;
+                simd_skip_passed_char_count(data + inc, '"', 2, &inc);
+                if (simd_strcmp_short(data + inc, "image/jpegxxxxxx", 6) == 0) {
+                    image->jpeg = 1;
+                } else {
+                    image->jpeg = 0;
+                }
+                simd_skip_passed_char(data + inc, &inc, '"');
+                continue;
+            } else if (simd_strcmp_short(data + inc, "bufferViewxxxxxx", 6) == 0) {
+                image->buffer_view = gltf_ascii_to_int(data + inc, &inc);
+                continue;
+            }
+        }
+        image->stride = align(sizeof(Gltf_Image) + uri_len, 8);
+    }
+    *offset += inc;
+    *image_count = count;
+    return images;
+}
+
 #if TEST
 static void test_accessors(Gltf_Accessor *accessor);
 static void test_animations(Gltf_Animation *animation);
 static void test_buffers(Gltf_Buffer *buffers);
 static void test_buffer_views(Gltf_Buffer_View *buffer_views);
+static void test_cameras(Gltf_Camera *cameras);
+static void test_images(Gltf_Image *images);
 
 void test_gltf() {
     Gltf gltf = parse_gltf("test_gltf.gltf");
     Gltf_Accessor *accessor = gltf.accessors;
 
     test_accessors(gltf.accessors);
+    ASSERT(gltf.accessor_count == 3, "Incorrect Accessor Count");
     test_animations(gltf.animations);
+    ASSERT(gltf.animation_count == 4, "Incorrect Animation Count");
     test_buffers(gltf.buffers);
+    ASSERT(gltf.buffer_count == 5, "Incorrect Buffer Count");
     test_buffer_views(gltf.buffer_views);
+    ASSERT(gltf.buffer_view_count == 4, "Incorrect Buffer View Count");
+    test_cameras(gltf.cameras);
+    ASSERT(gltf.camera_count == 3, "Incorrect Camera View Count");
+    test_images(gltf.images);
+    ASSERT(gltf.image_count == 3, "Incorrect Image Count");
 }
 
 static void test_accessors(Gltf_Accessor *accessor) {
@@ -745,7 +879,7 @@ static void test_buffers(Gltf_Buffer *buffers) {
     END_TEST_MODULE();
 }
 static void test_buffer_views(Gltf_Buffer_View *buffer_views) {
-    BEGIN_TEST_MODULE("Gltf_Buffer", true, false);
+    BEGIN_TEST_MODULE("Gltf_Buffer_Views", true, false);
 
     Gltf_Buffer_View *view = buffer_views;
     TEST_EQ("buffer_views[0].buffer",           view->buffer, 1, false);
@@ -774,6 +908,49 @@ static void test_buffer_views(Gltf_Buffer_View *buffer_views) {
     TEST_EQ("buffer_views[3].byte_length", view->byte_length, 76768, false);
     TEST_EQ("buffer_views[3].byte_stride", view->byte_stride, 32, false);
     TEST_EQ("buffer_views[3].buffer_type", view->buffer_type, 34963, false);
+
+    END_TEST_MODULE();
+}
+static void test_cameras(Gltf_Camera *cameras) {
+    BEGIN_TEST_MODULE("Gltf_Camera", true, false);
+
+    float inaccuracy = 0.0000001;
+
+    Gltf_Camera *camera = cameras;
+    TEST_LT("cameras[0].ortho", camera->ortho           - 0,        inaccuracy, false);
+    TEST_LT("cameras[0].aspect_ratio", camera->x_factor - 1.5,      inaccuracy, false);
+    TEST_LT("cameras[0].yfov", camera->y_factor         - 0.646464, inaccuracy, false);
+    TEST_LT("cameras[0].zfar", camera->znear            - 100,      inaccuracy, false);
+    TEST_LT("cameras[0].znear", camera->znear           - 0.01,     inaccuracy, false);
+
+    camera = (Gltf_Camera*)((u8*)camera + camera->stride);
+    TEST_LT("cameras[1].ortho", camera->ortho           - 0,        inaccuracy, false);
+    TEST_LT("cameras[1].aspect_ratio", camera->x_factor - 1.9,      inaccuracy, false);
+    TEST_LT("cameras[1].yfov", camera->y_factor         - 0.797979, inaccuracy, false);
+    TEST_LT("cameras[1].zfar", camera->znear            - 100,      inaccuracy, false);
+    TEST_LT("cameras[1].znear", camera->znear           - 0.02,     inaccuracy, false);
+
+    camera = (Gltf_Camera*)((u8*)camera + camera->stride);
+    TEST_LT("cameras[2].ortho", camera->ortho   - 1,     inaccuracy, false);
+    TEST_LT("cameras[2].xmag", camera->x_factor - 1.822, inaccuracy, false);
+    TEST_LT("cameras[2].ymag", camera->y_factor - 0.489, inaccuracy, false);
+    TEST_LT("cameras[2].znear", camera->znear   - 0.01,  inaccuracy, false);
+
+    END_TEST_MODULE();
+}
+static void test_images(Gltf_Image *images) {
+    BEGIN_TEST_MODULE("Gltf_Image", true, false);
+
+    Gltf_Image *image = images;
+    TEST_STREQ("images[0].uri", image->uri, "duckCM.png", false);
+
+    image = (Gltf_Image*)((u8*)image + image->stride); 
+    TEST_EQ("images[1].jpeg", image->jpeg, 1, false);
+    TEST_EQ("images[1].bufferView", image->buffer_view, 14, false);
+    TEST_EQ("images[1].uri", image->uri, nullptr, false);
+
+    image = (Gltf_Image*)((u8*)image + image->stride); 
+    TEST_STREQ("images[2].uri", image->uri, "duck_but_better.jpeg", false);
 
     END_TEST_MODULE();
 }

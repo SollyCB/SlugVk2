@@ -100,6 +100,22 @@ struct Gltf_Buffer_View {
     Gltf_Buffer_Type buffer_type;
 };
 
+struct Gltf_Camera {
+    int stride;
+    int ortho; // @BoolsInStructs int for bool, alignment
+    float znear;
+    float zfar;
+    float x_factor;
+    float y_factor;
+};
+
+struct Gltf_Image {
+    int stride;
+    int jpeg; // @BoolsInStructs int for bool, alignment
+    int buffer_view;
+    char *uri;
+};
+
 struct Gltf {
     // Each arrayed field has a 'stride' member, which is the byte count required to reach 
     // the next array member;
@@ -115,6 +131,10 @@ struct Gltf {
     Gltf_Buffer *buffers;
     int buffer_view_count;
     Gltf_Buffer_View *buffer_views;
+    int camera_count;
+    Gltf_Camera *cameras;
+    int image_count;
+    Gltf_Image *images;
 };
 Gltf parse_gltf(const char *file_name);
 
