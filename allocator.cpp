@@ -40,7 +40,8 @@ void init_heap_allocator(u64 size) {
 void init_temp_allocator(u64 size) {
     Linear_Allocator *allocator = get_instance_temp();
     allocator->capacity = size;
-    allocator->memory = (u8*)malloc(size);
+    void *ptr = malloc(size);
+    allocator->memory = (u8*)align((u64)ptr, 16);
     allocator->used = 0;
 }
 
@@ -92,7 +93,7 @@ u8 *memory_allocate_temp(u64 size, u64 alignment) {
     size = align(size, alignment);
 
     // pad 
-    allocator->used += (allocator->capacity + allocator->used) - align((u64)(allocator->capacity + allocator->used), alignment);
+    allocator->used = align(allocator->used, alignment);
 
     u8 *ret = allocator->memory + allocator->used;
     allocator->used += size;
