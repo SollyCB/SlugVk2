@@ -213,6 +213,23 @@ inline static u16 simd_match_char(const char *string, char c) {
 }
 
 // Must be safe to assume string has len 16 bytes
+inline static void simd_skip_to_char(const char *string, u64 *offset, char c) {
+    u64 inc = 0;
+    __m128i a = _mm_loadu_si128((__m128i*)(string + inc));
+    __m128i b = _mm_set1_epi8(c);
+    a = _mm_cmpeq_epi8(a, b);
+    u16 mask = _mm_movemask_epi8(a);
+    // if mask is empty, no character was matched in the 16 bytes
+    while(!mask) {
+        inc += 16;
+        a = _mm_loadu_si128((__m128i*)(string + inc));
+        a = _mm_cmpeq_epi8(a, b);
+        mask = _mm_movemask_epi8(a);
+    }
+    int tz = count_trailing_zeros_u32(mask);
+    *offset += tz + inc;
+}
+// Must be safe to assume string has len 16 bytes
 inline static bool simd_skip_to_char(const char *string, u64 *offset, char c, u64 limit) {
     u64 inc = 0;
     __m128i a = _mm_loadu_si128((__m128i*)(string));
@@ -305,7 +322,32 @@ inline static void simd_skip_whitespace(const char *string, u64 *offset) {
 }
 
 // Must be safe to assume string has len 16 bytes
-// @Todo make a version without the limit check
+inline static bool simd_skip_to_int(const char *string, u64 *offset) {
+    __m128i b = _mm_set1_epi8(47); // ascii 0 - 1
+    __m128i c = _mm_set1_epi8(58); // ascii 9 + 1
+
+    __m128i a = _mm_loadu_si128((__m128i*)(string));
+    __m128i d = _mm_cmpgt_epi8(a, b);
+    a = _mm_cmplt_epi8(a, c);
+    a = _mm_and_si128(d, a);
+    u16 mask = _mm_movemask_epi8(a);
+
+    u64 inc = 0;
+    while(!mask) {
+        inc += 16;
+        a = _mm_loadu_si128((__m128i*)(string + inc));
+        d = _mm_cmpgt_epi8(a, b);
+        a = _mm_cmplt_epi8(a, c);
+        a = _mm_and_si128(d, a);
+        mask = _mm_movemask_epi8(a);
+    }
+
+    int tz = count_trailing_zeros_u16(mask);
+    *offset += inc + tz;
+
+    return true;
+}
+// Must be safe to assume string has len 16 bytes
 inline static bool simd_skip_to_int(const char *string, u64 *offset, u64 limit) {
     __m128i b = _mm_set1_epi8(47); // ascii 0 - 1
     __m128i c = _mm_set1_epi8(58); // ascii 9 + 1

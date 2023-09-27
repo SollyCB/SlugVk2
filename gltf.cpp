@@ -12,7 +12,8 @@
     WARNING!! This parser has very strict memory alignment rules!!
 */
 
-// Notes on file implementation and old code at the bottom of the file
+// @Note Notes on file implementation process and old code at the bottom of the file
+
 Gltf parse_gltf(const char *filename);
 
 Gltf_Animation* gltf_parse_animations(const char *data, u64 *offset, int *animation_count);
@@ -32,6 +33,12 @@ Gltf_Image* gltf_parse_images(const char *data, u64 *offset, int *image_count);
 Gltf_Material* gltf_parse_materials(const char *data, u64 *offset, int *material_count);
 void gltf_parse_texture_info(const char *data, u64 *offset, int *index, int *tex_coord, float *scale, float *strength);
 
+Gltf_Mesh* gltf_parse_meshes(const char *data, u64 *offset, int *mesh_count);
+Gltf_Mesh_Primitive* gltf_parse_mesh_primitives(const char *data, u64 *offset, int *primitive_count);
+Gltf_Mesh_Attribute* gltf_parse_mesh_attributes(const char *data, u64 *offset, int *attribute_count);
+
+
+/* **Implementation start** */
 Gltf parse_gltf(const char *filename) {
     //
     // Function Method:
@@ -124,8 +131,7 @@ inline int gltf_ascii_to_int(const char *data, u64 *offset) {
 
 float gltf_ascii_to_float(const char *data, u64 *offset) {
     u64 inc = 0;
-    if (!simd_skip_to_int(data, &inc, Max_u64))
-        ASSERT(false, "Failed to find an integer in search range");
+    simd_skip_to_int(data, &inc, Max_u64);
 
     bool neg = data[inc - 1] == '-';
     bool seen_dot = false;
@@ -175,11 +181,20 @@ inline int gltf_parse_float_array(const char *data, u64 *offset, float *array) {
     *offset += inc + 1; // +1 go beyond the cloasing square bracket (prevent early exit at accessors list level)
     return i;
 }
+inline int gltf_get_float_array_len(const char *data) {
+    u64 inc = 0;
+    simd_skip_to_int(data, &inc, Max_u64);
+    int count = 0;
+    while(simd_find_int_interrupted(data + inc, ']', &inc)) {
+        count++;
+        inc++;
+    }
+    return count;
+}
 // algorithms end
 
 
 // `Accessors
-
 // @Todo check that all defaults are being properly set
 Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor_count) {
     u64 inc = 0; // track position in file
@@ -209,6 +224,7 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
 
         // Temp allocation made for every accessor struct. Keeps shit packed, linear allocators are fast...
         accessor = (Gltf_Accessor*)memory_allocate_temp(sizeof(Gltf_Accessor), 8);
+        *accessor = {};
         accessor->indices_component_type = GLTF_TYPE_NONE;
         accessor->type = GLTF_TYPE_NONE;
         min_max_len = 0;
@@ -311,9 +327,7 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
 
         }
         if (min_found && max_found && accessor->type != GLTF_TYPE_NONE) {
-            // Have to be careful with memory alignment here: each accessor is allocated individually,
-            // so if the temp allocator fragments or packs wrong, reading from the first allocation 
-            // and treating the linear allocator as an array would break...
+            // @MemAlign careful here
             temp = align(sizeof(float) * min_max_len * 2, 8);
             accessor->max = (float*)memory_allocate_temp(temp, 8); 
             accessor->min = accessor->max + min_max_len;
@@ -326,22 +340,10 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
             accessor->stride = sizeof(Gltf_Accessor);
         }
     }
-    // handle end...
-
-    // sol - 23 Sept 2023
-    // @Note @Memalign
-    //
-    // ** If accessor info is garbled shit, come back here **
-    // -- Update: It seems to work fine, but I wont feel sure for a little bit. --
-    //
-    // The way the list is handled is I make an allocation for every accessor, and then decrement the final
-    // accessor pointer to point to the first allocation, because the allocations are made in a linear allocator.
-    // I think that this works despite alignment rules, as in indexing by accessor will work fine, because
-    // there will not be alignment problems in the linear allocator.
     *accessor_count = count;
     *offset += inc;
-    return ret; // point the returned pointer to the beginning of the list
-} // function parse_accessors(..)
+    return ret;
+}
 void gltf_parse_accessor_sparse(const char *data, u64 *offset, Gltf_Accessor *accessor) {
     u64 inc = 0;
     simd_find_char_interrupted(data + inc, '{', '}', &inc); // find sparse start
@@ -409,6 +411,7 @@ Gltf_Animation_Channel* gltf_parse_animation_channels(const char *data, u64 *off
 
     while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
         channel = (Gltf_Animation_Channel*)memory_allocate_temp(sizeof(Gltf_Animation_Channel), 8);
+        *channel = {};
         count++;
         while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) { // channel loop
             inc++; // go beyond opening '"' in key
@@ -467,6 +470,7 @@ Gltf_Animation_Sampler* gltf_parse_animation_samplers(const char *data, u64 *off
 
     while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
         sampler = (Gltf_Animation_Sampler*)memory_allocate_temp(sizeof(Gltf_Animation_Sampler), 8);
+        *sampler = {};
         count++;
         sampler->interp = GLTF_ANIMATION_INTERP_LINEAR;
         while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
@@ -520,6 +524,7 @@ Gltf_Animation* gltf_parse_animations(const char *data, u64 *offset, int *animat
     while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) { // jump to object start
         ++count;
         animation = (Gltf_Animation*)memory_allocate_temp(sizeof(Gltf_Animation), 8);
+        *animation = {};
         while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
             inc++; // enter the key
             if (simd_strcmp_short(data + inc, "namexxxxxxxxxxxx", 12) == 0) {
@@ -557,6 +562,7 @@ Gltf_Buffer* gltf_parse_buffers(const char *data, u64 *offset, int *buffer_count
     while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
         count++;
         buffer = (Gltf_Buffer*)memory_allocate_temp(sizeof(Gltf_Buffer), 8);
+        *buffer = {};
         while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
             inc++; // go beyond opening '"'
             if (simd_strcmp_short(data + inc, "byteLengthxxxxxx", 6) == 0) {
@@ -580,6 +586,7 @@ Gltf_Buffer* gltf_parse_buffers(const char *data, u64 *offset, int *buffer_count
     return buffers;
 }
 
+// `BufferViews
 Gltf_Buffer_View* gltf_parse_buffer_views(const char *data, u64 *offset, int *buffer_view_count) {
     Gltf_Buffer_View *buffer_views = (Gltf_Buffer_View*)memory_allocate_temp(0, 8);
     Gltf_Buffer_View *buffer_view;
@@ -589,6 +596,7 @@ Gltf_Buffer_View* gltf_parse_buffer_views(const char *data, u64 *offset, int *bu
     while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
         count++;
         buffer_view = (Gltf_Buffer_View*)memory_allocate_temp(sizeof(Gltf_Buffer_View), 8);
+        *buffer_view = {};
         while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
             inc++; // step beyond key's opening '"'
             if (simd_strcmp_short(data + inc, "bufferxxxxxxxxxx", 10) == 0) {
@@ -616,6 +624,7 @@ Gltf_Buffer_View* gltf_parse_buffer_views(const char *data, u64 *offset, int *bu
     return buffer_views;
 }
 
+// `Cameras
 Gltf_Camera* gltf_parse_cameras(const char *data, u64 *offset, int *camera_count) {
     Gltf_Camera *cameras = (Gltf_Camera*)memory_allocate_temp(0, 8);
     Gltf_Camera *camera;
@@ -624,6 +633,7 @@ Gltf_Camera* gltf_parse_cameras(const char *data, u64 *offset, int *camera_count
     int count = 0;
     while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
         camera = (Gltf_Camera*)memory_allocate_temp(sizeof(Gltf_Camera), 8);
+        *camera = {};
         count++;
         while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
             inc++; // step into key
@@ -684,6 +694,7 @@ Gltf_Camera* gltf_parse_cameras(const char *data, u64 *offset, int *camera_count
     return cameras;
 }
 
+// `Images
 Gltf_Image* gltf_parse_images(const char *data, u64 *offset, int *image_count) {
     Gltf_Image *images = (Gltf_Image*)memory_allocate_temp(0, 8);
     Gltf_Image *image;
@@ -694,6 +705,7 @@ Gltf_Image* gltf_parse_images(const char *data, u64 *offset, int *image_count) {
     while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
         count++;
         image = (Gltf_Image*)memory_allocate_temp(sizeof(Gltf_Image), 8);
+        *image = {};
         while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
             inc++;
             if (simd_strcmp_short(data + inc, "urixxxxxxxxxxxxx", 13) == 0) {
@@ -727,6 +739,7 @@ Gltf_Image* gltf_parse_images(const char *data, u64 *offset, int *image_count) {
     return images;
 }
 
+// `Materials
 Gltf_Material* gltf_parse_materials(const char *data, u64 *offset, int *material_count) {
     Gltf_Material *materials = (Gltf_Material*)memory_allocate_temp(0, 8);
     Gltf_Material *material;
@@ -768,7 +781,8 @@ Gltf_Material* gltf_parse_materials(const char *data, u64 *offset, int *material
                 continue;
             } else if (simd_strcmp_short(data + inc, "normalTexturexxx", 3) == 0) {
                 simd_skip_passed_char(data + inc, &inc, '"');
-                gltf_parse_texture_info(data + inc, &inc, &material->normal_texture_index, &material->normal_tex_coord,                                        &material->normal_scale, NULL);
+                gltf_parse_texture_info(data + inc, &inc, &material->normal_texture_index, &material->normal_tex_coord, 
+                                        &material->normal_scale, NULL);
                 continue;
             } else if (simd_strcmp_short(data + inc, "occlusionTexture", 0) == 0) {
                 simd_skip_passed_char(data + inc, &inc, '"');
@@ -835,6 +849,133 @@ void gltf_parse_texture_info(const char *data, u64 *offset, int *index, int *tex
         }
     }
     *offset += inc + 1; // +1 go beyond closing curly
+}
+
+// `Meshes
+Gltf_Mesh* gltf_parse_meshes(const char *data, u64 *offset, int *mesh_count) {
+    Gltf_Mesh *meshes = (Gltf_Mesh*)memory_allocate_temp(0, 8);
+    Gltf_Mesh *mesh;
+
+    u64 inc = 0;
+    int count = 0;
+    while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
+        count++;
+        mesh = (Gltf_Mesh*)memory_allocate_temp(sizeof(Gltf_Mesh), 8);
+        *mesh = {};
+        while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+            inc++; // step into key
+            if (simd_strcmp_short(data + inc, "primitivesxxxxxx", 6) == 0) {
+                mesh->primitives = gltf_parse_mesh_primitives(data + inc, &inc, &mesh->primitive_count);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "weightsxxxxxxxxx", 9) == 0) {
+                simd_skip_to_char(data + inc, &inc, '[');
+                mesh->weight_count = simd_get_ascii_array_len(data + inc);
+                // @MemAlign careful with this alignment (the 4 I mean)
+                // Aligning to 4 means I can align the entire stride later, rather than its pieces
+                mesh->weights = (float*)memory_allocate_temp(sizeof(float) * mesh->weight_count, 4);
+                parse_float_array(data + inc, &inc, mesh->weights);
+                continue;
+            }
+        }
+    }
+    *offset += inc;
+    *mesh_count = count;
+    return meshes;
+}
+Gltf_Mesh_Primitive* gltf_parse_mesh_primitives(const char *data, u64 *offset, int *primitive_count) {
+    Gltf_Mesh_Primitive *primitives = (Gltf_Mesh_Primitive*)memory_allocate_temp(0, 8);
+    Gltf_Mesh_Primitive *primitive;
+    Gltf_Mesh_Attribute *attribute;
+
+    u64 inc = 0;
+    int count = 0;
+    int attribute_count;
+    // indices, material, mode
+    while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
+        count++;
+        primitive = (Gltf_Mesh_Primitive*)memory_allocate_temp(sizeof(Gltf_Mesh_Primitive), 8);
+        *primitive = {};
+        while(simd_find_char_interrupted(data + inc, '"', '}', &inc) {
+            inc++; // step into key
+            if (simd_strcmp_short(data + inc, "indicesxxxxxxxxx", 9) == 0) {
+                primitive->indices = gltf_ascii_to_int(data + inc, &inc);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "materialxxxxxxxx", 8) == 0) {
+                primitive->material = gltf_ascii_to_int(data + inc, &inc);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "modexxxxxxxxxxxx", 12) == 0) {
+                primitive->mode = gltf_ascii_to_int(data + inc, &inc);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "targetsxxxxxxxxx", 9) == 0) {
+                // @TODO CURRENT TASK
+                continue;
+            } else if (simd_strcmp_short(data + inc, "attributesxxxxxx", 6) == 0) {
+                simd_skip_passed_char(data + inc, &inc, '{');
+                gltf_parse_mesh_attributes(data + inc, &inc, &primitive->attribute_count);
+                continue;
+            }
+        }
+    }
+    inc++; // go beyond closing primitives square brace
+    *offset += inc;
+    *primitive_count = count;
+    return primitives;
+}
+Gltf_Mesh_Attribute* gltf_parse_mesh_attributes(const char *data, u64 *offset, int *attribute_count) {
+    Gltf_Mesh_Attribute *attributes = (Gltf_Mesh_Attribute*)memory_allocate_temp(0, 4);
+    Gltf_Mesh_Attribute *attribute;
+
+    u64 inc = 0;
+    int count = 0;
+    while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+        inc++; // step into key
+        count++;
+        attribute = memory_allocate_temp(sizeof(Gltf_Mesh_Attribute), 4);
+        if      (simd_strcmp_short(data + inc, "NORMALxxxxxxxxxx", 10) == 0) {
+            attribute->type           = GLTF_MESH_ATTRIBUTE_TYPE_NORMAL;
+            attribute->accessor_index = gltf_ascii_to_int(data + inc, &inc);
+            continue;
+        }
+        else if (simd_strcmp_short(data + inc, "POSITIONxxxxxxxx",  8) == 0) {
+            attribute->type = GLTF_MESH_ATTRIBUTE_TYPE_POSITION;
+            attribute->accessor_index = gltf_ascii_to_int(data + inc, &inc);
+            continue;
+        }
+        else if (simd_strcmp_short(data + inc, "TANGENTxxxxxxxxx",  9) == 0) {
+            attribute->type = GLTF_MESH_ATTRIBUTE_TYPE_TANGENT;
+            attribute->accessor_index = gltf_ascii_to_int(data + inc, &inc);
+            continue;
+        }
+        else if (simd_strcmp_short(data + inc, "TEXCOORDxxxxxxxx",  8) == 0) {
+            attribute->type = GLTF_MESH_ATTRIBUTE_TYPE_TEXCOORD;
+            attribute->n    = gltf_ascii_to_int(data + inc, &inc);
+            attribute->accessor_index = gltf_ascii_to_int(data + inc, &inc);
+            continue;
+        }
+        else if (simd_strcmp_short(data + inc, "COLORxxxxxxxxxxx", 11) == 0) {
+            attribute->type = GLTF_MESH_ATTRIBUTE_TYPE_COLOR;
+            attribute->n    = gltf_ascii_to_int(data + inc, &inc);
+            attribute->accessor_index = gltf_ascii_to_int(data + inc, &inc);
+            continue;
+        }
+        else if (simd_strcmp_short(data + inc, "JOINTSxxxxxxxxxx", 10) == 0) {
+            attribute->type = GLTF_MESH_ATTRIBUTE_TYPE_JOINTS;
+            attribute->n    = gltf_ascii_to_int(data + inc, &inc);
+            attribute->accessor_index = gltf_ascii_to_int(data + inc, &inc);
+            continue;
+        }
+        else if (simd_strcmp_short(data + inc, "WEIGHTSxxxxxxxxx",  9) == 0) {
+            attribute->type = GLTF_MESH_ATTRIBUTE_TYPE_WEIGHTS;
+            attribute->n    = gltf_ascii_to_int(data + inc, &inc);
+            attribute->accessor_index = gltf_ascii_to_int(data + inc, &inc);
+            continue;
+        }
+    }
+    inc++; // go passed closing curly on attributes
+
+    *offset += inc;
+    *attribute_count = count;
+    return attributes;
 }
 
 #if TEST
@@ -1018,8 +1159,8 @@ static void test_buffer_views(Gltf_Buffer_View *buffer_views) {
     TEST_EQ("buffer_views[2].buffer",           view->buffer,  9999, false);
     TEST_EQ("buffer_views[2].byte_offset", view->byte_offset,  6969, false);
     TEST_EQ("buffer_views[2].byte_length", view->byte_length,  99907654, false);
-    TEST_EQ("buffer_views[2].byte_stride", view->byte_stride, 0, false);
-    TEST_EQ("buffer_views[2].buffer_type", view->buffer_type, 34962, false);
+    TEST_EQ("buffer_views[2].byte_stride", view->byte_stride,  0, false);
+    TEST_EQ("buffer_views[2].buffer_type", view->buffer_type,  34962, false);
 
     view = (Gltf_Buffer_View*)((u8*)view + view->stride);
     TEST_EQ("buffer_views[3].buffer",           view->buffer, 9, false);

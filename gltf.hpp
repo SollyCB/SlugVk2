@@ -154,6 +154,40 @@ struct Gltf_Material {
     int double_sided; // @BoolsInStructs big bool
 };
 
+enum Gltf_Mesh_Attribute_Type {
+    GLTF_MESH_ATTRIBUTE_TYPE_POSITION = 1,
+    GLTF_MESH_ATTRIBUTE_TYPE_NORMAL   = 2,
+    GLTF_MESH_ATTRIBUTE_TYPE_TANGENT  = 3,
+    GLTF_MESH_ATTRIBUTE_TYPE_TEXCOORD = 4,
+    GLTF_MESH_ATTRIBUTE_TYPE_COLOR    = 5,
+    GLTF_MESH_ATTRIBUTE_TYPE_JOINTS   = 6,
+    GLTF_MESH_ATTRIBUTE_TYPE_WEIGHTS  = 7,
+};
+struct Gltf_Mesh_Attribute {
+    Gltf_Mesh_Attribute_Type type;
+    int n;
+    int accessor_index;
+};
+struct Gltf_Morph_Target {
+    Gltf_Mesh_Attribute *attributes;
+    int attribute_count;
+};
+struct Gltf_Mesh_Primitive {
+    Gltf_Morph_Target   *targets;
+    Gltf_Mesh_Attribute *attributes;
+    int target_count;
+    int attribute_count;
+    int indices;
+    int material;
+    int mode = 4;
+};
+struct Gltf_Mesh {
+    int primitive_count;
+    int weight_count;
+    Gltf_Mesh_Primitive *primitives;
+    float *weights;
+};
+
 struct Gltf {
     // Each arrayed field has a 'stride' member, which is the byte count required to reach 
     // the next array member;
