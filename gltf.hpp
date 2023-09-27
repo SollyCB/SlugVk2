@@ -3,6 +3,7 @@
 
 #include "basic.h"
 #include "string.hpp"
+#include "math.hpp"
 
 enum Gltf_Type {
     GLTF_TYPE_NONE           = 0,
@@ -204,6 +205,24 @@ struct Gltf_Mesh {
     float *weights;
 };
 
+struct Gltf_Node {
+    int stride;
+    int camera;
+    int skin;
+    int mesh;
+    int child_count;
+    int weight_count;
+    int *children;
+    float *weights;
+
+    union {
+    Mat4 matrix      = {1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
+    Vec4 rotation    = {0.0, 0.0, 0.0, 1.0};
+    Vec3 scale       = {1.0, 1.0, 1.0};
+    Vec3 translation = {0.0, 0.0, 0.0};
+    };
+};
+
 struct Gltf {
     // Each arrayed field has a 'stride' member, which is the byte count required to reach 
     // the next array member;
@@ -227,6 +246,8 @@ struct Gltf {
     Gltf_Material *materials;
     int mesh_count;
     Gltf_Mesh *meshes;
+    int node_count;
+    Gltf_Node *nodes;
 };
 Gltf parse_gltf(const char *file_name);
 

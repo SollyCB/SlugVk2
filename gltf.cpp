@@ -37,6 +37,7 @@ Gltf_Mesh* gltf_parse_meshes(const char *data, u64 *offset, int *mesh_count);
 Gltf_Mesh_Primitive* gltf_parse_mesh_primitives(const char *data, u64 *offset, int *primitive_count);
 Gltf_Mesh_Attribute* gltf_parse_mesh_attributes(const char *data, u64 *offset, int *attribute_count);
 
+Gltf_Node* gltf_parse_nodes(const char *data, u64 *offset, int *node_count);
 
 /* **Implementation start** */
 Gltf parse_gltf(const char *filename) {
@@ -55,7 +56,7 @@ Gltf parse_gltf(const char *filename) {
     u64 offset = 0;
 
     while (simd_find_char_interrupted(data + offset, '"', '}', &offset)) {
-        offset++; // skip into key
+        offset++; // step into key
         if (simd_strcmp_short(data + offset, "accessorsxxxxxxx", 7) == 0) {
             gltf.accessors = gltf_parse_accessors(data + offset, &offset, &gltf.accessor_count);
             continue;
@@ -79,6 +80,9 @@ Gltf parse_gltf(const char *filename) {
             continue;
         } else if (simd_strcmp_short(data + offset, "meshesxxxxxxxxxx", 10) == 0) {
             gltf.meshes = gltf_parse_meshes(data + offset, &offset, &gltf.mesh_count);
+            continue;
+        } else if (simd_strcmp_short(data + offset, "nodesxxxxxxxxxxx", 11) == 0) {
+            gltf.nodes = gltf_parse_nodes(data + offset, &offset, &gltf.node_count);
             continue;
         } else {
             ASSERT(false, "This is not a top level gltf key"); 
@@ -174,6 +178,16 @@ float gltf_ascii_to_float(const char *data, u64 *offset) {
     return accum;
 }
 
+inline int gltf_parse_int_array(const char *data, u64 *offset, int *array) {
+    int i = 0;
+    u64 inc = 0;
+    while(simd_find_int_interrupted(data + inc, ']', &inc)) {
+        array[i] = gltf_ascii_to_int(data + inc, &inc);
+        i++;
+    }
+    *offset += inc + 1; // +1 go beyond the cloasing square bracket (prevent early exit at accessors list level)
+    return i;
+}
 inline int gltf_parse_float_array(const char *data, u64 *offset, float *array) {
     int i = 0;
     u64 inc = 0;
@@ -183,6 +197,30 @@ inline int gltf_parse_float_array(const char *data, u64 *offset, float *array) {
     }
     *offset += inc + 1; // +1 go beyond the cloasing square bracket (prevent early exit at accessors list level)
     return i;
+}
+
+inline Mat4 gltf_ascii_to_mat4(const char *data, u64 *offset) {
+    u64 inc = 0;
+    Mat4 ret;
+
+    float vec[4];
+    for(int i = 0; i < 4; ++i)
+        vec[i] = gltf_ascii_to_float(data + inc, &inc);
+    ret.row0 = {vec[0], vec[1], vec[2], vec[3]};
+
+    for(int i = 0; i < 4; ++i)
+        vec[i] = gltf_ascii_to_float(data + inc, &inc);
+    ret.row1 = {vec[0], vec[1], vec[2], vec[3]};
+
+    for(int i = 0; i < 4; ++i)
+        vec[i] = gltf_ascii_to_float(data + inc, &inc);
+    ret.row2 = {vec[0], vec[1], vec[2], vec[3]};
+
+    for(int i = 0; i < 4; ++i)
+        vec[i] = gltf_ascii_to_float(data + inc, &inc);
+    ret.row3 = {vec[0], vec[1], vec[2], vec[3]};
+
+    return ret;
 }
 // algorithms end
 
@@ -990,6 +1028,42 @@ Gltf_Mesh_Attribute* gltf_parse_mesh_attributes(const char *data, u64 *offset, i
     *offset += inc;
     *attribute_count = count;
     return attributes;
+}
+
+// `Nodes
+Gltf_Node* gltf_parse_nodes(const char *data, u64 *offset, int *node_count) {
+    Gltf_Node *nodes = (Gltf_Node*)memory_allocate_temp(0, 8);
+    Gltf_Node *node;
+
+    u64 inc = 0;
+    int count = 0;
+    u64 mark;
+    float matrix[16];
+    while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
+        count++;
+        mark = get_mark_temp();
+        node = (Gltf_Node*)memory_allocate_temp(sizeof(Gltf_Node), 8);
+        *node = {};
+        while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+            inc++; // step into key
+            if (simd_strcmp_short(data + inc, "cameraxxxxxxxxxx", 10) == 0) {
+                node->camera = gltf_ascii_to_int(data + inc, &inc);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "childrenxxxxxxxx", 8) == 0) {
+                node->child_count = simd_get_ascii_array_len(data + inc);
+                node->children = (int*)memory_allocate_temp(sizeof(int) * node->child_count, 4);
+                gltf_parse_int_array(data + inc, &inc, node->children);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "skinxxxxxxxxxxxx", 12) == 0) {
+                node->skin = gltf_ascii_to_int(data + inc, &inc);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "matrixxxxxxxxxxx", 10) == 0) {
+                // array to float, make matrix
+                // @TODO CURRENT TASK
+            }
+        }
+        node->stride = align(get_mark_temp() - mark, 8);
+    }
 }
 
 #if TEST

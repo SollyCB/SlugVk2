@@ -36,6 +36,32 @@
 
 // @Todo come up with more aesthetic, general string compares
 
+// Whyyyyyy can't I turn on SVML intrinsics?
+/* inline static Vec4 simd_sin_vec4(Vec4 *vec4) {
+    __m128i a = _mm_loadu_si128((__m128i*)vec4);
+    a = _mm_sin_ps(a);
+    Vec4 *sin = (Vec4*)&a;
+    return *sin;
+}
+inline static Vec4 simd_asin_vec4(Vec4 *vec4) {
+    __m128i a = _mm_loadu_si128((__m128i*)vec4);
+    a = _mm_asin_ps(a);
+    Vec4 *asin = (Vec4*)&a;
+    return *asin;
+}
+inline static Vec4 simd_cos_vec4(Vec4 *vec4) {
+    __m128i a = _mm_loadu_si128((__m128i*)vec4);
+    a = _mm_cos_ps(a);
+    Vec4 *cos = (Vec4*)&a;
+    return *cos;
+}
+inline static Vec4 simd_acos_vec4(Vec4 *vec4) {
+    __m128i a = _mm_loadu_si128((__m128i*)vec4);
+    a = _mm_acos_ps(a);
+    Vec4 *acos = (Vec4*)&a;
+    return *acos;
+} */
+
 // assumes safe to deref data up to 16 bytes, counts bytes up to a closing char
 inline static int simd_strlen(const char *string, char close) {
     __m128i a = _mm_loadu_si128((__m128i*)string);
