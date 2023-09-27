@@ -133,6 +133,43 @@ inline static bool simd_find_char_interrupted(const char *string, char find, cha
     return true;
 }
 
+inline static int simd_get_ascii_array_len(const char *string) {
+    u64 inc = 0;
+    int count = 0;
+    while(simd_find_char_interrupted(string + inc, ',', ']', &inc)) {
+        count++;
+        inc++;
+    }
+    
+    inc -= 16;
+    __m128i a = _mm_loadu_si128((__m128i*)(string + inc));
+
+    // @Note idk if there are more newline characters that I should be accounting for...
+    __m128i b = _mm_set1_epi8(' ');
+    __m128i c = _mm_set1_epi8('\n');
+    __m128i d = _mm_set1_epi8('\t');
+    __m128i e = _mm_or_si128(_mm_cmpeq_epi8(a, b), _mm_cmpeq_epi8(a, c));
+    __m128i f = _mm_or_si128(_mm_cmpeq_epi8(a, d), e);
+    u16 mask = _mm_movemask_epi8(f);
+    while(mask == Max_u16) {
+        inc -= 16;
+        a = _mm_loadu_si128((__m128i*)(string + inc));
+        e = _mm_or_si128(_mm_cmpeq_epi8(a, b), _mm_cmpeq_epi8(a, c));
+        f = _mm_or_si128(_mm_cmpeq_epi8(a, d), e);
+        mask = _mm_movemask_epi8(f);
+    }
+
+    mask ^= 0xffff; // make easier to count trailing zeros
+    u16 lz = count_leading_zeros_u16(mask);
+    mask &= 0xffff & (0x8000 >> lz);
+    b = _mm_set1_epi8(',');
+    a = _mm_cmpeq_epi8(a, b);
+    u16 mask2 = _mm_movemask_epi8(a);
+    count++;
+    count -= pop_count16(mask2 & mask);
+    return count;
+}
+
 // Must be safe to assume that x and y have len 16 bytes, must return u16
 inline static u64 simd_search_for_char(const char *string, char c) {
     __m128i a =  _mm_loadu_si128((const __m128i*)string);
@@ -268,6 +305,7 @@ inline static void simd_skip_whitespace(const char *string, u64 *offset) {
 }
 
 // Must be safe to assume string has len 16 bytes
+// @Todo make a version without the limit check
 inline static bool simd_skip_to_int(const char *string, u64 *offset, u64 limit) {
     __m128i b = _mm_set1_epi8(47); // ascii 0 - 1
     __m128i c = _mm_set1_epi8(58); // ascii 9 + 1
