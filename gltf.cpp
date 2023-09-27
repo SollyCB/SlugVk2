@@ -772,7 +772,7 @@ Gltf_Material* gltf_parse_materials(const char *data, u64 *offset, int *material
                 continue;
             } else if (simd_strcmp_short(data + inc, "occlusionTexture", 0) == 0) {
                 simd_skip_passed_char(data + inc, &inc, '"');
-                gltf_parse_texture_info(data + inc, &inc, &material->normal_texture_index, &material->normal_tex_coord, 
+                gltf_parse_texture_info(data + inc, &inc, &material->occlusion_texture_index, &material->occlusion_tex_coord, 
                                         NULL, &material->occlusion_strength);
                 continue;
             } else if (simd_strcmp_short(data + inc, "emissiveFactorxx", 2) == 0) {
@@ -809,7 +809,7 @@ Gltf_Material* gltf_parse_materials(const char *data, u64 *offset, int *material
                 }
             }
         }
-        material->stride = sizeof(Gltf_Material);
+        material->stride = align(sizeof(Gltf_Material), 8);
     }
 
     *offset += inc;
@@ -863,7 +863,7 @@ void test_gltf() {
     test_images(gltf.images);
     ASSERT(gltf.image_count == 3, "Incorrect Image Count");
     test_materials(gltf.materials);
-    ASSERT(gltf.material_count == 1, "Incorrect Material Count");
+    ASSERT(gltf.material_count == 2, "Incorrect Material Count");
 }
 
 static void test_accessors(Gltf_Accessor *accessor) {
@@ -1079,10 +1079,33 @@ static void test_materials(Gltf_Material *materials) {
     float inaccuracy = 0.0000001;
 
     Gltf_Material *material = materials;
-    TEST_EQ("materials[0].base_color_texture_index", material->base_color_texture_index, 1, false);
-    TEST_LT("materials[0].emissive_factor[0]", material->emissive_factor[0] - 0.2, inaccuracy, false);
-    TEST_LT("materials[0].emissive_factor[1]", material->emissive_factor[1] - 0.1, inaccuracy, false);
-    TEST_LT("materials[0].emissive_factor[2]", material->emissive_factor[2] - 0.0, inaccuracy, false);
+
+    println("stride %u", material->stride);
+    material = (Gltf_Material*)((u8*)material + material->stride);
+    TEST_EQ("materials[1].base_color_texture_index",         material->base_color_texture_index,          3, false);
+    TEST_EQ("materials[1].base_color_tex_coord",             material->base_color_tex_coord,              4, false);
+    TEST_EQ("materials[1].metallic_roughness_texture_index", material->metallic_roughness_texture_index,  8, false);
+    TEST_EQ("materials[1].metallic_roughness_tex_coord",     material->metallic_roughness_tex_coord,      8, false);
+    TEST_EQ("materials[1].normal_texture_index",             material->normal_texture_index,             12, false);
+    TEST_EQ("materials[1].normal_tex_coord",                 material->normal_tex_coord,                 11, false);
+    TEST_EQ("materials[1].emissive_texture_index",           material->emissive_texture_index,            3, false);
+    TEST_EQ("materials[1].emissive_tex_coord",               material->emissive_tex_coord,            56070, false);
+    TEST_EQ("materials[1].occlusion_texture_index",          material->occlusion_texture_index,          79, false);
+    TEST_EQ("materials[1].occlusion_tex_coord",              material->occlusion_tex_coord,            9906, false);
+
+    TEST_LT("materials[1].metallic_factor",      material->metallic_factor      - 5.0,   inaccuracy, false);
+    TEST_LT("materials[1].roughness_factor",     material->roughness_factor     - 6.0,   inaccuracy, false);
+    TEST_LT("materials[1].normal_scale",         material->normal_scale         - 1.0,   inaccuracy, false);
+    TEST_LT("materials[1].occlusion_strength",   material->occlusion_strength   - 0.679, inaccuracy, false);
+
+    TEST_LT("materials[1].base_color_factor[0]", material->base_color_factor[0] - 2.5,   inaccuracy, false);
+    TEST_LT("materials[1].base_color_factor[1]", material->base_color_factor[1] - 4.5,   inaccuracy, false);
+    TEST_LT("materials[1].base_color_factor[2]", material->base_color_factor[2] - 2.5,   inaccuracy, false);
+    TEST_LT("materials[1].base_color_factor[3]", material->base_color_factor[3] - 1.0,   inaccuracy, false);
+
+    TEST_LT("materials[1].emissive_factor[0]", material->emissive_factor[0] - 11.2, inaccuracy, false);
+    TEST_LT("materials[1].emissive_factor[1]", material->emissive_factor[1] -  0.1, inaccuracy, false);
+    TEST_LT("materials[1].emissive_factor[2]", material->emissive_factor[2] -  0.0, inaccuracy, false);
 
     END_TEST_MODULE();
 }

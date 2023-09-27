@@ -297,6 +297,37 @@
                 "texCoord": 1
             },
             "emissiveFactor": [ 0.2, 0.1, 0.0 ]
+        },
+        {
+            "name": "Material1",
+            "pbrMetallicRoughness": {
+                "baseColorFactor": [ 2.5, 4.5, 2.5, 1.0 ],
+                "baseColorTexture": {
+                    "index": 3,
+                    "texCoord": 4
+                },
+                "metallicFactor": 5.0,
+                "roughnessFactor": 6.0,
+                "metallicRoughnessTexture": {
+                    "index": 8,
+                    "texCoord": 8
+                }
+            },
+            "normalTexture": {
+                "scale": 1.0,
+                "index": 12,
+                "texCoord": 11
+            },
+            "occlusionTexture": {
+                "index": 79,
+                "texCoord": 9906 
+                "strength": 0.679
+            },
+            "emissiveTexture": {
+                "index": 3,
+                "texCoord": 56070 
+            },
+            "emissiveFactor": [ 11.2, 0.1, 0.0 ]
         }
     ]
 }
