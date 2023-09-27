@@ -329,5 +329,106 @@
         {
             "uri": "duck_but_better.jpeg"
         },
+    ],
+    "meshes": [
+        {
+            "primitives": [
+                {
+                    "attributes": {
+                        "NORMAL": 23,
+                        "POSITION": 22,
+                        "TANGENT": 24,
+                        "TEXCOORD_0": 25
+                    },
+                    "indices": 21,
+                    "material": 3,
+                    "mode": 4
+                },
+                {
+                    "attributes": {
+                        "NORMAL": 33,
+                        "POSITION": 32,
+                        "TANGENT": 34,
+                        "TEXCOORD_0": 35
+                    },
+                    "indices": 31,
+                    "material": 33,
+                    "targets": [
+                        {
+                            "NORMAL": 33,
+                            "POSITION": 32,
+                            "TANGENT": 34
+                        },
+                        {
+                            "NORMAL": 43,
+                            "POSITION": 42,
+                            "TANGENT": 44
+                        }
+                    ]
+                }
+            ],
+            "weights": [0, 0.5]
+        },
+        {
+            "primitives": [
+                {
+                    "attributes": {
+                        "NORMAL": 13,
+                        "POSITION": 12,
+                        "TANGENT": 14,
+                        "TEXCOORD_0": 15
+                    },
+                    "indices": 11,
+                    "material": 13,
+                    "mode": 6 
+                },
+                {
+                    "attributes": {
+                        "NORMAL": 13,
+                        "POSITION": 12,
+                        "TANGENT": 14,
+                        "TEXCOORD_0": 15
+                    },
+                    "indices": 11,
+                    "material": 13,
+                    "targets": [
+                        {
+                            "NORMAL": 13,
+                            "POSITION": 12,
+                            "TANGENT": 14
+                        },
+                        {
+                            "NORMAL": 23,
+                            "POSITION": 22,
+                            "TANGENT": 24
+                        }
+                    ]
+                },
+                {
+                    "attributes": {
+                        "NORMAL": 3,
+                        "POSITION": 2,
+                        "TANGENT": 4,
+                        "TEXCOORD_1": 5
+                    },
+                    "indices": 1,
+                    "material": 3,
+                    "mode": 0,
+                    "targets": [
+                        {
+                            "NORMAL": 3,
+                            "POSITION": 2,
+                            "TANGENT": 4
+                        },
+                        {
+                            "NORMAL": 9,
+                            "POSITION": 7,
+                            "TANGENT": 6
+                        }
+                    ]
+                }
+            ],
+            "weights": [0, 0.5]
+        }
     ]
 }

@@ -169,19 +169,35 @@ struct Gltf_Mesh_Attribute {
     int accessor_index;
 };
 struct Gltf_Morph_Target {
-    Gltf_Mesh_Attribute *attributes;
+    int stride;
+
     int attribute_count;
+    Gltf_Mesh_Attribute *attributes;
+};
+enum Gltf_Primitive_Topology {
+    GLTF_PRIMITIVE_TOPOLOGY_POINTS         = 0,
+    GLTF_PRIMITIVE_TOPOLOGY_LINES          = 1,
+    GLTF_PRIMITIVE_TOPOLOGY_LINE_LOOP      = 2,
+    GLTF_PRIMITIVE_TOPOLOGY_LINE_STRIP     = 3,
+    GLTF_PRIMITIVE_TOPOLOGY_TRIANGLES      = 4,
+    GLTF_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP = 5,
+    GLTF_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN   = 6,
 };
 struct Gltf_Mesh_Primitive {
-    Gltf_Morph_Target   *targets;
-    Gltf_Mesh_Attribute *attributes;
+    int stride;
+
     int target_count;
     int attribute_count;
     int indices;
     int material;
-    int mode = 4;
+    int mode = GLTF_PRIMITIVE_TOPOLOGY_TRIANGLES;
+
+    Gltf_Morph_Target   *targets;
+    Gltf_Mesh_Attribute *attributes;
 };
 struct Gltf_Mesh {
+    int stride;
+
     int primitive_count;
     int weight_count;
     Gltf_Mesh_Primitive *primitives;
@@ -209,6 +225,8 @@ struct Gltf {
     Gltf_Image *images;
     int material_count;
     Gltf_Material *materials;
+    int mesh_count;
+    Gltf_Mesh *meshes;
 };
 Gltf parse_gltf(const char *file_name);
 

@@ -77,6 +77,9 @@ Gltf parse_gltf(const char *filename) {
         } else if (simd_strcmp_short(data + offset, "materialsxxxxxxx", 7) == 0) {
             gltf.materials = gltf_parse_materials(data + offset, &offset, &gltf.material_count);
             continue;
+        } else if (simd_strcmp_short(data + offset, "meshesxxxxxxxxxx", 10) == 0) {
+            gltf.meshes = gltf_parse_meshes(data + offset, &offset, &gltf.mesh_count);
+            continue;
         } else {
             ASSERT(false, "This is not a top level gltf key"); 
         }
@@ -180,16 +183,6 @@ inline int gltf_parse_float_array(const char *data, u64 *offset, float *array) {
     }
     *offset += inc + 1; // +1 go beyond the cloasing square bracket (prevent early exit at accessors list level)
     return i;
-}
-inline int gltf_get_float_array_len(const char *data) {
-    u64 inc = 0;
-    simd_skip_to_int(data, &inc, Max_u64);
-    int count = 0;
-    while(simd_find_int_interrupted(data + inc, ']', &inc)) {
-        count++;
-        inc++;
-    }
-    return count;
 }
 // algorithms end
 
@@ -858,8 +851,10 @@ Gltf_Mesh* gltf_parse_meshes(const char *data, u64 *offset, int *mesh_count) {
 
     u64 inc = 0;
     int count = 0;
+    u64 mark;
     while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
         count++;
+        mark = get_mark_temp();
         mesh = (Gltf_Mesh*)memory_allocate_temp(sizeof(Gltf_Mesh), 8);
         *mesh = {};
         while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
@@ -873,10 +868,11 @@ Gltf_Mesh* gltf_parse_meshes(const char *data, u64 *offset, int *mesh_count) {
                 // @MemAlign careful with this alignment (the 4 I mean)
                 // Aligning to 4 means I can align the entire stride later, rather than its pieces
                 mesh->weights = (float*)memory_allocate_temp(sizeof(float) * mesh->weight_count, 4);
-                parse_float_array(data + inc, &inc, mesh->weights);
+                gltf_parse_float_array(data + inc, &inc, mesh->weights);
                 continue;
             }
         }
+        mesh->stride = align(get_mark_temp() - mark, 8);
     }
     *offset += inc;
     *mesh_count = count;
@@ -885,17 +881,20 @@ Gltf_Mesh* gltf_parse_meshes(const char *data, u64 *offset, int *mesh_count) {
 Gltf_Mesh_Primitive* gltf_parse_mesh_primitives(const char *data, u64 *offset, int *primitive_count) {
     Gltf_Mesh_Primitive *primitives = (Gltf_Mesh_Primitive*)memory_allocate_temp(0, 8);
     Gltf_Mesh_Primitive *primitive;
-    Gltf_Mesh_Attribute *attribute;
+    Gltf_Morph_Target *target;
 
     u64 inc = 0;
+    u64 mark;
+    u64 target_mark;
     int count = 0;
-    int attribute_count;
+    int target_count;
     // indices, material, mode
     while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
         count++;
+        mark = get_mark_temp();
         primitive = (Gltf_Mesh_Primitive*)memory_allocate_temp(sizeof(Gltf_Mesh_Primitive), 8);
         *primitive = {};
-        while(simd_find_char_interrupted(data + inc, '"', '}', &inc) {
+        while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
             inc++; // step into key
             if (simd_strcmp_short(data + inc, "indicesxxxxxxxxx", 9) == 0) {
                 primitive->indices = gltf_ascii_to_int(data + inc, &inc);
@@ -907,14 +906,28 @@ Gltf_Mesh_Primitive* gltf_parse_mesh_primitives(const char *data, u64 *offset, i
                 primitive->mode = gltf_ascii_to_int(data + inc, &inc);
                 continue;
             } else if (simd_strcmp_short(data + inc, "targetsxxxxxxxxx", 9) == 0) {
-                // @TODO CURRENT TASK
+                primitive->targets = (Gltf_Morph_Target*)memory_allocate_temp(0, 8);
+                target_count = 0;
+                while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
+                    target_count++;
+
+                    target_mark = get_mark_temp();
+                    target =
+                        (Gltf_Morph_Target*)memory_allocate_temp(sizeof(Gltf_Morph_Target), 8);
+                    target->attributes =
+                        gltf_parse_mesh_attributes(data + inc, &inc, &target->attribute_count);
+
+                    target->stride = align(get_mark_temp() - target_mark, 8);
+                }
+                primitive->target_count = target_count;
                 continue;
             } else if (simd_strcmp_short(data + inc, "attributesxxxxxx", 6) == 0) {
                 simd_skip_passed_char(data + inc, &inc, '{');
-                gltf_parse_mesh_attributes(data + inc, &inc, &primitive->attribute_count);
+                primitive->attributes = gltf_parse_mesh_attributes(data + inc, &inc, &primitive->attribute_count);
                 continue;
             }
         }
+        primitive->stride = align(get_mark_temp() - mark, 8);
     }
     inc++; // go beyond closing primitives square brace
     *offset += inc;
@@ -930,7 +943,8 @@ Gltf_Mesh_Attribute* gltf_parse_mesh_attributes(const char *data, u64 *offset, i
     while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
         inc++; // step into key
         count++;
-        attribute = memory_allocate_temp(sizeof(Gltf_Mesh_Attribute), 4);
+        // aligning to 4 allows for regular indexing
+        attribute = (Gltf_Mesh_Attribute*)memory_allocate_temp(sizeof(Gltf_Mesh_Attribute), 4);
         if      (simd_strcmp_short(data + inc, "NORMALxxxxxxxxxx", 10) == 0) {
             attribute->type           = GLTF_MESH_ATTRIBUTE_TYPE_NORMAL;
             attribute->accessor_index = gltf_ascii_to_int(data + inc, &inc);
@@ -986,6 +1000,7 @@ static void test_buffer_views(Gltf_Buffer_View *buffer_views);
 static void test_cameras(Gltf_Camera *cameras);
 static void test_images(Gltf_Image *images);
 static void test_materials(Gltf_Material *materials);
+static void test_meshes(Gltf_Mesh *meshes);
 
 void test_gltf() {
     Gltf gltf = parse_gltf("test_gltf.gltf");
@@ -1005,6 +1020,8 @@ void test_gltf() {
     ASSERT(gltf.image_count == 3, "Incorrect Image Count");
     test_materials(gltf.materials);
     ASSERT(gltf.material_count == 2, "Incorrect Material Count");
+    test_meshes(gltf.meshes);
+    ASSERT(gltf.mesh_count == 2, "Incorrect Mesh Count");
 }
 
 static void test_accessors(Gltf_Accessor *accessor) {
@@ -1221,7 +1238,6 @@ static void test_materials(Gltf_Material *materials) {
 
     Gltf_Material *material = materials;
 
-    println("stride %u", material->stride);
     material = (Gltf_Material*)((u8*)material + material->stride);
     TEST_EQ("materials[1].base_color_texture_index",         material->base_color_texture_index,          3, false);
     TEST_EQ("materials[1].base_color_tex_coord",             material->base_color_tex_coord,              4, false);
@@ -1247,6 +1263,160 @@ static void test_materials(Gltf_Material *materials) {
     TEST_LT("materials[1].emissive_factor[0]", material->emissive_factor[0] - 11.2, inaccuracy, false);
     TEST_LT("materials[1].emissive_factor[1]", material->emissive_factor[1] -  0.1, inaccuracy, false);
     TEST_LT("materials[1].emissive_factor[2]", material->emissive_factor[2] -  0.0, inaccuracy, false);
+
+    END_TEST_MODULE();
+}
+void test_meshes(Gltf_Mesh *meshes) {
+    BEGIN_TEST_MODULE("Gltf_Mesh", true, false);
+
+    Gltf_Mesh *mesh = meshes;
+    TEST_EQ("meshes[0].primitive_count", mesh->primitive_count, 2, false);
+    TEST_EQ("meshes[0].weight_count",    mesh->weight_count,    2, false);
+
+    float inaccuracy = 0.0000001;
+    TEST_LT("meshes[0].weights[0]", mesh->weights[0] - 0,   inaccuracy, false);
+    TEST_LT("meshes[0].weights[1]", mesh->weights[1] - 0.5, inaccuracy, false);
+
+    Gltf_Mesh_Primitive *primitive = mesh->primitives;
+    TEST_EQ("meshes[0].primitives[0]", primitive->indices, 21, false);
+    TEST_EQ("meshes[0].primitives[0]", primitive->material, 3, false);
+    TEST_EQ("meshes[0].primitives[0]", primitive->mode,     (Gltf_Primitive_Topology)4, false);
+
+    Gltf_Mesh_Attribute *attribute = primitive->attributes;
+    TEST_EQ("meshes[0].primitives[0].attributes[0].type",           attribute[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
+    TEST_EQ("meshes[0].primitives[0].attributes[0].accessor_index", attribute[0].accessor_index, 23, false);
+    TEST_EQ("meshes[0].primitives[0].attributes[1]",                attribute[1].type, GLTF_MESH_ATTRIBUTE_TYPE_POSITION, false);
+    TEST_EQ("meshes[0].primitives[0].attributes[1].accessor_index", attribute[1].accessor_index, 22, false);
+    TEST_EQ("meshes[0].primitives[0].attributes[2]",                attribute[2].type, GLTF_MESH_ATTRIBUTE_TYPE_TANGENT, false);
+    TEST_EQ("meshes[0].primitives[0].attributes[2].accessor_index", attribute[2].accessor_index, 24, false);
+    TEST_EQ("meshes[0].primitives[0].attributes[3]",                attribute[3].type, GLTF_MESH_ATTRIBUTE_TYPE_TEXCOORD, false);
+    TEST_EQ("meshes[0].primitives[0].attributes[3].accessor_index", attribute[3].accessor_index, 25, false);
+    TEST_EQ("meshes[0].primitives[0].attributes[3]",                attribute[3].n, 0, false);
+
+    primitive = (Gltf_Mesh_Primitive*)((u8*)primitive + primitive->stride);
+    TEST_EQ("meshes[0].primitives[1]", primitive->indices,  31, false);
+    TEST_EQ("meshes[0].primitives[1]", primitive->material, 33, false);
+    TEST_EQ("meshes[0].primitives[1]", primitive->mode,      (Gltf_Primitive_Topology)4, false);
+
+    attribute = primitive->attributes;
+    TEST_EQ("meshes[0].primitives[1].attributes[0].type",           attribute[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
+    TEST_EQ("meshes[0].primitives[1].attributes[0].accessor_index", attribute[0].accessor_index, 33, false);
+    TEST_EQ("meshes[0].primitives[1].attributes[1]",                attribute[1].type, GLTF_MESH_ATTRIBUTE_TYPE_POSITION, false);
+    TEST_EQ("meshes[0].primitives[1].attributes[1].accessor_index", attribute[1].accessor_index, 32, false);
+    TEST_EQ("meshes[0].primitives[1].attributes[2]",                attribute[2].type, GLTF_MESH_ATTRIBUTE_TYPE_TANGENT, false);
+    TEST_EQ("meshes[0].primitives[1].attributes[2].accessor_index", attribute[2].accessor_index, 34, false);
+    TEST_EQ("meshes[0].primitives[1].attributes[3]",                attribute[3].type, GLTF_MESH_ATTRIBUTE_TYPE_TEXCOORD, false);
+    TEST_EQ("meshes[0].primitives[1].attributes[3].accessor_index", attribute[3].accessor_index, 35, false);
+    TEST_EQ("meshes[0].primitives[1].attributes[3]",                attribute[3].n, 0, false);
+
+    Gltf_Morph_Target *target = primitive->targets;
+    TEST_EQ("meshes[0].primitives[1].target_count", primitive->target_count, 2, false);
+    TEST_EQ("meshes[0].primitives[1].targets[0].attributes[0].accessor_index", target->attributes[0].accessor_index, 33, false);
+    TEST_EQ("meshes[0].primitives[1].targets[0].attributes[0].type",           target->attributes[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
+    TEST_EQ("meshes[0].primitives[1].targets[0].attributes[1].accessor_index", target->attributes[1].accessor_index, 32, false);
+    TEST_EQ("meshes[0].primitives[1].targets[0].attributes[1].type",           target->attributes[1].type, GLTF_MESH_ATTRIBUTE_TYPE_POSITION, false);
+    TEST_EQ("meshes[0].primitives[1].targets[0].attributes[2].accessor_index", target->attributes[2].accessor_index, 34, false);
+    TEST_EQ("meshes[0].primitives[1].targets[0].attributes[2].type",           target->attributes[2].type, GLTF_MESH_ATTRIBUTE_TYPE_TANGENT, false);
+
+    target = (Gltf_Morph_Target*)((u8*)target + target->stride);
+    TEST_EQ("meshes[1].primitives[1].target_count", primitive->target_count, 2, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[0].accessor_index", target->attributes[0].accessor_index, 43, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[0].type",           target->attributes[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[1].accessor_index", target->attributes[1].accessor_index, 42, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[1].type",           target->attributes[1].type, GLTF_MESH_ATTRIBUTE_TYPE_POSITION, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[2].accessor_index", target->attributes[2].accessor_index, 44, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[2].type",           target->attributes[2].type, GLTF_MESH_ATTRIBUTE_TYPE_TANGENT, false);
+
+    mesh = (Gltf_Mesh*)((u8*)mesh + mesh->stride);
+    TEST_EQ("meshes[1].primitive_count", mesh->primitive_count, 3, false);
+    TEST_EQ("meshes[1].weight_count",    mesh->weight_count,    2, false);
+
+    TEST_LT("meshes[1].weights[0]", mesh->weights[0] - 0,   inaccuracy, false);
+    TEST_LT("meshes[1].weights[1]", mesh->weights[1] - 0.5, inaccuracy, false);
+
+    primitive = mesh->primitives;
+    TEST_EQ("meshes[1].primitives[0].indices",  primitive->indices,  11, false);
+    TEST_EQ("meshes[1].primitives[0].material", primitive->material, 13, false);
+    TEST_EQ("meshes[1].primitives[0].mode",     primitive->mode,    (Gltf_Primitive_Topology)6, false);
+
+    attribute = primitive->attributes;
+    TEST_EQ("meshes[1].primitives[0].attributes[0].type",           attribute[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
+    TEST_EQ("meshes[1].primitives[0].attributes[0].accessor_index", attribute[0].accessor_index, 13, false);
+    TEST_EQ("meshes[1].primitives[0].attributes[1]",                attribute[1].type, GLTF_MESH_ATTRIBUTE_TYPE_POSITION, false);
+    TEST_EQ("meshes[1].primitives[0].attributes[1].accessor_index", attribute[1].accessor_index, 12, false);
+    TEST_EQ("meshes[1].primitives[0].attributes[2]",                attribute[2].type, GLTF_MESH_ATTRIBUTE_TYPE_TANGENT, false);
+    TEST_EQ("meshes[1].primitives[0].attributes[2].accessor_index", attribute[2].accessor_index, 14, false);
+    TEST_EQ("meshes[1].primitives[0].attributes[3]",                attribute[3].type, GLTF_MESH_ATTRIBUTE_TYPE_TEXCOORD, false);
+    TEST_EQ("meshes[1].primitives[0].attributes[3].accessor_index", attribute[3].accessor_index, 15, false);
+    TEST_EQ("meshes[1].primitives[0].attributes[3]",                attribute[3].n, 0, false);
+
+    primitive = (Gltf_Mesh_Primitive*)((u8*)primitive + primitive->stride);
+    TEST_EQ("meshes[1].primitives[1]", primitive->indices,  11, false);
+    TEST_EQ("meshes[1].primitives[1]", primitive->material, 13, false);
+    TEST_EQ("meshes[1].primitives[1]", primitive->mode,     (Gltf_Primitive_Topology)4, false);
+
+    attribute = primitive->attributes;
+    TEST_EQ("meshes[1].primitives[1].attributes[0].type",           attribute[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[0].accessor_index", attribute[0].accessor_index, 13, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[1]",                attribute[1].type, GLTF_MESH_ATTRIBUTE_TYPE_POSITION, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[1].accessor_index", attribute[1].accessor_index, 12, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[2]",                attribute[2].type, GLTF_MESH_ATTRIBUTE_TYPE_TANGENT, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[2].accessor_index", attribute[2].accessor_index, 14, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[3]",                attribute[3].type, GLTF_MESH_ATTRIBUTE_TYPE_TEXCOORD, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[3].accessor_index", attribute[3].accessor_index, 15, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[3]",                attribute[3].n, 0, false);
+
+    target = primitive->targets;
+    TEST_EQ("meshes[1].primitives[1].target_count", primitive->target_count, 2, false);
+    TEST_EQ("meshes[1].primitives[1].targets[0].attributes[0].accessor_index", target->attributes[0].accessor_index, 13, false);
+    TEST_EQ("meshes[1].primitives[1].targets[0].attributes[0].type",           target->attributes[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
+    TEST_EQ("meshes[1].primitives[1].targets[0].attributes[1].accessor_index", target->attributes[1].accessor_index, 12, false);
+    TEST_EQ("meshes[1].primitives[1].targets[0].attributes[1].type",           target->attributes[1].type, GLTF_MESH_ATTRIBUTE_TYPE_POSITION, false);
+    TEST_EQ("meshes[1].primitives[1].targets[0].attributes[2].accessor_index", target->attributes[2].accessor_index, 14, false);
+    TEST_EQ("meshes[1].primitives[1].targets[0].attributes[2].type",           target->attributes[2].type, GLTF_MESH_ATTRIBUTE_TYPE_TANGENT, false);
+
+    target = (Gltf_Morph_Target*)((u8*)target + target->stride);
+    TEST_EQ("meshes[1].primitives[1].target_count", primitive->target_count, 2, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[0].accessor_index", target->attributes[0].accessor_index, 23, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[0].type",           target->attributes[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[1].accessor_index", target->attributes[1].accessor_index, 22, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[1].type",           target->attributes[1].type, GLTF_MESH_ATTRIBUTE_TYPE_POSITION, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[2].accessor_index", target->attributes[2].accessor_index, 24, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[2].type",           target->attributes[2].type, GLTF_MESH_ATTRIBUTE_TYPE_TANGENT, false);
+
+    primitive = (Gltf_Mesh_Primitive*)((u8*)primitive + primitive->stride);
+    TEST_EQ("meshes[1].primitives[1]", primitive->indices,  1, false);
+    TEST_EQ("meshes[1].primitives[1]", primitive->material, 3, false);
+    TEST_EQ("meshes[1].primitives[1]", primitive->mode,    (Gltf_Primitive_Topology)0, false);
+
+    attribute = primitive->attributes;
+    TEST_EQ("meshes[1].primitives[1].attributes[0].type",           attribute[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[0].accessor_index", attribute[0].accessor_index, 3, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[1]",                attribute[1].type, GLTF_MESH_ATTRIBUTE_TYPE_POSITION, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[1].accessor_index", attribute[1].accessor_index, 2, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[2]",                attribute[2].type, GLTF_MESH_ATTRIBUTE_TYPE_TANGENT, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[2].accessor_index", attribute[2].accessor_index, 4, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[3]",                attribute[3].type, GLTF_MESH_ATTRIBUTE_TYPE_TEXCOORD, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[3].accessor_index", attribute[3].accessor_index, 5, false);
+    TEST_EQ("meshes[1].primitives[1].attributes[3]",                attribute[3].n, 1, false);
+
+    target = primitive->targets;
+    TEST_EQ("meshes[1].primitives[1].target_count", primitive->target_count, 2, false);
+    TEST_EQ("meshes[1].primitives[1].targets[0].attributes[0].accessor_index", target->attributes[0].accessor_index, 3, false);
+    TEST_EQ("meshes[1].primitives[1].targets[0].attributes[0].type",           target->attributes[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
+    TEST_EQ("meshes[1].primitives[1].targets[0].attributes[1].accessor_index", target->attributes[1].accessor_index, 2, false);
+    TEST_EQ("meshes[1].primitives[1].targets[0].attributes[1].type",           target->attributes[1].type, GLTF_MESH_ATTRIBUTE_TYPE_POSITION, false);
+    TEST_EQ("meshes[1].primitives[1].targets[0].attributes[2].accessor_index", target->attributes[2].accessor_index, 4, false);
+    TEST_EQ("meshes[1].primitives[1].targets[0].attributes[2].type",           target->attributes[2].type, GLTF_MESH_ATTRIBUTE_TYPE_TANGENT, false);
+
+    target = (Gltf_Morph_Target*)((u8*)target + target->stride);
+    TEST_EQ("meshes[1].primitives[1].target_count", primitive->target_count, 2, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[0].accessor_index", target->attributes[0].accessor_index, 9, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[0].type",           target->attributes[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[1].accessor_index", target->attributes[1].accessor_index, 7, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[1].type",           target->attributes[1].type, GLTF_MESH_ATTRIBUTE_TYPE_POSITION, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[2].accessor_index", target->attributes[2].accessor_index, 6, false);
+    TEST_EQ("meshes[1].primitives[1].targets[1].attributes[2].type",           target->attributes[2].type, GLTF_MESH_ATTRIBUTE_TYPE_TANGENT, false);
 
     END_TEST_MODULE();
 }
