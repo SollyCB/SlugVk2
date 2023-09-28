@@ -43,6 +43,10 @@ Gltf_Sampler* gltf_parse_samplers(const char *data, u64 *offset, int *sampler_co
 
 Gltf_Scene* gltf_parse_scenes(const char *data, u64 *offset, int *scene_count);
 
+Gltf_Skin* gltf_parse_skins(const char *data, u64 *offset, int *skin_count);
+
+Gltf_Texture* gltf_parse_textures(const char *data, u64 *offset, int *texture_count);
+
 /* **Implementation start** */
 Gltf parse_gltf(const char *filename) {
     //
@@ -93,6 +97,12 @@ Gltf parse_gltf(const char *filename) {
             continue;
         } else if (simd_strcmp_short(data + offset, "scenesxxxxxxxxxx", 10) == 0) {
             gltf.scenes = gltf_parse_scenes(data + offset, &offset, &gltf.scene_count);
+            continue;
+        } else if (simd_strcmp_short(data + offset, "skinsxxxxxxxxxxx", 11) == 0) {
+            gltf.skins = gltf_parse_skins(data + offset, &offset, &gltf.skin_count);
+            continue;
+        } else if (simd_strcmp_short(data + offset, "texturesxxxxxxxx", 8) == 0) {
+            gltf.textures = gltf_parse_textures(data + offset, &offset, &gltf.texture_count);
             continue;
         } else {
             ASSERT(false, "This is not a top level gltf key"); 
@@ -1224,7 +1234,7 @@ Gltf_Scene* gltf_parse_scenes(const char *data, u64 *offset, int *scene_count) {
         scene = (Gltf_Scene*)memory_allocate_temp(sizeof(Gltf_Scene), 8);
         *scene = {};
         while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
-            inc++;
+            inc++; // step into key
             if (simd_strcmp_short(data + inc, "nodesxxxxxxxxxxx", 11) == 0) {
                 // It annoys me that sometimes I have to do look aheads like this. Maybe
                 // I should change the instances of this pattern to just temp allocate for 
@@ -1246,6 +1256,65 @@ Gltf_Scene* gltf_parse_scenes(const char *data, u64 *offset, int *scene_count) {
     return scenes;
 }
 
+Gltf_Skin* gltf_parse_skins(const char *data, u64 *offset, int *skin_count) {
+    Gltf_Skin *skins = (Gltf_Skin*)memory_allocate_temp(0, 8);
+    Gltf_Skin *skin;
+
+    u64 inc = 0;
+    int count = 0;
+    while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
+        count++;
+        skin = (Gltf_Skin*)memory_allocate_temp(sizeof(Gltf_Skin), 8);
+        *skin = {};
+        while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+            inc++; // step into key
+            if (simd_strcmp_long(data + inc, "inverseBindMatricesxxxxxxxxxxxxxxxxxxxxx", 13) == 0) {
+                skin->inverse_bind_matrices = gltf_ascii_to_int(data + inc, &inc);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "skeletonxxxxxxxx", 8) == 0) {
+                skin->skeleton = gltf_ascii_to_int(data + inc, &inc);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "jointsxxxxxxxxxx", 10) == 0) {
+                skin->joint_count = simd_get_ascii_array_len(data + inc);
+                skin->joints = (int*)memory_allocate_temp(sizeof(int) * skin->joint_count, 4);
+                gltf_parse_int_array(data + inc, &inc, skin->joints);
+                continue;
+            }
+        }
+        skin->stride = align(sizeof(Gltf_Skin) + skin->joint_count * sizeof(int), 8);
+    }
+    *offset += inc;
+    *skin_count = count;
+    return skins;
+}
+
+Gltf_Texture* gltf_parse_textures(const char *data, u64 *offset, int *texture_count) {
+    Gltf_Texture *textures = (Gltf_Texture*)memory_allocate_temp(0, 4);
+    Gltf_Texture *texture;
+
+    u64 inc = 0;
+    int count = 0;
+    while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
+        count++;
+        texture = (Gltf_Texture*)memory_allocate_temp(sizeof(Gltf_Texture), 4);
+        *texture = {};
+        texture->stride = sizeof(Gltf_Texture);
+        while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+            inc++; // step into key
+            if (simd_strcmp_short(data + inc, "samplerxxxxxxxxx", 9) == 0) {
+                texture->sampler = gltf_ascii_to_int(data + inc, &inc);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "sourcexxxxxxxxxx", 10) == 0) {
+                texture->source_image = gltf_ascii_to_int(data + inc, &inc);
+                continue;
+            }
+        }
+    }
+    *offset += inc;
+    *texture_count = count;
+    return textures;
+}
+
 #if TEST
 static void test_accessors(Gltf_Accessor *accessor);
 static void test_animations(Gltf_Animation *animation);
@@ -1258,6 +1327,8 @@ static void test_meshes(Gltf_Mesh *meshes);
 static void test_nodes(Gltf_Node *nodes);
 static void test_samplers(Gltf_Sampler *samplers);
 static void test_scenes(Gltf_Scene *scenes);
+static void test_skins(Gltf_Skin *skins);
+static void test_textures(Gltf_Texture *textures);
 
 void test_gltf() {
     Gltf gltf = parse_gltf("test_gltf.gltf");
@@ -1285,6 +1356,10 @@ void test_gltf() {
     ASSERT(gltf.sampler_count == 3, "Incorrect Sampler Count");
     test_scenes(gltf.scenes);
     ASSERT(gltf.scene_count == 3, "Incorrect Scene Count");
+    test_skins(gltf.skins);
+    ASSERT(gltf.skin_count == 4, "Incorrect Skin Count");
+    test_textures(gltf.textures);
+    ASSERT(gltf.texture_count == 4, "Incorrect Texture Count");
 }
 
 static void test_accessors(Gltf_Accessor *accessor) {
@@ -1782,6 +1857,60 @@ void test_scenes(Gltf_Scene *scenes) {
     TEST_EQ("scenes[2].nodes[2]", scene->nodes[2], 12, false);
     TEST_EQ("scenes[2].nodes[3]", scene->nodes[3], 13, false);
     TEST_EQ("scenes[2].nodes[4]", scene->nodes[4], 14, false);
+
+    END_TEST_MODULE();
+}
+void test_skins(Gltf_Skin *skins) {
+    BEGIN_TEST_MODULE("Gltf_Skin", true, false);
+
+    Gltf_Skin *skin = skins;
+    TEST_EQ("skins[0].inverse_bind_matrices", skin->inverse_bind_matrices, 0, false);
+    TEST_EQ("skins[0].skeleton",              skin->skeleton,              1, false);
+    TEST_EQ("skins[0].joint_count",           skin->joint_count,           2, false);
+    TEST_EQ("skins[0].joints[0]",             skin->joints[0],             1, false);
+    TEST_EQ("skins[0].joints[1]",             skin->joints[1],             2, false);
+
+    skin = (Gltf_Skin*)((u8*)skin + skin->stride);
+    TEST_EQ("skins[1].inverse_bind_matrices", skin->inverse_bind_matrices, 1, false);
+    TEST_EQ("skins[1].skeleton",              skin->skeleton,              2, false);
+    TEST_EQ("skins[1].joint_count",           skin->joint_count,           2, false);
+    TEST_EQ("skins[1].joints[0]",             skin->joints[0],             3, false);
+    TEST_EQ("skins[1].joints[1]",             skin->joints[1],             4, false);
+
+    skin = (Gltf_Skin*)((u8*)skin + skin->stride);
+    TEST_EQ("skins[2].inverse_bind_matrices", skin->inverse_bind_matrices, 2, false);
+    TEST_EQ("skins[2].skeleton",              skin->skeleton,              3, false);
+    TEST_EQ("skins[2].joint_count",           skin->joint_count,           2, false);
+    TEST_EQ("skins[2].joints[0]",             skin->joints[0],             5, false);
+    TEST_EQ("skins[2].joints[1]",             skin->joints[1],             6, false);
+
+    skin = (Gltf_Skin*)((u8*)skin + skin->stride);
+    TEST_EQ("skins[3].inverse_bind_matrices", skin->inverse_bind_matrices, 3, false);
+    TEST_EQ("skins[3].skeleton",              skin->skeleton,              4, false);
+    TEST_EQ("skins[3].joint_count",           skin->joint_count,           2, false);
+    TEST_EQ("skins[3].joints[0]",             skin->joints[0],             7, false);
+    TEST_EQ("skins[3].joints[1]",             skin->joints[1],             8, false);
+
+    END_TEST_MODULE();
+}
+void test_textures(Gltf_Texture *textures) {
+    BEGIN_TEST_MODULE("Gltf_Texture", true, false);
+    
+    Gltf_Texture *texture = textures;
+    TEST_EQ("textures[0].sampler", texture->sampler,       0, false);
+    TEST_EQ("textures[0].source",  texture->source_image,  1, false);
+
+    texture = (Gltf_Texture*)((u8*)texture + texture->stride);
+    TEST_EQ("textures[1].sampler", texture->sampler,       2, false);
+    TEST_EQ("textures[1].source",  texture->source_image,  3, false);
+
+    texture = (Gltf_Texture*)((u8*)texture + texture->stride);
+    TEST_EQ("textures[2].sampler", texture->sampler,       4, false);
+    TEST_EQ("textures[2].source",  texture->source_image,  5, false);
+
+    texture = (Gltf_Texture*)((u8*)texture + texture->stride);
+    TEST_EQ("textures[3].sampler", texture->sampler,       6, false);
+    TEST_EQ("textures[3].source",  texture->source_image,  7, false);
 
     END_TEST_MODULE();
 }

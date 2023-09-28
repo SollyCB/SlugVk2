@@ -253,6 +253,20 @@ struct Gltf_Scene {
     int *nodes;
 };
 
+struct Gltf_Skin {
+    int stride;
+    int inverse_bind_matrices;
+    int skeleton;
+    int joint_count;
+    int *joints;
+};
+
+struct Gltf_Texture {
+    int stride;
+    int sampler;
+    int source_image;
+};
+
 struct Gltf {
     // Each arrayed field has a 'stride' member, which is the byte count required to reach 
     // the next array member;
@@ -282,6 +296,10 @@ struct Gltf {
     Gltf_Sampler *samplers;
     int scene_count;
     Gltf_Scene *scenes;
+    int skin_count;
+    Gltf_Skin *skins;
+    int texture_count;
+    Gltf_Texture *textures;
 };
 Gltf parse_gltf(const char *file_name);
 
