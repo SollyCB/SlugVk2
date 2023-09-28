@@ -247,6 +247,12 @@ struct Gltf_Sampler {
     Gltf_Sampler_Address_Mode wrap_v = GLTF_SAMPLER_ADDRESS_MODE_REPEAT;
 };
 
+struct Gltf_Scene {
+    int stride;
+    int node_count;
+    int *nodes;
+};
+
 struct Gltf {
     // Each arrayed field has a 'stride' member, which is the byte count required to reach 
     // the next array member;
@@ -274,6 +280,8 @@ struct Gltf {
     Gltf_Node *nodes;
     int sampler_count;
     Gltf_Sampler *samplers;
+    int scene_count;
+    Gltf_Scene *scenes;
 };
 Gltf parse_gltf(const char *file_name);
 

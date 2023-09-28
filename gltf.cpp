@@ -41,6 +41,8 @@ Gltf_Node* gltf_parse_nodes(const char *data, u64 *offset, int *node_count);
 
 Gltf_Sampler* gltf_parse_samplers(const char *data, u64 *offset, int *sampler_count);
 
+Gltf_Scene* gltf_parse_scenes(const char *data, u64 *offset, int *scene_count);
+
 /* **Implementation start** */
 Gltf parse_gltf(const char *filename) {
     //
@@ -88,6 +90,9 @@ Gltf parse_gltf(const char *filename) {
             continue;
         } else if (simd_strcmp_short(data + offset, "samplersxxxxxxxx", 8) == 0) {
             gltf.samplers = gltf_parse_samplers(data + offset, &offset, &gltf.sampler_count);
+            continue;
+        } else if (simd_strcmp_short(data + offset, "scenesxxxxxxxxxx", 10) == 0) {
+            gltf.scenes = gltf_parse_scenes(data + offset, &offset, &gltf.scene_count);
             continue;
         } else {
             ASSERT(false, "This is not a top level gltf key"); 
@@ -1208,6 +1213,39 @@ Gltf_Sampler* gltf_parse_samplers(const char *data, u64 *offset, int *sampler_co
     return samplers;
 }
 
+Gltf_Scene* gltf_parse_scenes(const char *data, u64 *offset, int *scene_count) {
+    Gltf_Scene *scenes = (Gltf_Scene*)memory_allocate_temp(0, 8);
+    Gltf_Scene *scene;
+
+    u64 inc = 0;
+    int count = 0;
+    while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
+        count++;
+        scene = (Gltf_Scene*)memory_allocate_temp(sizeof(Gltf_Scene), 8);
+        *scene = {};
+        while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+            inc++;
+            if (simd_strcmp_short(data + inc, "nodesxxxxxxxxxxx", 11) == 0) {
+                // It annoys me that sometimes I have to do look aheads like this. Maybe
+                // I should change the instances of this pattern to just temp allocate for 
+                // every array elem, even though they are so small (sizeof int or float); The
+                // temp allocator would just be super cache hot. I guess it just matters how big
+                // the look ahead in the file is. Tbh for this node array it can probably be
+                // really large... (Idk how big nodes get, whether scenes are made up of lots of small
+                // nodes, or a couple big ones. Tbf these are only root nodes so maybe the list isnt that long??)
+                scene->node_count = simd_get_ascii_array_len(data + inc);
+                scene->nodes = (int*)memory_allocate_temp(sizeof(int) * scene->node_count, 4);
+                gltf_parse_int_array(data + inc, &inc, scene->nodes);
+                continue;
+            }
+        }
+        scene->stride = align(sizeof(Gltf_Scene) + sizeof(int) * scene->node_count, 8);
+    }
+    *offset += inc;
+    *scene_count = count;
+    return scenes;
+}
+
 #if TEST
 static void test_accessors(Gltf_Accessor *accessor);
 static void test_animations(Gltf_Animation *animation);
@@ -1219,6 +1257,7 @@ static void test_materials(Gltf_Material *materials);
 static void test_meshes(Gltf_Mesh *meshes);
 static void test_nodes(Gltf_Node *nodes);
 static void test_samplers(Gltf_Sampler *samplers);
+static void test_scenes(Gltf_Scene *scenes);
 
 void test_gltf() {
     Gltf gltf = parse_gltf("test_gltf.gltf");
@@ -1244,6 +1283,8 @@ void test_gltf() {
     ASSERT(gltf.node_count == 7, "Incorrect Node Count");
     test_samplers(gltf.samplers);
     ASSERT(gltf.sampler_count == 3, "Incorrect Sampler Count");
+    test_scenes(gltf.scenes);
+    ASSERT(gltf.scene_count == 3, "Incorrect Scene Count");
 }
 
 static void test_accessors(Gltf_Accessor *accessor) {
@@ -1715,6 +1756,32 @@ void test_samplers(Gltf_Sampler *samplers) {
     TEST_EQ("samplers[2].min_filter", sampler->min_filter, 1, false);
     TEST_EQ("samplers[2].wrap_u",     sampler->wrap_u,     0, false);
     TEST_EQ("samplers[2].wrap_v",     sampler->wrap_v,     0, false);
+
+    END_TEST_MODULE();
+}
+void test_scenes(Gltf_Scene *scenes) {
+    BEGIN_TEST_MODULE("Gltf_Scene", true, false);
+
+    Gltf_Scene *scene = scenes;
+    TEST_EQ("scenes[0].nodes[0]", scene->nodes[0], 0, false);
+    TEST_EQ("scenes[0].nodes[1]", scene->nodes[1], 1, false);
+    TEST_EQ("scenes[0].nodes[2]", scene->nodes[2], 2, false);
+    TEST_EQ("scenes[0].nodes[3]", scene->nodes[3], 3, false);
+    TEST_EQ("scenes[0].nodes[4]", scene->nodes[4], 4, false);
+
+    scene = (Gltf_Scene*)((u8*)scene + scene->stride);
+    TEST_EQ("scenes[1].nodes[0]", scene->nodes[0], 5, false);
+    TEST_EQ("scenes[1].nodes[1]", scene->nodes[1], 6, false);
+    TEST_EQ("scenes[1].nodes[2]", scene->nodes[2], 7, false);
+    TEST_EQ("scenes[1].nodes[3]", scene->nodes[3], 8, false);
+    TEST_EQ("scenes[1].nodes[4]", scene->nodes[4], 9, false);
+
+    scene = (Gltf_Scene*)((u8*)scene + scene->stride);
+    TEST_EQ("scenes[2].nodes[0]", scene->nodes[0], 10, false);
+    TEST_EQ("scenes[2].nodes[1]", scene->nodes[1], 11, false);
+    TEST_EQ("scenes[2].nodes[2]", scene->nodes[2], 12, false);
+    TEST_EQ("scenes[2].nodes[3]", scene->nodes[3], 13, false);
+    TEST_EQ("scenes[2].nodes[4]", scene->nodes[4], 14, false);
 
     END_TEST_MODULE();
 }

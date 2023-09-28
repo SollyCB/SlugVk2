@@ -510,5 +510,37 @@
             "wrapS": 10497,
             "wrapT": 10497
         }
-    ]
+    ],
+    "scenes": [
+        {
+            "name": "singleScene",
+            "nodes": [
+                0,
+                1,
+                2,
+                3,
+                4,
+            ]
+        },
+        {
+            "name": "singleScene",
+            "nodes": [
+                5,
+                6,
+                7,
+                8,
+                9,
+            ]
+        }
+        {
+            "name": "singleScene",
+            "nodes": [
+                10,
+                11,
+                12,
+                13,
+                14,
+            ]
+        }
+    ],
 }
