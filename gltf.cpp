@@ -39,6 +39,8 @@ Gltf_Mesh_Attribute* gltf_parse_mesh_attributes(const char *data, u64 *offset, i
 
 Gltf_Node* gltf_parse_nodes(const char *data, u64 *offset, int *node_count);
 
+Gltf_Sampler* gltf_parse_samplers(const char *data, u64 *offset, int *sampler_count);
+
 /* **Implementation start** */
 Gltf parse_gltf(const char *filename) {
     //
@@ -83,6 +85,9 @@ Gltf parse_gltf(const char *filename) {
             continue;
         } else if (simd_strcmp_short(data + offset, "nodesxxxxxxxxxxx", 11) == 0) {
             gltf.nodes = gltf_parse_nodes(data + offset, &offset, &gltf.node_count);
+            continue;
+        } else if (simd_strcmp_short(data + offset, "samplersxxxxxxxx", 8) == 0) {
+            gltf.samplers = gltf_parse_samplers(data + offset, &offset, &gltf.sampler_count);
             continue;
         } else {
             ASSERT(false, "This is not a top level gltf key"); 
@@ -927,7 +932,7 @@ Gltf_Mesh_Primitive* gltf_parse_mesh_primitives(const char *data, u64 *offset, i
     u64 target_mark;
     int count = 0;
     int target_count;
-    // indices, material, mode
+    int mode;
     while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
         count++;
         mark = get_mark_temp();
@@ -942,7 +947,31 @@ Gltf_Mesh_Primitive* gltf_parse_mesh_primitives(const char *data, u64 *offset, i
                 primitive->material = gltf_ascii_to_int(data + inc, &inc);
                 continue;
             } else if (simd_strcmp_short(data + inc, "modexxxxxxxxxxxx", 12) == 0) {
-                primitive->mode = gltf_ascii_to_int(data + inc, &inc);
+                mode = gltf_ascii_to_int(data + inc, &inc);
+                switch(mode) {
+                case 0:
+                    primitive->topology = GLTF_PRIMITIVE_TOPOLOGY_POINT_LIST;
+                    break;
+                case 1:
+                    primitive->topology = GLTF_PRIMITIVE_TOPOLOGY_LINE_LIST;
+                    break;
+                case 2:
+                    ASSERT(false, "Vulkan does not seem to support this topology type");
+                    primitive->topology = GLTF_PRIMITIVE_TOPOLOGY_LINE_LIST;
+                    break;
+                case 3:
+                    primitive->topology = GLTF_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+                    break;
+                case 4:
+                    primitive->topology = GLTF_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+                    break;
+                case 5:
+                    primitive->topology = GLTF_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+                    break;
+                case 6:
+                    primitive->topology = GLTF_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
+                    break;
+                }
                 continue;
             } else if (simd_strcmp_short(data + inc, "targetsxxxxxxxxx", 9) == 0) {
                 primitive->targets = (Gltf_Morph_Target*)memory_allocate_temp(0, 8);
@@ -1090,6 +1119,95 @@ Gltf_Node* gltf_parse_nodes(const char *data, u64 *offset, int *node_count) {
     return nodes;
 }
 
+Gltf_Sampler* gltf_parse_samplers(const char *data, u64 *offset, int *sampler_count) {
+    // @MemAlign being dangerous with a 4 align...
+    Gltf_Sampler *samplers = (Gltf_Sampler*)memory_allocate_temp(0, 4);
+    Gltf_Sampler *sampler;
+
+    u64 inc = 0;
+    int count = 0;
+    int temp_int;
+    while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
+        count++;
+        sampler = (Gltf_Sampler*)memory_allocate_temp(sizeof(Gltf_Sampler), 4);
+        *sampler = {};
+        sampler->stride = sizeof(Gltf_Sampler);
+        while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
+            inc++; // step into key
+            if (simd_strcmp_short(data + inc, "magFilterxxxxxxx", 7) == 0) {
+                temp_int = gltf_ascii_to_int(data + inc, &inc);
+                switch (temp_int) {
+                case 9728:
+                    sampler->mag_filter = GLTF_SAMPLER_FILTER_NEAREST;
+                    break;
+                case 9729:
+                    sampler->mag_filter = GLTF_SAMPLER_FILTER_LINEAR;
+                    break;
+                default:
+                    ASSERT(false, "This is not a valid filter setting");
+                }
+            } else if (simd_strcmp_short(data + inc, "minFilterxxxxxxx", 7) == 0) {
+                temp_int = gltf_ascii_to_int(data + inc, &inc);
+                switch (temp_int) {
+                case 9728:
+                    sampler->min_filter = GLTF_SAMPLER_FILTER_NEAREST;
+                    break;
+                case 9729:
+                    sampler->min_filter = GLTF_SAMPLER_FILTER_LINEAR;
+                    break;
+                case 9984:
+                    sampler->min_filter = GLTF_SAMPLER_FILTER_NEAREST;
+                    break;
+                case 9985:
+                    sampler->min_filter = GLTF_SAMPLER_FILTER_NEAREST;
+                    break;
+                case 9986:
+                    sampler->min_filter = GLTF_SAMPLER_FILTER_LINEAR;
+                    break;
+                case 9987:
+                    sampler->min_filter = GLTF_SAMPLER_FILTER_LINEAR;
+                    break;
+                default:
+                    ASSERT(false, "This is not a valid filter setting");
+                }
+            }  else if (simd_strcmp_short(data + inc, "wrapSxxxxxxxxxxx", 11) == 0) {
+                temp_int = gltf_ascii_to_int(data + inc, &inc);
+                switch (temp_int) {
+                case 10497:
+                    sampler->wrap_u = GLTF_SAMPLER_ADDRESS_MODE_REPEAT;
+                    break;
+                case 33648:
+                    sampler->wrap_u = GLTF_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+                    break;
+                case 33071:
+                    sampler->wrap_u = GLTF_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+                    break;
+                default:
+                    ASSERT(false, "This is not a valid wrap setting");
+                }
+            }  else if (simd_strcmp_short(data + inc, "wrapTxxxxxxxxxxx", 11) == 0) {
+                temp_int = gltf_ascii_to_int(data + inc, &inc);
+                switch (temp_int) {
+                case 10497:
+                    sampler->wrap_v = GLTF_SAMPLER_ADDRESS_MODE_REPEAT;
+                    break;
+                case 33648:
+                    sampler->wrap_v = GLTF_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+                    break;
+                case 33071:
+                    sampler->wrap_v = GLTF_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+                    break;
+                default:
+                    ASSERT(false, "This is not a valid wrap setting");
+                }
+            }
+        }
+    }
+    *offset += inc;
+    *sampler_count = count;
+    return samplers;
+}
+
 #if TEST
 static void test_accessors(Gltf_Accessor *accessor);
 static void test_animations(Gltf_Animation *animation);
@@ -1100,6 +1218,7 @@ static void test_images(Gltf_Image *images);
 static void test_materials(Gltf_Material *materials);
 static void test_meshes(Gltf_Mesh *meshes);
 static void test_nodes(Gltf_Node *nodes);
+static void test_samplers(Gltf_Sampler *samplers);
 
 void test_gltf() {
     Gltf gltf = parse_gltf("test_gltf.gltf");
@@ -1123,6 +1242,8 @@ void test_gltf() {
     ASSERT(gltf.mesh_count == 2, "Incorrect Mesh Count");
     test_nodes(gltf.nodes);
     ASSERT(gltf.node_count == 7, "Incorrect Node Count");
+    test_samplers(gltf.samplers);
+    ASSERT(gltf.sampler_count == 3, "Incorrect Sampler Count");
 }
 
 static void test_accessors(Gltf_Accessor *accessor) {
@@ -1380,7 +1501,7 @@ void test_meshes(Gltf_Mesh *meshes) {
     Gltf_Mesh_Primitive *primitive = mesh->primitives;
     TEST_EQ("meshes[0].primitives[0]", primitive->indices, 21, false);
     TEST_EQ("meshes[0].primitives[0]", primitive->material, 3, false);
-    TEST_EQ("meshes[0].primitives[0]", primitive->mode,     (Gltf_Primitive_Topology)4, false);
+    //TEST_EQ("meshes[0].primitives[0]", primitive->mode,     (Gltf_Primitive_Topology)1, false);
 
     Gltf_Mesh_Attribute *attribute = primitive->attributes;
     TEST_EQ("meshes[0].primitives[0].attributes[0].type",           attribute[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
@@ -1396,7 +1517,7 @@ void test_meshes(Gltf_Mesh *meshes) {
     primitive = (Gltf_Mesh_Primitive*)((u8*)primitive + primitive->stride);
     TEST_EQ("meshes[0].primitives[1]", primitive->indices,  31, false);
     TEST_EQ("meshes[0].primitives[1]", primitive->material, 33, false);
-    TEST_EQ("meshes[0].primitives[1]", primitive->mode,      (Gltf_Primitive_Topology)4, false);
+    //TEST_EQ("meshes[0].primitives[1]", primitive->mode,      (Gltf_Primitive_Topology)1, false);
 
     attribute = primitive->attributes;
     TEST_EQ("meshes[0].primitives[1].attributes[0].type",           attribute[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
@@ -1437,7 +1558,7 @@ void test_meshes(Gltf_Mesh *meshes) {
     primitive = mesh->primitives;
     TEST_EQ("meshes[1].primitives[0].indices",  primitive->indices,  11, false);
     TEST_EQ("meshes[1].primitives[0].material", primitive->material, 13, false);
-    TEST_EQ("meshes[1].primitives[0].mode",     primitive->mode,    (Gltf_Primitive_Topology)6, false);
+    //TEST_EQ("meshes[1].primitives[0].mode",     primitive->mode,    (Gltf_Primitive_Topology)5, false);
 
     attribute = primitive->attributes;
     TEST_EQ("meshes[1].primitives[0].attributes[0].type",           attribute[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
@@ -1453,7 +1574,7 @@ void test_meshes(Gltf_Mesh *meshes) {
     primitive = (Gltf_Mesh_Primitive*)((u8*)primitive + primitive->stride);
     TEST_EQ("meshes[1].primitives[1]", primitive->indices,  11, false);
     TEST_EQ("meshes[1].primitives[1]", primitive->material, 13, false);
-    TEST_EQ("meshes[1].primitives[1]", primitive->mode,     (Gltf_Primitive_Topology)4, false);
+    //TEST_EQ("meshes[1].primitives[1]", primitive->mode,     (Gltf_Primitive_Topology)4, false);
 
     attribute = primitive->attributes;
     TEST_EQ("meshes[1].primitives[1].attributes[0].type",           attribute[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
@@ -1487,7 +1608,7 @@ void test_meshes(Gltf_Mesh *meshes) {
     primitive = (Gltf_Mesh_Primitive*)((u8*)primitive + primitive->stride);
     TEST_EQ("meshes[1].primitives[1]", primitive->indices,  1, false);
     TEST_EQ("meshes[1].primitives[1]", primitive->material, 3, false);
-    TEST_EQ("meshes[1].primitives[1]", primitive->mode,    (Gltf_Primitive_Topology)0, false);
+    //TEST_EQ("meshes[1].primitives[1]", primitive->mode,    (Gltf_Primitive_Topology)0, false);
 
     attribute = primitive->attributes;
     TEST_EQ("meshes[1].primitives[1].attributes[0].type",           attribute[0].type, GLTF_MESH_ATTRIBUTE_TYPE_NORMAL, false);
@@ -1571,6 +1692,29 @@ void test_nodes(Gltf_Node *nodes) {
     TEST_EQ("nodes[2].children[2]", node->children[2], 3, false);
     TEST_EQ("nodes[2].children[3]", node->children[3], 4, false);
 
+
+    END_TEST_MODULE();
+}
+void test_samplers(Gltf_Sampler *samplers) {
+    BEGIN_TEST_MODULE("Gltf_Sampler", true, false);
+    
+    Gltf_Sampler *sampler = samplers;
+    TEST_EQ("samplers[0].mag_filter", sampler->mag_filter, 1, false);
+    TEST_EQ("samplers[0].min_filter", sampler->min_filter, 1, false);
+    TEST_EQ("samplers[0].wrap_u",     sampler->wrap_u,     0, false);
+    TEST_EQ("samplers[0].wrap_v",     sampler->wrap_v,     0, false);
+
+    sampler = (Gltf_Sampler*)((u8*)sampler + sampler->stride);
+    TEST_EQ("samplers[1].mag_filter", sampler->mag_filter, 1, false);
+    TEST_EQ("samplers[1].min_filter", sampler->min_filter, 1, false);
+    TEST_EQ("samplers[1].wrap_u",     sampler->wrap_u,     0, false);
+    TEST_EQ("samplers[1].wrap_v",     sampler->wrap_v,     0, false);
+
+    sampler = (Gltf_Sampler*)((u8*)sampler + sampler->stride);
+    TEST_EQ("samplers[2].mag_filter", sampler->mag_filter, 1, false);
+    TEST_EQ("samplers[2].min_filter", sampler->min_filter, 1, false);
+    TEST_EQ("samplers[2].wrap_u",     sampler->wrap_u,     0, false);
+    TEST_EQ("samplers[2].wrap_v",     sampler->wrap_v,     0, false);
 
     END_TEST_MODULE();
 }

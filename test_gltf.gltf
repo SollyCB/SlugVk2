@@ -66,7 +66,7 @@
                     },
                     "indices": 21,
                     "material": 3,
-                    "mode": 4
+                    "mode": 1
                 },
                 {
                     "attributes": {
@@ -104,7 +104,7 @@
                     },
                     "indices": 11,
                     "material": 13,
-                    "mode": 6 
+                    "mode": 3
                 },
                 {
                     "attributes": {
@@ -489,6 +489,26 @@
         },
         {
             "name": "wheel_4"
+        }
+    ],
+    "samplers": [
+        {
+            "magFilter": 9729,
+            "minFilter": 9987,
+            "wrapS": 10497,
+            "wrapT": 10497
+        },
+        {
+            "magFilter": 9729,
+            "minFilter": 9987,
+            "wrapS": 10497,
+            "wrapT": 10497
+        },
+        {
+            "magFilter": 9729,
+            "minFilter": 9987,
+            "wrapS": 10497,
+            "wrapT": 10497
         }
     ]
 }

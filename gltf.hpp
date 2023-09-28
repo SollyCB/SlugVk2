@@ -176,13 +176,12 @@ struct Gltf_Morph_Target {
     Gltf_Mesh_Attribute *attributes;
 };
 enum Gltf_Primitive_Topology {
-    GLTF_PRIMITIVE_TOPOLOGY_POINTS         = 0,
-    GLTF_PRIMITIVE_TOPOLOGY_LINES          = 1,
-    GLTF_PRIMITIVE_TOPOLOGY_LINE_LOOP      = 2,
-    GLTF_PRIMITIVE_TOPOLOGY_LINE_STRIP     = 3,
-    GLTF_PRIMITIVE_TOPOLOGY_TRIANGLES      = 4,
-    GLTF_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP = 5,
-    GLTF_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN   = 6,
+    GLTF_PRIMITIVE_TOPOLOGY_POINT_LIST     = 0,
+    GLTF_PRIMITIVE_TOPOLOGY_LINE_LIST      = 1,
+    GLTF_PRIMITIVE_TOPOLOGY_LINE_STRIP     = 2,
+    GLTF_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST  = 3,
+    GLTF_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP = 4,
+    GLTF_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN   = 5,
 };
 struct Gltf_Mesh_Primitive {
     int stride;
@@ -191,7 +190,7 @@ struct Gltf_Mesh_Primitive {
     int attribute_count;
     int indices;
     int material;
-    int mode = GLTF_PRIMITIVE_TOPOLOGY_TRIANGLES;
+    int topology = GLTF_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
     Gltf_Morph_Target   *targets;
     Gltf_Mesh_Attribute *attributes;
@@ -227,6 +226,27 @@ struct Gltf_Node {
     float *weights;
 };
 
+enum Gltf_Sampler_Filter {
+    GLTF_SAMPLER_FILTER_NEAREST = 0, 
+    GLTF_SAMPLER_FILTER_LINEAR  = 1, 
+};
+enum Gltf_Sampler_Mipmap_Mode {
+    GLTF_SAMPLER_MIPMAP_MODE_NEAREST = 0,
+    GLTF_SAMPLER_MIPMAP_MODE_LINEAR  = 1,
+};
+enum Gltf_Sampler_Address_Mode {
+    GLTF_SAMPLER_ADDRESS_MODE_REPEAT          = 0, 
+    GLTF_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT = 1, 
+    GLTF_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE   = 2, 
+};
+struct Gltf_Sampler {
+    int stride;
+    Gltf_Sampler_Filter mag_filter = GLTF_SAMPLER_FILTER_LINEAR;
+    Gltf_Sampler_Filter min_filter = GLTF_SAMPLER_FILTER_LINEAR;
+    Gltf_Sampler_Address_Mode wrap_u = GLTF_SAMPLER_ADDRESS_MODE_REPEAT;
+    Gltf_Sampler_Address_Mode wrap_v = GLTF_SAMPLER_ADDRESS_MODE_REPEAT;
+};
+
 struct Gltf {
     // Each arrayed field has a 'stride' member, which is the byte count required to reach 
     // the next array member;
@@ -252,6 +272,8 @@ struct Gltf {
     Gltf_Mesh *meshes;
     int node_count;
     Gltf_Node *nodes;
+    int sampler_count;
+    Gltf_Sampler *samplers;
 };
 Gltf parse_gltf(const char *file_name);
 
