@@ -412,7 +412,7 @@
         {
             "name": "An ortho camera",
             "type": "orthographic",
-            "perspective": {
+            "orthographic": {
                 "xmag": 1.822,
                 "ymag": 0.489,
                 "znear": 0.01
@@ -431,4 +431,64 @@
             "uri": "duck_but_better.jpeg"
         },
     ],
+    "nodes": [
+        {
+            "name": "node-camera",
+            "camera": 1,
+            "matrix": [
+                -0.99975,
+                -0.00679829,
+                0.0213218,
+                0,
+                0.00167596,
+                0.927325,
+                0.374254,
+                0,
+                -0.0223165,
+                0.374196,
+                -0.927081,
+                0,
+                -0.0115543,
+                0.194711,
+                -0.478297,
+                1
+            ],
+            "weights": [0.5, 0.6, 0.7, 0.8]
+        },
+        {
+            "name": "Box",
+            "rotation": [
+                0,
+                0,
+                0,
+                1
+            ],
+            "scale": [
+                1,
+                1,
+                1
+            ],
+            "translation": [
+                -17.7082,
+                -11.4156,
+                2.0922
+            ]
+        },
+        {
+            "name": "Car",
+            "children": [1, 2, 3, 4]
+        },
+        {
+            "name": "wheel_1"
+        },
+        {
+            "name": "wheel_2"
+        },
+        {
+            "name": "wheel_3"
+        },
+        {
+            "name": "wheel_4"
+        }
+    ]
 }

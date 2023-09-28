@@ -195,7 +195,7 @@ inline int gltf_parse_float_array(const char *data, u64 *offset, float *array) {
         array[i] = gltf_ascii_to_float(data + inc, &inc);
         i++;
     }
-    *offset += inc + 1; // +1 go beyond the cloasing square bracket (prevent early exit at accessors list level)
+    *offset += inc + 1; // +1 go beyond the cloasing square bracket
     return i;
 }
 
@@ -220,6 +220,7 @@ inline Mat4 gltf_ascii_to_mat4(const char *data, u64 *offset) {
         vec[i] = gltf_ascii_to_float(data + inc, &inc);
     ret.row3 = {vec[0], vec[1], vec[2], vec[3]};
 
+    simd_skip_passed_char(data + inc, &inc, ']'); // go beyond array close
     return ret;
 }
 // algorithms end
@@ -1038,7 +1039,7 @@ Gltf_Node* gltf_parse_nodes(const char *data, u64 *offset, int *node_count) {
     u64 inc = 0;
     int count = 0;
     u64 mark;
-    float matrix[16];
+    float temp_array[4];
     while(simd_find_char_interrupted(data + inc, '{', ']', &inc)) {
         count++;
         mark = get_mark_temp();
@@ -1049,21 +1050,44 @@ Gltf_Node* gltf_parse_nodes(const char *data, u64 *offset, int *node_count) {
             if (simd_strcmp_short(data + inc, "cameraxxxxxxxxxx", 10) == 0) {
                 node->camera = gltf_ascii_to_int(data + inc, &inc);
                 continue;
+            } else if (simd_strcmp_short(data + inc, "skinxxxxxxxxxxxx", 12) == 0) {
+                node->skin = gltf_ascii_to_int(data + inc, &inc);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "meshxxxxxxxxxxxx", 12) == 0) {
+                node->mesh = gltf_ascii_to_int(data + inc, &inc);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "matrixxxxxxxxxxx", 10) == 0) {
+                node->matrix = gltf_ascii_to_mat4(data + inc, &inc);
+                continue;
+            } else if (simd_strcmp_short(data + inc, "rotationxxxxxxxx", 8) == 0) {
+                gltf_parse_float_array(data + inc, &inc, temp_array);
+                node->trs.rotation = {temp_array[0], temp_array[1], temp_array[2], temp_array[3]};
+                continue;
+            } else if (simd_strcmp_short(data + inc, "scalexxxxxxxxxxx", 11) == 0) {
+                gltf_parse_float_array(data + inc, &inc, temp_array);
+                node->trs.scale = {temp_array[0], temp_array[1], temp_array[2]};
+                continue;
+            } else if (simd_strcmp_short(data + inc, "translationxxxxx", 5) == 0) {
+                gltf_parse_float_array(data + inc, &inc, temp_array);
+                node->trs.translation = {temp_array[0], temp_array[1], temp_array[2]};
+                continue;
             } else if (simd_strcmp_short(data + inc, "childrenxxxxxxxx", 8) == 0) {
                 node->child_count = simd_get_ascii_array_len(data + inc);
                 node->children = (int*)memory_allocate_temp(sizeof(int) * node->child_count, 4);
                 gltf_parse_int_array(data + inc, &inc, node->children);
                 continue;
-            } else if (simd_strcmp_short(data + inc, "skinxxxxxxxxxxxx", 12) == 0) {
-                node->skin = gltf_ascii_to_int(data + inc, &inc);
+            } else if (simd_strcmp_short(data + inc, "weightsxxxxxxxxx", 9) == 0) {
+                node->weight_count = simd_get_ascii_array_len(data + inc);
+                node->weights = (float*)memory_allocate_temp(sizeof(float) * node->weight_count, 4);
+                gltf_parse_float_array(data + inc, &inc, node->weights);
                 continue;
-            } else if (simd_strcmp_short(data + inc, "matrixxxxxxxxxxx", 10) == 0) {
-                // array to float, make matrix
-                // @TODO CURRENT TASK
             }
         }
         node->stride = align(get_mark_temp() - mark, 8);
     }
+    *offset += inc;
+    *node_count = count;
+    return nodes;
 }
 
 #if TEST
@@ -1075,6 +1099,7 @@ static void test_cameras(Gltf_Camera *cameras);
 static void test_images(Gltf_Image *images);
 static void test_materials(Gltf_Material *materials);
 static void test_meshes(Gltf_Mesh *meshes);
+static void test_nodes(Gltf_Node *nodes);
 
 void test_gltf() {
     Gltf gltf = parse_gltf("test_gltf.gltf");
@@ -1096,6 +1121,8 @@ void test_gltf() {
     ASSERT(gltf.material_count == 2, "Incorrect Material Count");
     test_meshes(gltf.meshes);
     ASSERT(gltf.mesh_count == 2, "Incorrect Mesh Count");
+    test_nodes(gltf.nodes);
+    ASSERT(gltf.node_count == 7, "Incorrect Node Count");
 }
 
 static void test_accessors(Gltf_Accessor *accessor) {
@@ -1117,12 +1144,12 @@ static void test_accessors(Gltf_Accessor *accessor) {
     TEST_EQ("accessor[1].count", accessor->count, 2399, false);
 
     float inaccuracy = 0.0000001;
-    TEST_LT("accessor[1].max[0]", accessor->max[0] - 0.961799,  inaccuracy, false);
-    TEST_LT("accessor[1].max[1]", accessor->max[1] - -1.6397,   inaccuracy, false);
-    TEST_LT("accessor[1].max[2]", accessor->max[2] - 0.539252,  inaccuracy, false);
-    TEST_LT("accessor[1].min[0]", accessor->min[0] - -0.692985, inaccuracy, false);
-    TEST_LT("accessor[1].min[1]", accessor->min[1] - 0.0992937, inaccuracy, false);
-    TEST_LT("accessor[1].min[2]", accessor->min[2] - -0.613282, inaccuracy, false);
+    TEST_FEQ("accessor[1].max[0]", accessor->max[0], 0.961799 , false);
+    TEST_FEQ("accessor[1].max[1]", accessor->max[1], -1.6397  , false);
+    TEST_FEQ("accessor[1].max[2]", accessor->max[2], 0.539252 , false);
+    TEST_FEQ("accessor[1].min[0]", accessor->min[0], -0.692985, false);
+    TEST_FEQ("accessor[1].min[1]", accessor->min[1], 0.0992937, false);
+    TEST_FEQ("accessor[1].min[2]", accessor->min[2], -0.613282, false);
 
     accessor = (Gltf_Accessor*)((u8*)accessor + accessor->stride);
     TEST_EQ("accessor[2].type", (int)accessor->type, 3, false);
@@ -1268,24 +1295,23 @@ static void test_cameras(Gltf_Camera *cameras) {
     float inaccuracy = 0.0000001;
 
     Gltf_Camera *camera = cameras;
-    TEST_LT("cameras[0].ortho", camera->ortho           - 0,        inaccuracy, false);
-    TEST_LT("cameras[0].aspect_ratio", camera->x_factor - 1.5,      inaccuracy, false);
-    TEST_LT("cameras[0].yfov", camera->y_factor         - 0.646464, inaccuracy, false);
-    TEST_LT("cameras[0].zfar", camera->znear            - 100,      inaccuracy, false);
-    TEST_LT("cameras[0].znear", camera->znear           - 0.01,     inaccuracy, false);
+    TEST_FEQ("cameras[0].ortho",        camera->ortho          , 0        , false);
+    TEST_FEQ("cameras[0].aspect_ratio", camera->x_factor       , 1.5      , false);
+    TEST_FEQ("cameras[0].yfov",         camera->y_factor       , 0.646464 , false);
+    TEST_FEQ("cameras[0].zfar",         camera->zfar           , 100      , false);
+    TEST_FEQ("cameras[0].znear",        camera->znear          , 0.01     , false);
+
+    camera = (Gltf_Camera*)((u8*)       camera + camera->stride);
+    TEST_FEQ("cameras[1].ortho",        camera->ortho           , 0       ,  false);
+    TEST_FEQ("cameras[1].aspect_ratio", camera->x_factor        , 1.9     ,  false);
+    TEST_FEQ("cameras[1].yfov",         camera->y_factor        , 0.797979,  false);
+    TEST_FEQ("cameras[1].znear",        camera->znear           , 0.02    ,  false);
 
     camera = (Gltf_Camera*)((u8*)camera + camera->stride);
-    TEST_LT("cameras[1].ortho", camera->ortho           - 0,        inaccuracy, false);
-    TEST_LT("cameras[1].aspect_ratio", camera->x_factor - 1.9,      inaccuracy, false);
-    TEST_LT("cameras[1].yfov", camera->y_factor         - 0.797979, inaccuracy, false);
-    TEST_LT("cameras[1].zfar", camera->znear            - 100,      inaccuracy, false);
-    TEST_LT("cameras[1].znear", camera->znear           - 0.02,     inaccuracy, false);
-
-    camera = (Gltf_Camera*)((u8*)camera + camera->stride);
-    TEST_LT("cameras[2].ortho", camera->ortho   - 1,     inaccuracy, false);
-    TEST_LT("cameras[2].xmag", camera->x_factor - 1.822, inaccuracy, false);
-    TEST_LT("cameras[2].ymag", camera->y_factor - 0.489, inaccuracy, false);
-    TEST_LT("cameras[2].znear", camera->znear   - 0.01,  inaccuracy, false);
+    TEST_FEQ("cameras[2].ortho", camera->ortho   , 1     , false);
+    TEST_FEQ("cameras[2].xmag",  camera->x_factor, 1.822 , false);
+    TEST_FEQ("cameras[2].ymag",  camera->y_factor, 0.489 , false);
+    TEST_FEQ("cameras[2].znear", camera->znear   , 0.01  , false);
 
     END_TEST_MODULE();
 }
@@ -1324,19 +1350,19 @@ static void test_materials(Gltf_Material *materials) {
     TEST_EQ("materials[1].occlusion_texture_index",          material->occlusion_texture_index,          79, false);
     TEST_EQ("materials[1].occlusion_tex_coord",              material->occlusion_tex_coord,            9906, false);
 
-    TEST_LT("materials[1].metallic_factor",      material->metallic_factor      - 5.0,   inaccuracy, false);
-    TEST_LT("materials[1].roughness_factor",     material->roughness_factor     - 6.0,   inaccuracy, false);
-    TEST_LT("materials[1].normal_scale",         material->normal_scale         - 1.0,   inaccuracy, false);
-    TEST_LT("materials[1].occlusion_strength",   material->occlusion_strength   - 0.679, inaccuracy, false);
+    TEST_FEQ("materials[1].metallic_factor",      material->metallic_factor    , 5.0   , false);
+    TEST_FEQ("materials[1].roughness_factor",     material->roughness_factor   , 6.0   , false);
+    TEST_FEQ("materials[1].normal_scale",         material->normal_scale       , 1.0   , false);
+    TEST_FEQ("materials[1].occlusion_strength",   material->occlusion_strength , 0.679 , false);
 
-    TEST_LT("materials[1].base_color_factor[0]", material->base_color_factor[0] - 2.5,   inaccuracy, false);
-    TEST_LT("materials[1].base_color_factor[1]", material->base_color_factor[1] - 4.5,   inaccuracy, false);
-    TEST_LT("materials[1].base_color_factor[2]", material->base_color_factor[2] - 2.5,   inaccuracy, false);
-    TEST_LT("materials[1].base_color_factor[3]", material->base_color_factor[3] - 1.0,   inaccuracy, false);
+    TEST_FEQ("materials[1].base_color_factor[0]", material->base_color_factor[0] ,  2.5, false);
+    TEST_FEQ("materials[1].base_color_factor[1]", material->base_color_factor[1] ,  4.5, false);
+    TEST_FEQ("materials[1].base_color_factor[2]", material->base_color_factor[2] ,  2.5, false);
+    TEST_FEQ("materials[1].base_color_factor[3]", material->base_color_factor[3] ,  1.0, false);
 
-    TEST_LT("materials[1].emissive_factor[0]", material->emissive_factor[0] - 11.2, inaccuracy, false);
-    TEST_LT("materials[1].emissive_factor[1]", material->emissive_factor[1] -  0.1, inaccuracy, false);
-    TEST_LT("materials[1].emissive_factor[2]", material->emissive_factor[2] -  0.0, inaccuracy, false);
+    TEST_FEQ("materials[1].emissive_factor[0]", material->emissive_factor[0] , 11.2, false);
+    TEST_FEQ("materials[1].emissive_factor[1]", material->emissive_factor[1] ,  0.1, false);
+    TEST_FEQ("materials[1].emissive_factor[2]", material->emissive_factor[2] ,  0.0, false);
 
     END_TEST_MODULE();
 }
@@ -1348,8 +1374,8 @@ void test_meshes(Gltf_Mesh *meshes) {
     TEST_EQ("meshes[0].weight_count",    mesh->weight_count,    2, false);
 
     float inaccuracy = 0.0000001;
-    TEST_LT("meshes[0].weights[0]", mesh->weights[0] - 0,   inaccuracy, false);
-    TEST_LT("meshes[0].weights[1]", mesh->weights[1] - 0.5, inaccuracy, false);
+    TEST_FEQ("meshes[0].weights[0]", mesh->weights[0] , 0  , false);
+    TEST_FEQ("meshes[0].weights[1]", mesh->weights[1] , 0.5, false);
 
     Gltf_Mesh_Primitive *primitive = mesh->primitives;
     TEST_EQ("meshes[0].primitives[0]", primitive->indices, 21, false);
@@ -1405,8 +1431,8 @@ void test_meshes(Gltf_Mesh *meshes) {
     TEST_EQ("meshes[1].primitive_count", mesh->primitive_count, 3, false);
     TEST_EQ("meshes[1].weight_count",    mesh->weight_count,    2, false);
 
-    TEST_LT("meshes[1].weights[0]", mesh->weights[0] - 0,   inaccuracy, false);
-    TEST_LT("meshes[1].weights[1]", mesh->weights[1] - 0.5, inaccuracy, false);
+    TEST_FEQ("meshes[1].weights[0]", mesh->weights[0], 0  , false);
+    TEST_FEQ("meshes[1].weights[1]", mesh->weights[1], 0.5, false);
 
     primitive = mesh->primitives;
     TEST_EQ("meshes[1].primitives[0].indices",  primitive->indices,  11, false);
@@ -1491,6 +1517,60 @@ void test_meshes(Gltf_Mesh *meshes) {
     TEST_EQ("meshes[1].primitives[1].targets[1].attributes[1].type",           target->attributes[1].type, GLTF_MESH_ATTRIBUTE_TYPE_POSITION, false);
     TEST_EQ("meshes[1].primitives[1].targets[1].attributes[2].accessor_index", target->attributes[2].accessor_index, 6, false);
     TEST_EQ("meshes[1].primitives[1].targets[1].attributes[2].type",           target->attributes[2].type, GLTF_MESH_ATTRIBUTE_TYPE_TANGENT, false);
+
+    END_TEST_MODULE();
+}
+void test_nodes(Gltf_Node *nodes) {
+    BEGIN_TEST_MODULE("Gltf_Node", true, false);
+
+    // @Todo shuffle the nodes around in the test file
+
+    Gltf_Node *node = nodes;
+    TEST_EQ("nodes[0].camera", node->camera, 1, false);
+
+    float inaccuracy =      0.0000001;
+    TEST_FEQ("nodes[0].matrix[0]",  node->matrix.row0.x, -0.99975   , false);
+    TEST_FEQ("nodes[0].matrix[1]",  node->matrix.row0.y, -0.00679829, false);
+    TEST_FEQ("nodes[0].matrix[2]",  node->matrix.row0.z, 0.0213218  , false);
+    TEST_FEQ("nodes[0].matrix[3]",  node->matrix.row0.w, 0          , false);
+    TEST_FEQ("nodes[0].matrix[4]",  node->matrix.row1.x, 0.00167596 , false);
+    TEST_FEQ("nodes[0].matrix[5]",  node->matrix.row1.y, 0.927325   , false);
+    TEST_FEQ("nodes[0].matrix[6]",  node->matrix.row1.z, 0.374254   , false);
+    TEST_FEQ("nodes[0].matrix[7]",  node->matrix.row1.w, 0          , false);
+    TEST_FEQ("nodes[0].matrix[8]",  node->matrix.row2.x, -0.0223165 , false);
+    TEST_FEQ("nodes[0].matrix[9]",  node->matrix.row2.y, 0.374196   , false);
+    TEST_FEQ("nodes[0].matrix[10]", node->matrix.row2.z, -0.927081  , false);
+    TEST_FEQ("nodes[0].matrix[11]", node->matrix.row2.w, 0          , false);
+    TEST_FEQ("nodes[0].matrix[12]", node->matrix.row3.x, -0.0115543 , false);
+    TEST_FEQ("nodes[0].matrix[13]", node->matrix.row3.y, 0.194711   , false);
+    TEST_FEQ("nodes[0].matrix[14]", node->matrix.row3.z, -0.478297  , false);
+    TEST_FEQ("nodes[0].matrix[15]", node->matrix.row3.w, 1          , false);
+
+    TEST_FEQ("nodes[0].weights[0]", node->weights[0], 0.5, false);
+    TEST_FEQ("nodes[0].weights[1]", node->weights[1], 0.6, false);
+    TEST_FEQ("nodes[0].weights[2]", node->weights[2], 0.7, false);
+    TEST_FEQ("nodes[0].weights[3]", node->weights[3], 0.8, false);
+
+    node = (Gltf_Node*)((u8*)node + node->stride);
+    TEST_FEQ("nodes[1].rotation.x", node->trs.rotation.x, 0, false);
+    TEST_FEQ("nodes[1].rotation.y", node->trs.rotation.y, 0, false);
+    TEST_FEQ("nodes[1].rotation.z", node->trs.rotation.z, 0, false);
+    TEST_FEQ("nodes[1].rotation.w", node->trs.rotation.w, 1, false);
+
+    TEST_FEQ("nodes[1].translation.x", node->trs.translation.x, -17.7082, false);
+    TEST_FEQ("nodes[1].translation.y", node->trs.translation.y, -11.4156, false);
+    TEST_FEQ("nodes[1].translation.z", node->trs.translation.z,   2.0922, false);
+
+    TEST_FEQ("nodes[1].scale.x", node->trs.scale.x, 1, false);
+    TEST_FEQ("nodes[1].scale.y", node->trs.scale.y, 1, false);
+    TEST_FEQ("nodes[1].scale.z", node->trs.scale.z, 1, false);
+
+    node = (Gltf_Node*)((u8*)node + node->stride);
+    TEST_EQ("nodes[2].children[0]", node->children[0], 1, false);
+    TEST_EQ("nodes[2].children[1]", node->children[1], 2, false);
+    TEST_EQ("nodes[2].children[2]", node->children[2], 3, false);
+    TEST_EQ("nodes[2].children[3]", node->children[3], 4, false);
+
 
     END_TEST_MODULE();
 }

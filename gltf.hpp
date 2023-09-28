@@ -205,6 +205,11 @@ struct Gltf_Mesh {
     float *weights;
 };
 
+struct Gltf_Trs {
+    Vec4 rotation    = {0.0, 0.0, 0.0, 1.0};
+    Vec3 scale       = {1.0, 1.0, 1.0};
+    Vec3 translation = {0.0, 0.0, 0.0};
+};
 struct Gltf_Node {
     int stride;
     int camera;
@@ -212,15 +217,14 @@ struct Gltf_Node {
     int mesh;
     int child_count;
     int weight_count;
-    int *children;
-    float *weights;
 
     union {
-    Mat4 matrix      = {1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
-    Vec4 rotation    = {0.0, 0.0, 0.0, 1.0};
-    Vec3 scale       = {1.0, 1.0, 1.0};
-    Vec3 translation = {0.0, 0.0, 0.0};
+        Gltf_Trs trs;
+        Mat4 matrix;
     };
+
+    int *children;
+    float *weights;
 };
 
 struct Gltf {
