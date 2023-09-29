@@ -22,6 +22,12 @@ int main() {
 #endif
 
     Gltf model = parse_gltf("models/cube-static/Cube.gltf");
+
+    Renderer_Draw_Info draw_info = {};
+    draw_info.offsets = (int*)memory_allocate_temp(4 * 20, 4);
+    draw_info.file_names = (char**)memory_allocate_temp(8 * 20, 8);
+
+    Renderer_Vertex_Input_State state = renderer_define_vertex_input_state(model.meshes->primitives, &model, &draw_info);
     
 #if 0
     init_glfw(); 

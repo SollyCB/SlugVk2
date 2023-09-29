@@ -76,59 +76,63 @@ Renderer_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primiti
     int tex_coord_0 = mesh_primitive->tex_coord_0;
 
     // position
-    Gltf_Accessor *accessor = &model->accessors[position];
+    Gltf_Accessor *accessor = (Gltf_Accessor*)((u8*)model->accessors + model->accessor_count[position]);
     state.formats[0] = (VkFormat)accessor->format;
 
     draw_info->draw_count = accessor->count; // take the number of elements to draw from the 'position' vertex attribute
 
-    Gltf_Buffer_View buffer_view = model->buffer_views[accessor->buffer_view];
-    draw_info->offsets[0] = accessor->byte_offset + buffer_view.byte_offset;
-    draw_info->file_names[0] = model->buffers[buffer_view.buffer].uri;
+    Gltf_Buffer_View *buffer_view = (Gltf_Buffer_View*)((u8*)model->buffer_views + model->buffer_view_count[accessor->buffer_view]);
+    draw_info->offsets[0] = accessor->byte_offset + buffer_view->byte_offset;
+    Gltf_Buffer *buffer = (Gltf_Buffer*)((u8*)model->buffers + model->buffer_count[buffer_view->buffer]);
+    draw_info->file_names[0] = buffer->uri;
 
-    if (buffer_view.byte_stride) {
-        state.binding_description_strides[0] = buffer_view.byte_stride;
+    if (buffer_view->byte_stride) {
+        state.binding_description_strides[0] = buffer_view->byte_stride;
     } else {
         state.binding_description_strides[0] = renderer_get_byte_stride(accessor->format);
     }
 
     // normal
-    accessor = &model->accessors[normal];
+    accessor = (Gltf_Accessor*)((u8*)model->accessors + model->accessor_count[normal]);
     state.formats[1] = (VkFormat)accessor->format;
 
-    buffer_view = model->buffer_views[accessor->buffer_view];
-    draw_info->offsets[1] = accessor->byte_offset + buffer_view.byte_offset;
-    draw_info->file_names[1] = model->buffers[buffer_view.buffer].uri;
+    buffer_view = (Gltf_Buffer_View*)((u8*)model->buffer_views + model->buffer_view_count[accessor->buffer_view]);
+    draw_info->offsets[1] = accessor->byte_offset + buffer_view->byte_offset;
+    buffer = (Gltf_Buffer*)((u8*)model->buffers + model->buffer_count[buffer_view->buffer]);
+    draw_info->file_names[1] = buffer->uri;
 
-    if (buffer_view.byte_stride) {
-        state.binding_description_strides[1] = buffer_view.byte_stride;
+    if (buffer_view->byte_stride) {
+        state.binding_description_strides[1] = buffer_view->byte_stride;
     } else {
         state.binding_description_strides[1] = renderer_get_byte_stride(accessor->format);
     }
 
     // tangent
-    accessor = &model->accessors[tangent];
+    accessor = (Gltf_Accessor*)((u8*)model->accessors + model->accessor_count[tangent]);
     state.formats[2] = (VkFormat)accessor->format;
 
-    buffer_view = model->buffer_views[accessor->buffer_view];
-    draw_info->offsets[2] = accessor->byte_offset + buffer_view.byte_offset;
-    draw_info->file_names[2] = model->buffers[buffer_view.buffer].uri;
+    buffer_view = (Gltf_Buffer_View*)((u8*)model->buffer_views + model->buffer_view_count[accessor->buffer_view]);
+    draw_info->offsets[2] = accessor->byte_offset + buffer_view->byte_offset;
+    buffer = (Gltf_Buffer*)((u8*)model->buffers + model->buffer_count[buffer_view->buffer]);
+    draw_info->file_names[2] = buffer->uri;
 
-    if (buffer_view.byte_stride) {
-        state.binding_description_strides[2] = buffer_view.byte_stride;
+    if (buffer_view->byte_stride) {
+        state.binding_description_strides[2] = buffer_view->byte_stride;
     } else {
         state.binding_description_strides[2] = renderer_get_byte_stride(accessor->format);
     }
 
     // tex_coord_0
-    accessor = &model->accessors[tex_coord_0];
+    accessor = (Gltf_Accessor*)((u8*)model->accessors + model->accessor_count[tex_coord_0]);
     state.formats[3] = (VkFormat)accessor->format;
 
-    buffer_view = model->buffer_views[accessor->buffer_view];
-    draw_info->offsets[3] = accessor->byte_offset + buffer_view.byte_offset;
-    draw_info->file_names[3] = model->buffers[buffer_view.buffer].uri;
+    buffer_view = (Gltf_Buffer_View*)((u8*)model->buffer_views + model->buffer_view_count[accessor->buffer_view]);
+    draw_info->offsets[3] = accessor->byte_offset + buffer_view->byte_offset;
+    buffer = (Gltf_Buffer*)((u8*)model->buffers + model->buffer_count[buffer_view->buffer]);
+    draw_info->file_names[3] = buffer->uri;
 
-    if (buffer_view.byte_stride) {
-        state.binding_description_strides[3] = buffer_view.byte_stride;
+    if (buffer_view->byte_stride) {
+        state.binding_description_strides[3] = buffer_view->byte_stride;
     } else {
         state.binding_description_strides[3] = renderer_get_byte_stride(accessor->format);
     }
