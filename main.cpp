@@ -7,6 +7,7 @@
 #include "image.hpp"
 #include "gltf.hpp"
 #include "simd.hpp"
+#include "renderer.hpp"
 
 #if TEST
 #include "test.hpp"
@@ -20,7 +21,7 @@ int main() {
     run_tests(); 
 #endif
 
-    //Gltf model = parse_gltf("models/cube-static/Cube.gltf");
+    Gltf model = parse_gltf("models/cube-static/Cube.gltf");
     
 #if 0
     init_glfw(); 

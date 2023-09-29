@@ -105,46 +105,60 @@ Gltf parse_gltf(const char *filename) {
     char buf[16];
     u64 offset = 0;
 
+    int accessor_count = 0;
+    int animation_count = 0;
+    int buffer_count = 0;
+    int buffer_view_count = 0;
+    int camera_count = 0;
+    int image_count = 0;
+    int material_count = 0;
+    int mesh_count = 0;
+    int node_count = 0;
+    int sampler_count = 0;
+    int scene_count = 0;
+    int skin_count = 0;
+    int texture_count = 0;
+
     while (simd_find_char_interrupted(data + offset, '"', '}', &offset)) {
         offset++; // step into key
         if (simd_strcmp_short(data + offset, "accessorsxxxxxxx", 7) == 0) {
-            gltf.accessors = gltf_parse_accessors(data + offset, &offset, &gltf.accessor_count);
+            gltf.accessors = gltf_parse_accessors(data + offset, &offset, &accessor_count);
             continue;
         } else if (simd_strcmp_short(data + offset, "animationsxxxxxx", 6) == 0) {
-            gltf.animations = gltf_parse_animations(data + offset, &offset, &gltf.animation_count);
+            gltf.animations = gltf_parse_animations(data + offset, &offset, &animation_count);
             continue;
         } else if (simd_strcmp_short(data + offset, "buffersxxxxxxxxx", 9) == 0) {
-            gltf.buffers = gltf_parse_buffers(data + offset, &offset, &gltf.buffer_count);
+            gltf.buffers = gltf_parse_buffers(data + offset, &offset, &buffer_count);
             continue;
         } else if (simd_strcmp_short(data + offset, "bufferViewsxxxxx", 5) == 0) {
-            gltf.buffer_views = gltf_parse_buffer_views(data + offset, &offset, &gltf.buffer_view_count);
+            gltf.buffer_views = gltf_parse_buffer_views(data + offset, &offset, &buffer_view_count);
             continue;
         } else if (simd_strcmp_short(data + offset, "camerasxxxxxxxxx", 9) == 0) {
-            gltf.cameras = gltf_parse_cameras(data + offset, &offset, &gltf.camera_count);
+            gltf.cameras = gltf_parse_cameras(data + offset, &offset, &camera_count);
             continue;
         } else if (simd_strcmp_short(data + offset, "imagesxxxxxxxxxx", 10) == 0) {
-            gltf.images = gltf_parse_images(data + offset, &offset, &gltf.image_count);
+            gltf.images = gltf_parse_images(data + offset, &offset, &image_count);
             continue;
         } else if (simd_strcmp_short(data + offset, "materialsxxxxxxx", 7) == 0) {
-            gltf.materials = gltf_parse_materials(data + offset, &offset, &gltf.material_count);
+            gltf.materials = gltf_parse_materials(data + offset, &offset, &material_count);
             continue;
         } else if (simd_strcmp_short(data + offset, "meshesxxxxxxxxxx", 10) == 0) {
-            gltf.meshes = gltf_parse_meshes(data + offset, &offset, &gltf.mesh_count);
+            gltf.meshes = gltf_parse_meshes(data + offset, &offset, &mesh_count);
             continue;
         } else if (simd_strcmp_short(data + offset, "nodesxxxxxxxxxxx", 11) == 0) {
-            gltf.nodes = gltf_parse_nodes(data + offset, &offset, &gltf.node_count);
+            gltf.nodes = gltf_parse_nodes(data + offset, &offset, &node_count);
             continue;
         } else if (simd_strcmp_short(data + offset, "samplersxxxxxxxx", 8) == 0) {
-            gltf.samplers = gltf_parse_samplers(data + offset, &offset, &gltf.sampler_count);
+            gltf.samplers = gltf_parse_samplers(data + offset, &offset, &sampler_count);
             continue;
         } else if (simd_strcmp_short(data + offset, "scenesxxxxxxxxxx", 10) == 0) {
-            gltf.scenes = gltf_parse_scenes(data + offset, &offset, &gltf.scene_count);
+            gltf.scenes = gltf_parse_scenes(data + offset, &offset, &scene_count);
             continue;
         } else if (simd_strcmp_short(data + offset, "skinsxxxxxxxxxxx", 11) == 0) {
-            gltf.skins = gltf_parse_skins(data + offset, &offset, &gltf.skin_count);
+            gltf.skins = gltf_parse_skins(data + offset, &offset, &skin_count);
             continue;
         } else if (simd_strcmp_short(data + offset, "texturesxxxxxxxx", 8) == 0) {
-            gltf.textures = gltf_parse_textures(data + offset, &offset, &gltf.texture_count);
+            gltf.textures = gltf_parse_textures(data + offset, &offset, &texture_count);
             continue;
         } else if (simd_strcmp_short(data + offset, "assetxxxxxxxxxxx", 11) == 0) {
             simd_skip_passed_char(data + offset, &offset, '}');
@@ -156,8 +170,158 @@ Gltf parse_gltf(const char *filename) {
             ASSERT(false, "This is not a top level gltf key"); 
         }
     }
-
     memory_free_heap((void*)data); // free file data
+
+    //
+    // OMFG!! I practically have to rewrite this thing!!! One day maybe I will idk...
+    // This is sort of hack, sort of not, depending how you look at it (COPIUS-MAXIMUS!?)
+    // My beautiful memory access patterns! Ruined! How did I not consider the fact that
+    // this whole file format is about random access!!??
+    //
+    int total_stride = 0;
+
+    gltf.accessor_count = (int*)memory_allocate_temp(sizeof(int) * accessor_count + 1, 4);
+    gltf.accessor_count[0] = accessor_count;
+    gltf.accessor_count++;
+    Gltf_Accessor *accessor = gltf.accessors;
+    for(int i = 0; i < accessor_count; ++i) {
+        gltf.accessor_count[i] = total_stride;
+        total_stride += accessor->stride;
+        accessor = (Gltf_Accessor*)((u8*)accessor + accessor->stride);
+    }
+
+    total_stride = 0;
+
+    gltf.animation_count = (int*)memory_allocate_temp(sizeof(int) * animation_count + 1, 4);
+    gltf.animation_count[0] = animation_count;
+    gltf.animation_count++;
+    Gltf_Animation *animation = gltf.animations;
+    for(int i = 0; i < animation_count; ++i) {
+        gltf.animation_count[i] = total_stride;
+        total_stride += animation->stride;
+        animation = (Gltf_Animation*)((u8*)animation + animation->stride);
+    }
+
+    total_stride = 0;
+
+    gltf.buffer_count = (int*)memory_allocate_temp(sizeof(int) * buffer_count + 1, 4);
+    gltf.buffer_count[0] = buffer_count;
+    gltf.buffer_count++;
+    Gltf_Buffer *buffer = gltf.buffers;
+    for(int i = 0; i < buffer_count; ++i) {
+        gltf.buffer_count[i] = total_stride;
+        total_stride += buffer->stride;
+        buffer = (Gltf_Buffer*)((u8*)buffer + buffer->stride);
+    }
+    
+    total_stride = 0;
+
+    gltf.buffer_view_count = (int*)memory_allocate_temp(sizeof(int) * buffer_view_count + 1, 4);
+    gltf.buffer_view_count[0] = buffer_view_count;
+    gltf.buffer_view_count++;
+    Gltf_Buffer_View *buffer_view = gltf.buffer_views;
+    for(int i = 0; i < buffer_view_count; ++i) {
+        gltf.buffer_view_count[i] = total_stride;
+        total_stride += buffer_view->stride;
+        buffer_view = (Gltf_Buffer_View*)((u8*)buffer_view + buffer_view->stride);
+    }
+
+    total_stride = 0;
+
+    gltf.camera_count = (int*)memory_allocate_temp(sizeof(int) * camera_count + 1, 4);
+    gltf.camera_count[0] = camera_count;
+    gltf.camera_count++;
+    Gltf_Camera *camera = gltf.cameras;
+    for(int i = 0; i < camera_count; ++i) {
+        gltf.camera_count[i] = total_stride;
+        total_stride += camera->stride;
+        camera = (Gltf_Camera*)((u8*)camera + camera->stride);
+    }
+
+    total_stride = 0;
+
+    gltf.image_count = (int*)memory_allocate_temp(sizeof(int) * image_count + 1, 4);
+    gltf.image_count[0] = image_count;
+    gltf.image_count++;
+    Gltf_Image *image = gltf.images;
+    for(int i = 0; i < image_count; ++i) {
+        gltf.image_count[i] = total_stride;
+        total_stride += image->stride;
+        image = (Gltf_Image*)((u8*)image + image->stride);
+    }
+
+    total_stride = 0;
+
+    gltf.material_count = (int*)memory_allocate_temp(sizeof(int) * material_count + 1, 4);
+    gltf.material_count[0] = material_count;
+    gltf.material_count++;
+    Gltf_Material *material = gltf.materials;
+    for(int i = 0; i < material_count; ++i) {
+        gltf.material_count[i] = total_stride;
+        total_stride += material->stride;
+        material = (Gltf_Material*)((u8*)material + material->stride);
+    }
+
+    total_stride = 0;
+
+    gltf.mesh_count = (int*)memory_allocate_temp(sizeof(int) * mesh_count + 1, 4);
+    gltf.mesh_count[0] = mesh_count;
+    gltf.mesh_count++;
+    Gltf_Mesh *mesh = gltf.meshes;
+    for(int i = 0; i < mesh_count; ++i) {
+        gltf.mesh_count[i] = total_stride;
+        total_stride += mesh->stride;
+        mesh = (Gltf_Mesh*)((u8*)mesh + mesh->stride);
+    }
+
+    total_stride = 0;
+
+    gltf.node_count = (int*)memory_allocate_temp(sizeof(int) * node_count + 1, 4);
+    gltf.node_count[0] = node_count;
+    gltf.node_count++;
+    Gltf_Node *node = gltf.nodes;
+    for(int i = 0; i < node_count; ++i) {
+        gltf.node_count[i] = total_stride;
+        total_stride += node->stride;
+        node = (Gltf_Node*)((u8*)node + node->stride);
+    }
+
+    total_stride = 0;
+
+    gltf.sampler_count = (int*)memory_allocate_temp(sizeof(int) * sampler_count + 1, 4);
+    gltf.sampler_count[0] = sampler_count;
+    gltf.sampler_count++;
+    Gltf_Sampler *sampler = gltf.samplers;
+    for(int i = 0; i < sampler_count; ++i) {
+        gltf.sampler_count[i] = total_stride;
+        total_stride += sampler->stride;
+        sampler = (Gltf_Sampler*)((u8*)sampler + sampler->stride);
+    }
+
+    total_stride = 0;
+
+    gltf.scene_count = (int*)memory_allocate_temp(sizeof(int) * scene_count + 1, 4);
+    gltf.scene_count[0] = scene_count;
+    gltf.scene_count++;
+    Gltf_Scene *scene = gltf.scenes;
+    for(int i = 0; i < scene_count; ++i) {
+        gltf.scene_count[i] = total_stride;
+        total_stride += scene->stride;
+        scene = (Gltf_Scene*)((u8*)scene + scene->stride);
+    }
+
+    total_stride = 0;
+
+    gltf.skin_count = (int*)memory_allocate_temp(sizeof(int) * skin_count + 1, 4);
+    gltf.skin_count[0] = skin_count;
+    gltf.skin_count++;
+    Gltf_Skin *skin = gltf.skins;
+    for(int i = 0; i < skin_count; ++i) {
+        gltf.skin_count[i] = total_stride;
+        total_stride += skin->stride;
+        skin = (Gltf_Skin*)((u8*)skin + skin->stride);
+    }
+
     return gltf;
 }
 

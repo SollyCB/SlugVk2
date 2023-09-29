@@ -35,10 +35,6 @@ struct Renderer_Draw_Info {
     // and keep in memory?
 };
 
-struct Renderer_Vertex_Input_State_Info {
-    Gltf_Mesh_Primitive mesh_primitive;
-    Gltf *model;
-};
 struct Renderer_Vertex_Input_State {
     VkPrimitiveTopology topology;
     int input_binding_description_count;
@@ -53,7 +49,7 @@ struct Renderer_Vertex_Input_State {
     int *attribute_description_bindings;
     VkFormat *formats;
 };
-Renderer_Vertex_Input_State_Info renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info);
+Renderer_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info);
 
 struct Renderer_Rasterization_State_Info {};
 struct Renderer_Rasterization_State {};

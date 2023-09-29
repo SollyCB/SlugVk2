@@ -52,6 +52,7 @@ add_executable(Slug
     test.cpp
     image.cpp
     gltf.cpp
+    #renderer.cpp
 
     #clock.cpp
     #camera.cpp

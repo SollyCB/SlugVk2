@@ -77,35 +77,35 @@ enum Gltf_Accessor_Format {
     GLTF_ACCESSOR_FORMAT_MAT2_U8        = 10107,
     GLTF_ACCESSOR_FORMAT_MAT2_S8        = 10108,
 
-    GLTF_ACCESSOR_FORMAT_MAT3_U8        = 10107,
-    GLTF_ACCESSOR_FORMAT_MAT3_S8        = 10108,
+    GLTF_ACCESSOR_FORMAT_MAT3_U8        = 11107,
+    GLTF_ACCESSOR_FORMAT_MAT3_S8        = 11108,
 
-    GLTF_ACCESSOR_FORMAT_MAT4_U8        = 10107,
-    GLTF_ACCESSOR_FORMAT_MAT4_S8        = 10108,
+    GLTF_ACCESSOR_FORMAT_MAT4_U8        = 12107,
+    GLTF_ACCESSOR_FORMAT_MAT4_S8        = 12108,
 
-    GLTF_ACCESSOR_FORMAT_MAT2_U16       = 11107,
-    GLTF_ACCESSOR_FORMAT_MAT2_S16       = 11108,
-    GLTF_ACCESSOR_FORMAT_MAT2_FLOAT16   = 11109,
+    GLTF_ACCESSOR_FORMAT_MAT2_U16       = 13107,
+    GLTF_ACCESSOR_FORMAT_MAT2_S16       = 13108,
+    GLTF_ACCESSOR_FORMAT_MAT2_FLOAT16   = 13109,
 
-    GLTF_ACCESSOR_FORMAT_MAT3_U16       = 11107,
-    GLTF_ACCESSOR_FORMAT_MAT3_S16       = 11108,
-    GLTF_ACCESSOR_FORMAT_MAT3_FLOAT16   = 11109,
+    GLTF_ACCESSOR_FORMAT_MAT3_U16       = 14107,
+    GLTF_ACCESSOR_FORMAT_MAT3_S16       = 14108,
+    GLTF_ACCESSOR_FORMAT_MAT3_FLOAT16   = 14109,
 
-    GLTF_ACCESSOR_FORMAT_MAT4_U16       = 11107,
-    GLTF_ACCESSOR_FORMAT_MAT4_S16       = 11108,
-    GLTF_ACCESSOR_FORMAT_MAT4_FLOAT16   = 11109,
+    GLTF_ACCESSOR_FORMAT_MAT4_U16       = 15107,
+    GLTF_ACCESSOR_FORMAT_MAT4_S16       = 15108,
+    GLTF_ACCESSOR_FORMAT_MAT4_FLOAT16   = 15109,
 
-    GLTF_ACCESSOR_FORMAT_MAT2_U32       = 12107,
-    GLTF_ACCESSOR_FORMAT_MAT2_S32       = 12108,
-    GLTF_ACCESSOR_FORMAT_MAT2_FLOAT32   = 12109,
+    GLTF_ACCESSOR_FORMAT_MAT2_U32       = 16107,
+    GLTF_ACCESSOR_FORMAT_MAT2_S32       = 16108,
+    GLTF_ACCESSOR_FORMAT_MAT2_FLOAT32   = 16109,
 
-    GLTF_ACCESSOR_FORMAT_MAT3_U32       = 12107,
-    GLTF_ACCESSOR_FORMAT_MAT3_S32       = 12108,
-    GLTF_ACCESSOR_FORMAT_MAT3_FLOAT32   = 12109,
+    GLTF_ACCESSOR_FORMAT_MAT3_U32       = 17107,
+    GLTF_ACCESSOR_FORMAT_MAT3_S32       = 17108,
+    GLTF_ACCESSOR_FORMAT_MAT3_FLOAT32   = 17109,
 
-    GLTF_ACCESSOR_FORMAT_MAT4_U32       = 12107,
-    GLTF_ACCESSOR_FORMAT_MAT4_S32       = 12108,
-    GLTF_ACCESSOR_FORMAT_MAT4_FLOAT32   = 12109,
+    GLTF_ACCESSOR_FORMAT_MAT4_U32       = 18107,
+    GLTF_ACCESSOR_FORMAT_MAT4_S32       = 18108,
+    GLTF_ACCESSOR_FORMAT_MAT4_FLOAT32   = 18109,
 };
 
 struct Gltf_Accessor {
@@ -368,19 +368,19 @@ struct Gltf {
     // are weird and incur unclear overhead. So for consistency's sake they will just be included, 
     // regardless of the ease with which the strides can be calculated. 
     int scene;
-    int accessor_count;
-    int animation_count;
-    int buffer_count;
-    int buffer_view_count;
-    int camera_count;
-    int image_count;
-    int material_count;
-    int mesh_count;
-    int node_count;
-    int sampler_count;
-    int scene_count;
-    int skin_count;
-    int texture_count;
+    int *accessor_count;
+    int *animation_count;
+    int *buffer_count;
+    int *buffer_view_count;
+    int *camera_count;
+    int *image_count;
+    int *material_count;
+    int *mesh_count;
+    int *node_count;
+    int *sampler_count;
+    int *scene_count;
+    int *skin_count;
+    int *texture_count;
     Gltf_Accessor *accessors;
     Gltf_Animation *animations;
     Gltf_Buffer *buffers;

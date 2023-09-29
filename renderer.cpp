@@ -19,9 +19,9 @@ int renderer_get_byte_stride(Gltf_Accessor_Format);
 // we can just allocate more knowing that the extra stuff is just off the end of the state we
 // just defined.
 
-Renderer_Vertex_Input_State_Info renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info) {
+Renderer_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info) {
     
-    Renderer_Vertex_Input_State_Info state = {};
+    Renderer_Vertex_Input_State state = {};
 
     // Enough memory for each array field in 'state'
     int *memory_block = (int*)memory_allocate_temp(sizeof(int) * 4 * 5, 4);
@@ -29,7 +29,7 @@ Renderer_Vertex_Input_State_Info renderer_define_vertex_input_state(Gltf_Mesh_Pr
     state.binding_description_strides     = memory_block + 4;
     state.attribute_description_locations = memory_block + 8;
     state.attribute_description_bindings  = memory_block + 12;
-    state.formats = memory_block + 16;
+    state.formats = (VkFormat*)(memory_block + 16);
 
     // @Todo @Incomplete ... This needs to be handled before allocating memory for this 
     // struct? Or keep the basic stuff together and allocate more for this off the end,
@@ -76,14 +76,14 @@ Renderer_Vertex_Input_State_Info renderer_define_vertex_input_state(Gltf_Mesh_Pr
     int tex_coord_0 = mesh_primitive->tex_coord_0;
 
     // position
-    Gltf_Accessor *accessor = model->accessors[position];
-    state.formats[0] = accessor->format;
+    Gltf_Accessor *accessor = &model->accessors[position];
+    state.formats[0] = (VkFormat)accessor->format;
 
     draw_info->draw_count = accessor->count; // take the number of elements to draw from the 'position' vertex attribute
 
-    Gltf_Buffer_View *buffer_view = model->buffer_views[accessor->buffer_view];
-    draw_info->offsets[0] = accessor->offset + buffer_view->offset;
-    draw_info->file_names[0] = model->buffers[buffer_view->buffer].uri;
+    Gltf_Buffer_View buffer_view = model->buffer_views[accessor->buffer_view];
+    draw_info->offsets[0] = accessor->byte_offset + buffer_view.byte_offset;
+    draw_info->file_names[0] = model->buffers[buffer_view.buffer].uri;
 
     if (buffer_view.byte_stride) {
         state.binding_description_strides[0] = buffer_view.byte_stride;
@@ -92,12 +92,12 @@ Renderer_Vertex_Input_State_Info renderer_define_vertex_input_state(Gltf_Mesh_Pr
     }
 
     // normal
-    accessor = model->accessors[normal];
-    state.formats[1] = accessor->format;
+    accessor = &model->accessors[normal];
+    state.formats[1] = (VkFormat)accessor->format;
 
     buffer_view = model->buffer_views[accessor->buffer_view];
-    draw_info->offsets[1] = accessor->offset + buffer_view->offset;
-    draw_info->file_names[1] = model->buffers[buffer_view->buffer].uri;
+    draw_info->offsets[1] = accessor->byte_offset + buffer_view.byte_offset;
+    draw_info->file_names[1] = model->buffers[buffer_view.buffer].uri;
 
     if (buffer_view.byte_stride) {
         state.binding_description_strides[1] = buffer_view.byte_stride;
@@ -106,12 +106,12 @@ Renderer_Vertex_Input_State_Info renderer_define_vertex_input_state(Gltf_Mesh_Pr
     }
 
     // tangent
-    accessor = model->accessors[tangent];
-    state.formats[2] = accessor->format;
+    accessor = &model->accessors[tangent];
+    state.formats[2] = (VkFormat)accessor->format;
 
     buffer_view = model->buffer_views[accessor->buffer_view];
-    draw_info->offsets[2] = accessor->offset + buffer_view->offset;
-    draw_info->file_names[2] = model->buffers[buffer_view->buffer].uri;
+    draw_info->offsets[2] = accessor->byte_offset + buffer_view.byte_offset;
+    draw_info->file_names[2] = model->buffers[buffer_view.buffer].uri;
 
     if (buffer_view.byte_stride) {
         state.binding_description_strides[2] = buffer_view.byte_stride;
@@ -120,12 +120,12 @@ Renderer_Vertex_Input_State_Info renderer_define_vertex_input_state(Gltf_Mesh_Pr
     }
 
     // tex_coord_0
-    accessor = model->accessors[tex_coord_0];
-    state.formats[3] = accessor->format;
+    accessor = &model->accessors[tex_coord_0];
+    state.formats[3] = (VkFormat)accessor->format;
 
     buffer_view = model->buffer_views[accessor->buffer_view];
-    draw_info->offsets[3] = accessor->offset + buffer_view->offset;
-    draw_info->file_names[3] = model->buffers[buffer_view->buffer].uri;
+    draw_info->offsets[3] = accessor->byte_offset + buffer_view.byte_offset;
+    draw_info->file_names[3] = model->buffers[buffer_view.buffer].uri;
 
     if (buffer_view.byte_stride) {
         state.binding_description_strides[3] = buffer_view.byte_stride;
@@ -133,60 +133,12 @@ Renderer_Vertex_Input_State_Info renderer_define_vertex_input_state(Gltf_Mesh_Pr
         state.binding_description_strides[3] = renderer_get_byte_stride(accessor->format);
     }
 
+    return state;
 }
 
-/*
-struct Gltf_Buffer_View {
-    int stride;
-    int buffer;
-    int byte_offset;
-    int byte_length;
-    int byte_stride;
-    Gltf_Buffer_Type buffer_type;
-};
-struct Gltf_Mesh_Primitive {
-    int stride;
-
-    int extra_attribute_count;
-    int target_count;
-    int indices;
-    int material;
-    int topology = GLTF_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-
-    int position = -1;
-    int tangent = -1;
-    int normal = -1;
-    int tex_coord_0 = -1;
-
-    Gltf_Mesh_Attribute *extra_attributes;
-    Gltf_Morph_Target   *targets;
-};
-struct Gltf_Accessor {
-    Gltf_Accessor_Format format;
-    Gltf_Accessor_Type indices_component_type;
-
-    int stride;
-
-    int buffer_view;
-    int byte_offset;
-    int normalized;
-    int count;
-
-    // sparse
-    int sparse_count;
-    int indices_buffer_view;
-    int values_buffer_view;
-    int indices_byte_offset;
-    int values_byte_offset;
-
-    float *max;
-    float *min;
-};
-*/
-
 // functions like this are such a waste of time to write...
-int renderer_get_byte_stride(Gltf_Accessor_Format) {
-        switch(accessor->format) {
+int renderer_get_byte_stride(Gltf_Accessor_Format accessor_format) {
+        switch(accessor_format) {
             case GLTF_ACCESSOR_FORMAT_SCALAR_U8:
             case GLTF_ACCESSOR_FORMAT_SCALAR_S8:
                 return 1;
