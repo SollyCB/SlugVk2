@@ -274,31 +274,32 @@ struct Gltf {
     // All strides can be calculated from the other info in the struct, but some of these algorithms 
     // are weird and incur unclear overhead. So for consistency's sake they will just be included, 
     // regardless of the ease with which the strides can be calculated. 
+    int scene;
     int accessor_count;
-    Gltf_Accessor *accessors;
     int animation_count;
-    Gltf_Animation *animations;
     int buffer_count;
-    Gltf_Buffer *buffers;
     int buffer_view_count;
-    Gltf_Buffer_View *buffer_views;
     int camera_count;
-    Gltf_Camera *cameras;
     int image_count;
-    Gltf_Image *images;
     int material_count;
-    Gltf_Material *materials;
     int mesh_count;
-    Gltf_Mesh *meshes;
     int node_count;
-    Gltf_Node *nodes;
     int sampler_count;
-    Gltf_Sampler *samplers;
     int scene_count;
-    Gltf_Scene *scenes;
     int skin_count;
-    Gltf_Skin *skins;
     int texture_count;
+    Gltf_Accessor *accessors;
+    Gltf_Animation *animations;
+    Gltf_Buffer *buffers;
+    Gltf_Buffer_View *buffer_views;
+    Gltf_Camera *cameras;
+    Gltf_Image *images;
+    Gltf_Material *materials;
+    Gltf_Mesh *meshes;
+    Gltf_Node *nodes;
+    Gltf_Sampler *samplers;
+    Gltf_Scene *scenes;
+    Gltf_Skin *skins;
     Gltf_Texture *textures;
 };
 Gltf parse_gltf(const char *file_name);

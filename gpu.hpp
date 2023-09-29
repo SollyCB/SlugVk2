@@ -70,9 +70,8 @@ VmaAllocator create_vma_allocator(Gpu *gpu);
 
 // Surface and Swapchain
 struct Window {
-    VkSwapchainCreateInfoKHR swapchain_info;
-
     VkSwapchainKHR vk_swapchain;
+    VkSwapchainCreateInfoKHR swapchain_info;
     u32 image_count;
     VkImage *vk_images;
     VkImageView *vk_image_views;

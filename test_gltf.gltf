@@ -543,6 +543,24 @@
             ]
         }
     ],
+    "textures": [
+        {
+            "sampler": 0,
+            "source":  1,
+        },
+        {
+            "sampler": 2,
+            "source":  3,
+        },
+        {
+            "sampler": 4,
+            "source":  5,
+        },
+        {
+            "sampler": 6,
+            "source":  7,
+        }
+    ],
     "skins": [
         {
             "inverseBindMatrices": 0,
@@ -564,23 +582,5 @@
             "joints": [ 7, 8 ],
             "skeleton": 4
         }
-    ]
-    "textures": [
-        {
-            "sampler": 0,
-            "source":  1,
-        },
-        {
-            "sampler": 2,
-            "source":  3,
-        },
-        {
-            "sampler": 4,
-            "source":  5,
-        },
-        {
-            "sampler": 6,
-            "source":  7,
-        }
-    ]
+    ],
 }

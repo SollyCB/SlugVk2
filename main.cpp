@@ -19,8 +19,10 @@ int main() {
 #if TEST
     run_tests(); 
 #endif
+
+    Gltf model = parse_gltf("models/cube-static/Cube.gltf");
     
-#if 0
+#if 1
     init_glfw(); 
     Glfw *glfw = get_glfw_instance();
 

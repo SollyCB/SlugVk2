@@ -48,6 +48,48 @@ Gltf_Skin* gltf_parse_skins(const char *data, u64 *offset, int *skin_count);
 Gltf_Texture* gltf_parse_textures(const char *data, u64 *offset, int *texture_count);
 
 /* **Implementation start** */
+static inline int gltf_match_int(char c) {
+    switch(c) {
+    case '0':
+        return 0;
+    case '1':
+        return 1;
+    case '2':
+        return 2;
+    case '3':
+        return 3;
+    case '4':
+        return 4;
+    case '5':
+        return 5;
+    case '6':
+        return 6;
+    case '7':
+        return 7;
+    case '8':
+        return 8;
+    case '9':
+        return 9;
+    default:
+        ASSERT(false && "not an int", "");
+        return -1;
+    }
+}
+inline int gltf_ascii_to_int(const char *data, u64 *offset) {
+    u64 inc = 0;
+    if (!simd_skip_to_int(data, &inc, 128))
+        ASSERT(false, "Failed to find an integer in search range");
+
+    int accum = 0;
+    while(data[inc] >= '0' && data[inc] <= '9') {
+        accum *= 10;
+        accum += gltf_match_int(data[inc]);
+        inc++;
+    }
+    *offset += inc;
+    return accum;
+}
+
 Gltf parse_gltf(const char *filename) {
     //
     // Function Method:
@@ -104,6 +146,12 @@ Gltf parse_gltf(const char *filename) {
         } else if (simd_strcmp_short(data + offset, "texturesxxxxxxxx", 8) == 0) {
             gltf.textures = gltf_parse_textures(data + offset, &offset, &gltf.texture_count);
             continue;
+        } else if (simd_strcmp_short(data + offset, "assetxxxxxxxxxxx", 11) == 0) {
+            simd_skip_passed_char(data + offset, &offset, '}');
+            continue;
+        } else if (simd_strcmp_short(data + offset, "scenexxxxxxxxxxx", 11) == 0) {
+            gltf.scene = gltf_ascii_to_int(data + offset, &offset);
+            continue;
         } else {
             ASSERT(false, "This is not a top level gltf key"); 
         }
@@ -114,47 +162,6 @@ Gltf parse_gltf(const char *filename) {
 }
 
 // helper algorithms start
-static inline int gltf_match_int(char c) {
-    switch(c) {
-    case '0':
-        return 0;
-    case '1':
-        return 1;
-    case '2':
-        return 2;
-    case '3':
-        return 3;
-    case '4':
-        return 4;
-    case '5':
-        return 5;
-    case '6':
-        return 6;
-    case '7':
-        return 7;
-    case '8':
-        return 8;
-    case '9':
-        return 9;
-    default:
-        ASSERT(false && "not an int", "");
-    }
-}
-
-inline int gltf_ascii_to_int(const char *data, u64 *offset) {
-    u64 inc = 0;
-    if (!simd_skip_to_int(data, &inc, 128))
-        ASSERT(false, "Failed to find an integer in search range");
-
-    int accum = 0;
-    while(data[inc] >= '0' && data[inc] <= '9') {
-        accum *= 10;
-        accum += gltf_match_int(data[inc]);
-        inc++;
-    }
-    *offset += inc;
-    return accum;
-}
 
 float gltf_ascii_to_float(const char *data, u64 *offset) {
     u64 inc = 0;

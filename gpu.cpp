@@ -379,7 +379,9 @@ Window* get_window_instance() { return s_Window; }
 void init_window(Gpu *gpu, Glfw *glfw) {
     VkSurfaceKHR surface = create_vk_surface(gpu->vk_instance, glfw);
 
-    create_vk_swapchain(gpu, surface);
+    VkSwapchainKHR swapchain = create_vk_swapchain(gpu, surface);
+    Window *window = get_window_instance();
+    window->vk_swapchain = swapchain;
 }
 void kill_window(Gpu *gpu, Window *window) {
     destroy_vk_swapchain(gpu->vk_device, window);
@@ -478,7 +480,7 @@ VkSwapchainKHR create_vk_swapchain(Gpu *gpu, VkSurfaceKHR vk_surface) {
     for(int i = 0; i < present_mode_count; ++i) {
         if (present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR)
             // @Todo immediate presentation
-            println("Mailbox Presentation Supported, bu using FIFO...");
+            println("Mailbox Presentation Supported, but using FIFO (@Todo)...");
     }
     swapchain_info.presentMode = VK_PRESENT_MODE_FIFO_KHR;
 
@@ -504,10 +506,8 @@ VkSwapchainKHR create_vk_swapchain(Gpu *gpu, VkSurfaceKHR vk_surface) {
 
     // keep struct data together (not pointing to random heap addresses)
     s_Window = (Window*)memory_allocate_heap(
-            sizeof(Window)                   +
-            sizeof(VkSwapchainCreateInfoKHR) +
-            sizeof(image_count)              +
-            (sizeof(VkImage) * image_count)  +
+            sizeof(Window)                       +
+            (sizeof(VkImage)     * image_count)  +
             (sizeof(VkImageView) * image_count), 8);
 
     // Is this better than just continuing to use s_Window? who cares...
