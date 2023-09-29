@@ -189,7 +189,7 @@
         {
             "bufferView": 3,
             "byteOffset": 300,
-            "componentType": 5123,
+            "componentType": 5125,
             "count": 12001,
             "type": "VEC3",
             "sparse": {

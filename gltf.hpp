@@ -5,39 +5,126 @@
 #include "string.hpp"
 #include "math.hpp"
 
-enum Gltf_Type {
-    GLTF_TYPE_NONE           = 0,
-    GLTF_TYPE_SCALAR         = 1,
-    GLTF_TYPE_VEC2           = 2,
-    GLTF_TYPE_VEC3           = 3,
-    GLTF_TYPE_VEC4           = 4,
-    GLTF_TYPE_MAT2           = 5,
-    GLTF_TYPE_MAT3           = 6,
-    GLTF_TYPE_MAT4           = 7,
-    GLTF_TYPE_BYTE           = 5120,
-    GLTF_TYPE_UNSIGNED_BYTE  = 5121,
-    GLTF_TYPE_SHORT          = 5122,
-    GLTF_TYPE_UNSIGNED_SHORT = 5123,
-    GLTF_TYPE_UNSIGNED_INT   = 5125,
-    GLTF_TYPE_FLOAT          = 5126,
+enum Gltf_Accessor_Type {
+    GLTF_ACCESSOR_TYPE_NONE           = 0,
+    GLTF_ACCESSOR_TYPE_SCALAR         = 1,
+    GLTF_ACCESSOR_TYPE_VEC2           = 2,
+    GLTF_ACCESSOR_TYPE_VEC3           = 3,
+    GLTF_ACCESSOR_TYPE_VEC4           = 4,
+    GLTF_ACCESSOR_TYPE_MAT2           = 5,
+    GLTF_ACCESSOR_TYPE_MAT3           = 6,
+    GLTF_ACCESSOR_TYPE_MAT4           = 7,
+    GLTF_ACCESSOR_TYPE_BYTE           = 5120,
+    GLTF_ACCESSOR_TYPE_UNSIGNED_BYTE  = 5121,
+    GLTF_ACCESSOR_TYPE_SHORT          = 5122,
+    GLTF_ACCESSOR_TYPE_UNSIGNED_SHORT = 5123,
+    GLTF_ACCESSOR_TYPE_UNSIGNED_INT   = 5125,
+    GLTF_ACCESSOR_TYPE_FLOAT          = 5126,
+};
+// Lots of these are basically useless I think, because gltf does not define
+// anywhere near as many formats as vulkan, but whatever, I cba to go through and cull them,
+// only to find out I do in fact need one...
+enum Gltf_Accessor_Format {
+    GLTF_ACCESSOR_FORMAT_UNKNOWN = 0,
+
+    GLTF_ACCESSOR_FORMAT_SCALAR_U8      =  13,
+    GLTF_ACCESSOR_FORMAT_SCALAR_S8      =  14,
+
+    GLTF_ACCESSOR_FORMAT_VEC2_U8        =  20,
+    GLTF_ACCESSOR_FORMAT_VEC2_S8        =  21,
+
+    GLTF_ACCESSOR_FORMAT_VEC3_U8        =  27,
+    GLTF_ACCESSOR_FORMAT_VEC3_S8        =  28,
+
+    GLTF_ACCESSOR_FORMAT_VEC4_U8        =  41,
+    GLTF_ACCESSOR_FORMAT_VEC4_S8        =  42,
+
+    // 16 bit
+    GLTF_ACCESSOR_FORMAT_SCALAR_U16     =  74,
+    GLTF_ACCESSOR_FORMAT_SCALAR_S16     =  75,
+    GLTF_ACCESSOR_FORMAT_SCALAR_FLOAT16 =  76,
+
+    GLTF_ACCESSOR_FORMAT_VEC2_U16       =  81,
+    GLTF_ACCESSOR_FORMAT_VEC2_S16       =  82,
+    GLTF_ACCESSOR_FORMAT_VEC2_FLOAT16   =  83,
+
+    GLTF_ACCESSOR_FORMAT_VEC3_U16       =  88,
+    GLTF_ACCESSOR_FORMAT_VEC3_S16       =  89,
+    GLTF_ACCESSOR_FORMAT_VEC3_FLOAT16   =  90,
+
+    GLTF_ACCESSOR_FORMAT_VEC4_U16       =  95,
+    GLTF_ACCESSOR_FORMAT_VEC4_S16       =  96,
+    GLTF_ACCESSOR_FORMAT_VEC4_FLOAT16   =  97,
+
+    // 32 bit
+    GLTF_ACCESSOR_FORMAT_SCALAR_U32     =  98,
+    GLTF_ACCESSOR_FORMAT_SCALAR_S32     =  99,
+    GLTF_ACCESSOR_FORMAT_SCALAR_FLOAT32 = 100,
+
+    GLTF_ACCESSOR_FORMAT_VEC2_U32       = 101,
+    GLTF_ACCESSOR_FORMAT_VEC2_S32       = 102,
+    GLTF_ACCESSOR_FORMAT_VEC2_FLOAT32   = 103,
+
+    GLTF_ACCESSOR_FORMAT_VEC3_U32       = 104,
+    GLTF_ACCESSOR_FORMAT_VEC3_S32       = 105,
+    GLTF_ACCESSOR_FORMAT_VEC3_FLOAT32   = 106,
+
+    GLTF_ACCESSOR_FORMAT_VEC4_U32       = 107,
+    GLTF_ACCESSOR_FORMAT_VEC4_S32       = 108,
+    GLTF_ACCESSOR_FORMAT_VEC4_FLOAT32   = 109,
+
+    // Matrix equivalents
+    GLTF_ACCESSOR_FORMAT_MAT2_U8        = 10107,
+    GLTF_ACCESSOR_FORMAT_MAT2_S8        = 10108,
+
+    GLTF_ACCESSOR_FORMAT_MAT3_U8        = 10107,
+    GLTF_ACCESSOR_FORMAT_MAT3_S8        = 10108,
+
+    GLTF_ACCESSOR_FORMAT_MAT4_U8        = 10107,
+    GLTF_ACCESSOR_FORMAT_MAT4_S8        = 10108,
+
+    GLTF_ACCESSOR_FORMAT_MAT2_U16       = 11107,
+    GLTF_ACCESSOR_FORMAT_MAT2_S16       = 11108,
+    GLTF_ACCESSOR_FORMAT_MAT2_FLOAT16   = 11109,
+
+    GLTF_ACCESSOR_FORMAT_MAT3_U16       = 11107,
+    GLTF_ACCESSOR_FORMAT_MAT3_S16       = 11108,
+    GLTF_ACCESSOR_FORMAT_MAT3_FLOAT16   = 11109,
+
+    GLTF_ACCESSOR_FORMAT_MAT4_U16       = 11107,
+    GLTF_ACCESSOR_FORMAT_MAT4_S16       = 11108,
+    GLTF_ACCESSOR_FORMAT_MAT4_FLOAT16   = 11109,
+
+    GLTF_ACCESSOR_FORMAT_MAT2_U32       = 12107,
+    GLTF_ACCESSOR_FORMAT_MAT2_S32       = 12108,
+    GLTF_ACCESSOR_FORMAT_MAT2_FLOAT32   = 12109,
+
+    GLTF_ACCESSOR_FORMAT_MAT3_U32       = 12107,
+    GLTF_ACCESSOR_FORMAT_MAT3_S32       = 12108,
+    GLTF_ACCESSOR_FORMAT_MAT3_FLOAT32   = 12109,
+
+    GLTF_ACCESSOR_FORMAT_MAT4_U32       = 12107,
+    GLTF_ACCESSOR_FORMAT_MAT4_S32       = 12108,
+    GLTF_ACCESSOR_FORMAT_MAT4_FLOAT32   = 12109,
 };
 
 struct Gltf_Accessor {
-    Gltf_Type type;
-    Gltf_Type component_type;
-    Gltf_Type indices_component_type;
+    Gltf_Accessor_Format format;
+    Gltf_Accessor_Type indices_component_type;
 
     int stride;
 
-    int indices_buffer_view;
-    int values_buffer_view;
-    int indices_byte_offset;
-    int values_byte_offset;
     int buffer_view;
     int byte_offset;
     int normalized;
     int count;
+
+    // sparse
     int sparse_count;
+    int indices_buffer_view;
+    int values_buffer_view;
+    int indices_byte_offset;
+    int values_byte_offset;
 
     float *max;
     float *min;
@@ -166,6 +253,7 @@ enum Gltf_Mesh_Attribute_Type {
 };
 struct Gltf_Mesh_Attribute {
     Gltf_Mesh_Attribute_Type type;
+    // really not sure about this n value. I just dont know how big n can get...
     int n;
     int accessor_index;
 };
@@ -186,14 +274,19 @@ enum Gltf_Primitive_Topology {
 struct Gltf_Mesh_Primitive {
     int stride;
 
+    int extra_attribute_count;
     int target_count;
-    int attribute_count;
     int indices;
     int material;
     int topology = GLTF_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
+    int position = -1;
+    int tangent = -1;
+    int normal = -1;
+    int tex_coord_0 = -1;
+
+    Gltf_Mesh_Attribute *extra_attributes;
     Gltf_Morph_Target   *targets;
-    Gltf_Mesh_Attribute *attributes;
 };
 struct Gltf_Mesh {
     int stride;
