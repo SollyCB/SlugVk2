@@ -51,16 +51,42 @@ struct Renderer_Vertex_Input_State {
 };
 Renderer_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info);
 
-struct Renderer_Rasterization_State_Info {};
-struct Renderer_Rasterization_State {};
-Renderer_Rasterization_State renderer_define_rasterization_state(Renderer_Rasterization_State_Info *info);
+enum Renderer_Polygon_Mode_Flag_Bits {
+    RENDERER_POLYGON_MODE_FILL_BIT  = 0x01,
+    RENDERER_POLYGON_MODE_LINE_BIT  = 0x02,
+    RENDERER_POLYGON_MODE_POINT_BIT = 0x04,
+};
+// @Note Viewport and scissor set dynamically, so just defaults at pipeline compilation. I will try to keep this as the only dynamic state in the engine...
+struct Renderer_Rasterization_State {
+    int polygon_mode_count;
+    VkPolygonMode polygon_modes[3];
+    VkCullModeFlags cull_mode;
+    VkFrontFace front_face;
+};
+Renderer_Rasterization_State renderer_define_rasterization_state(u8 polygon_mode_flags, u8 cull_mode_flags); // top bit of cull mode flags indicates clockwise front face or not; a pipeline is compiled for each polygon mode set
 
-struct Renderer_Fragment_Shader_State_Info {};
-struct Renderer_Fragment_Shader_State {};
-Renderer_Fragment_Shader_State renderer_define_fragment_shader_state(Renderer_Fragment_Shader_State_Info *info);
+enum Renderer_Fragment_Shader_Flag_Bits {
+    RENDERER_FRAGMENT_SHADER_DEPTH_TEST_ENABLE_BIT         = 0x01,
+    RENDERER_FRAGMENT_SHADER_DEPTH_WRITE_ENABLE_BIT        = 0x02,
+    RENDERER_FRAGMENT_SHADER_DEPTH_BOUNDS_TEST_ENABLE_BIT  = 0x04,
+};
+// @Todo multisampling, what even is it? what are benefits? (Smoothness ik...)
+struct Renderer_Fragment_Shader_State {
+    // 32bits for alignment
+    u32 flags;
+    VkCompareOp depth_compare_op;
+    float min_depth_bounds;
+    float max_depth_bounds;
+};
+Renderer_Fragment_Shader_State renderer_define_fragment_shader_state(u8 flags, VkCompareOp depth_compare_op, float min_depth_bounds, float max_depth_bounds);
 
-struct Renderer_Fragment_Ouput_State_Info {};
-struct Renderer_Fragment_Ouput_State {};
-Renderer_Fragment_Ouput_State renderer_define_fragment_output_state(Renderer_Fragment_Ouput_State_Info *info);
+enum Renderer_Blend_Setting {
+    RENDERER_BLEND_SETTING_OPAQUE_FULL_COLOR = 0,
+};
+// @Todo color blending. The goal here is to have an enum with a bunch of options for typical combinations. (Fill out above)
+struct Renderer_Fragment_Ouput_State {
+    VkPipelineColorBlendAttachmentState blend_state;
+};
+Renderer_Fragment_Ouput_State renderer_define_fragment_output_state(Renderer_Blend_Setting blend_setting);
 
 #endif // include guard

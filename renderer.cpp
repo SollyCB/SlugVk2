@@ -1,4 +1,5 @@
 #include "renderer.hpp"
+#include "gpu.hpp"
 
 int renderer_get_byte_stride(Gltf_Accessor_Format);
 
@@ -18,6 +19,34 @@ int renderer_get_byte_stride(Gltf_Accessor_Format);
 // kept contiguous, and if there is extra stuff like for the 'extra_attributes' field, 
 // we can just allocate more knowing that the extra stuff is just off the end of the state we
 // just defined.
+
+struct Renderer_Create_Pipeline_Info {
+    int        subpass;
+
+    int        shader_count;
+    u64       *shader_code_sizes;
+    const u32 *shader_code;
+    VkShaderStageFlagBits *shader_stages;
+
+    Renderer_Vertex_Input_State    *vertex_input_state;
+    Renderer_Rasterization_State   *rasterization_state;
+    Renderer_Fragment_Shader_State *fragment_shader_state;
+    Renderer_Fragment_Ouput_State  *fragment_output_state;
+
+    VkPipelineLayout pl_layout;
+    VkRenderpass     renderpass;
+};
+VkPipeline renderer_create_pipeline(Renderer_Create_Pipeline_Info *info) {
+    VkDevice device = get_gpu_instance()->vk_device;
+
+    Create_Vk_Pipeline_Shader_Stage_Info *shader_infos = (Create_Vk_Pipeline_Shader_Stage_Info*)memory_allocate_temp(sizeof(Create_Vk_Pipeline_Shader_Stage_Info) * info->shader_count, 8);
+    for(int i = 0; i < info->shader_count; ++i) {
+        shader_infos[i].code_size   = info->shader_code_sizes[i];
+        shader_infos[i].shader_code = info->shader_code[i];
+        shader_infos[i].stage       = info->shader_stages[i];
+    }
+    VkPipelineShaderStageCreateInfo *shader_stages = create_vk_pipeline_shader_stages(device, info->shader_count, shader_infos);
+}
 
 Renderer_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info) {
     
@@ -135,6 +164,100 @@ Renderer_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primiti
         state.binding_description_strides[3] = buffer_view->byte_stride;
     } else {
         state.binding_description_strides[3] = renderer_get_byte_stride(accessor->format);
+    }
+
+    return state;
+}
+
+Renderer_Rasterization_State renderer_define_rasterization_state(u8 polygon_mode_flags, u8 cull_mode_flags) {
+    Renderer_Rasterization_State state = {};
+
+    switch(polygon_mode_flags) {
+        case 0:
+            state.polygon_mode_count = 1;
+            state.polygon_modes[0] = VK_POLYGON_MODE_FILL;
+            break;
+        case 1:
+            state.polygon_mode_count = 1;
+            state.polygon_modes[0] = VK_POLYGON_MODE_FILL;
+            break;
+        case 2:
+            state.polygon_mode_count = 1;
+            state.polygon_modes[0] = VK_POLYGON_MODE_LINE;
+            break;
+        case 4:
+            state.polygon_mode_count = 1;
+            state.polygon_modes[0] = VK_POLYGON_MODE_POINT;
+            break;
+        case 3:
+            state.polygon_mode_count = 2;
+            state.polygon_modes[0] = VK_POLYGON_MODE_FILL;
+            state.polygon_modes[1] = VK_POLYGON_MODE_LINE;
+            break;
+        case 5:
+            state.polygon_mode_count = 2;
+            state.polygon_modes[0] = VK_POLYGON_MODE_FILL;
+            state.polygon_modes[1] = VK_POLYGON_MODE_POINT;
+            break;
+        case 6:
+            state.polygon_mode_count = 2;
+            state.polygon_modes[0] = VK_POLYGON_MODE_LINE;
+            state.polygon_modes[1] = VK_POLYGON_MODE_POINT;
+            break;
+        case 7:
+            state.polygon_mode_count = 3;
+            state.polygon_modes[0] = VK_POLYGON_MODE_FILL;
+            state.polygon_modes[1] = VK_POLYGON_MODE_LINE;
+            state.polygon_modes[2] = VK_POLYGON_MODE_POINT;
+            break;
+        default:
+            state.polygon_mode_count = 1;
+            state.polygon_modes[0] = VK_POLYGON_MODE_FILL;
+            ASSERT(false, "This is not a valid set of polygon flags");
+            break;
+    }
+    state.cull_mode  = (VkCullModeFlags)cull_mode_flags;
+    state.front_face = (VkFrontFace)(cull_mode_flags >> 7); // top bit stores clockwise bool
+
+    return state; 
+}
+
+// Currently this function really does not have much to do, since multisampling is all 
+// defaults for now...
+Renderer_Fragment_Shader_State renderer_define_fragment_shader_state(u8 flags, VkCompareOp depth_compare_op, float min_depth_bounds, float max_depth_bounds) {
+    Renderer_Fragment_Shader_State state = {};
+
+    state.flags = flags;
+    state.depth_compare_op = depth_compare_op;
+    state.min_depth_bounds = min_depth_bounds;
+    state.max_depth_bounds = max_depth_bounds;
+
+    return state;
+}
+
+Renderer_Fragment_Ouput_State renderer_define_fragment_output_state(Renderer_Blend_Setting blend_setting) {
+    Renderer_Fragment_Ouput_State state = {};
+
+    switch (blend_setting) {
+        case RENDERER_BLEND_SETTING_OPAQUE_FULL_COLOR:
+        {
+            state.blend_state.blendEnable    = VK_FALSE;
+            state.blend_state.colorWriteMask =
+                VK_COLOR_COMPONENT_R_BIT | 
+                VK_COLOR_COMPONENT_G_BIT | 
+                VK_COLOR_COMPONENT_B_BIT | 
+                VK_COLOR_COMPONENT_A_BIT;
+            break;
+        }
+        default:
+            state.blend_state.blendEnable    = VK_FALSE;
+            state.blend_state.colorWriteMask = 
+                VK_COLOR_COMPONENT_R_BIT | 
+                VK_COLOR_COMPONENT_G_BIT | 
+                VK_COLOR_COMPONENT_B_BIT | 
+                VK_COLOR_COMPONENT_A_BIT;
+            ASSERT(false, "Not a valid blend setting");
+            break;
     }
 
     return state;
