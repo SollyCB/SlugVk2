@@ -182,20 +182,20 @@ struct Create_Vk_Vertex_Input_Attribute_Description_Info {
     u32 location;
     u32 binding;
     u32 offset;
-    Vec_Type format;
+    VkFormat format;
 };
 VkVertexInputAttributeDescription create_vk_vertex_attribute_description(Create_Vk_Vertex_Input_Attribute_Description_Info *info);
 
 struct Create_Vk_Pipeline_Vertex_Input_State_Info {
     u32 binding_count;
-    VkVertexInputBindingDescription *binding_descriptions;
     u32 attribute_count;
+    VkVertexInputBindingDescription *binding_descriptions;
     VkVertexInputAttributeDescription *attribute_descriptions;
 };
 VkPipelineVertexInputStateCreateInfo create_vk_pipeline_vertex_input_states(Create_Vk_Pipeline_Vertex_Input_State_Info *info);
 
 // `InputAssemblyState
-VkPipelineInputAssemblyStateCreateInfo* create_vk_pipeline_input_assembly_states(u32 count, VkPrimitiveTopology *topologies, VkBool32 *primitive_restart);
+VkPipelineInputAssemblyStateCreateInfo create_vk_pipeline_input_assembly_state(VkPrimitiveTopology topology, VkBool32 primitive_restart);
 
 // `TessellationState
 // @Todo support Tessellation
@@ -204,6 +204,7 @@ VkPipelineInputAssemblyStateCreateInfo* create_vk_pipeline_input_assembly_states
 VkPipelineViewportStateCreateInfo create_vk_pipeline_viewport_state(Window *window);
 
 // `RasterizationState
+VkPipelineRasterizationStateCreateInfo create_vk_pipeline_rasterization_state(VkPolygonMode polygon_mode, VkCullModeFlags cull_mode, VkFrontFace front_face);
 void vkCmdSetDepthClampEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthClampEnable);
 void vkCmdSetPolygonModeEXT(VkCommandBuffer commandBuffer, VkPolygonMode polygonMode);
 // `MultisampleState // @Todo support setting multisampling functions
@@ -211,6 +212,16 @@ void vkCmdSetPolygonModeEXT(VkCommandBuffer commandBuffer, VkPolygonMode polygon
 VkPipelineMultisampleStateCreateInfo create_vk_pipeline_multisample_state();
 
 // `DepthStencilState
+struct Create_Vk_Pipeline_Depth_Stencil_State_Info {
+    VkBool32 depth_test_enable;
+    VkBool32 depth_write_enable;
+    VkBool32 depth_bounds_test_enable;
+    VkCompareOp depth_compare_op;
+    float min_depth_bounds;
+    float max_depth_bounds;
+};
+VkPipelineDepthStencilStateCreateInfo create_vk_pipeline_depth_stencil_state(Create_Vk_Pipeline_Depth_Stencil_State_Info *info);
+
 // `BlendState
 void vkCmdSetLogicOpEnableEXT(VkCommandBuffer commandBuffer, VkBool32 logicOpEnable);
 void vkCmdSetColorBlendEnableEXT(VkCommandBuffer commandBuffer, u32 firstAttachment,
@@ -220,14 +231,12 @@ void vkCmdSetColorBlendEquationEXT(VkCommandBuffer commandBuffer, u32 firstAttac
 void vkCmdSetColorWriteMaskEXT(VkCommandBuffer commandBuffer, u32 firstAttachment, 
         u32 attachmentCount, const VkColorComponentFlags* pColorWriteMasks);
 
-// `BlendState - Lots of inlined dyn states
-struct Create_Vk_Pl_Color_Blend_State_Info {
-    VkBool32  logic_op_enable; // @BoolsInStruct
-    VkLogicOp logic_op;
+// `BlendState
+struct Create_Vk_Pipeline_Color_Blend_State_Info {
     u32 attachment_count;
     VkPipelineColorBlendAttachmentState *attachment_states;
 };
-VkPipelineColorBlendStateCreateInfo create_vk_pipeline_color_blend_state(Create_Vk_Pl_Color_Blend_State_Info *info);
+VkPipelineColorBlendStateCreateInfo create_vk_pipeline_color_blend_state(Create_Vk_Pipeline_Color_Blend_State_Info *info);
 
 // `DynamicState
 VkPipelineDynamicStateCreateInfo create_vk_pipeline_dyn_state();

@@ -89,4 +89,22 @@ struct Renderer_Fragment_Ouput_State {
 };
 Renderer_Fragment_Ouput_State renderer_define_fragment_output_state(Renderer_Blend_Setting blend_setting);
 
+struct Renderer_Create_Pipeline_Info {
+    int        subpass;
+
+    int        shader_count;
+    u64       *shader_code_sizes;
+    const u32 **shader_codes;
+    VkShaderStageFlagBits *shader_stages;
+
+    Renderer_Vertex_Input_State    *vertex_input_state;
+    Renderer_Rasterization_State   *rasterization_state;
+    Renderer_Fragment_Shader_State *fragment_shader_state;
+    Renderer_Fragment_Ouput_State  *fragment_output_state;
+
+    VkPipelineLayout pl_layout;
+    VkRenderPass     renderpass;
+};
+VkPipeline renderer_create_pipeline(Renderer_Create_Pipeline_Info *info);
+
 #endif // include guard

@@ -924,7 +924,7 @@ VkVertexInputAttributeDescription create_vk_vertex_attribute_description(Create_
     VkVertexInputAttributeDescription attribute_description = {
         info->location,
         info->binding,
-        (VkFormat)info->format,
+        info->format,
         info->offset,
     };
     return attribute_description;
@@ -941,17 +941,17 @@ VkPipelineVertexInputStateCreateInfo create_vk_pipeline_vertex_input_states(Crea
 }
 
 // `InputAssemblyState
-VkPipelineInputAssemblyStateCreateInfo* create_vk_pipeline_input_assembly_states(u32 count, VkPrimitiveTopology *topologies, VkBool32 *primitive_restart) {
+VkPipelineInputAssemblyStateCreateInfo create_vk_pipeline_input_assembly_state(VkPrimitiveTopology topology, VkBool32 primitive_restart) {
     // @Todo @PipelineAllocation same as above ^^
-    VkPipelineInputAssemblyStateCreateInfo *assembly_state_infos = 
-        (VkPipelineInputAssemblyStateCreateInfo*)memory_allocate_heap(
-            sizeof(VkPipelineInputAssemblyStateCreateInfo) * count, 8);
-    for(int i = 0; i < count; ++i) {
-        assembly_state_infos[i] = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-        assembly_state_infos[i].topology = topologies[i];
-        assembly_state_infos[i].primitiveRestartEnable = primitive_restart[i];
-    }
-    return assembly_state_infos;
+    // ^^ not sure about these todos now that I have gltf use cases ... - sol, sept 30 2023
+
+    VkPipelineInputAssemblyStateCreateInfo assembly_state_info = {};
+
+    assembly_state_info = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+    assembly_state_info.topology = topology;
+    assembly_state_info.primitiveRestartEnable = primitive_restart;
+
+    return assembly_state_info;
 }
 
 // `TessellationState
@@ -982,6 +982,13 @@ VkPipelineViewportStateCreateInfo create_vk_pipeline_viewport_state(Window *wind
 }
 
 // `RasterizationState
+VkPipelineRasterizationStateCreateInfo create_vk_pipeline_rasterization_state(VkPolygonMode polygon_mode, VkCullModeFlags cull_mode, VkFrontFace front_face) {
+    VkPipelineRasterizationStateCreateInfo state = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+    state.polygonMode = polygon_mode;
+    state.cullMode    = cull_mode;
+    state.frontFace   = front_face;
+    return state;
+}
 void vkCmdSetDepthClampEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthClampEnable) {
     VkDevice device = get_gpu_instance()->vk_device;
     auto func = (PFN_vkCmdSetDepthClampEnableEXT) vkGetDeviceProcAddr(device, "vkCmdSetDepthClampEnableEXT");
@@ -1005,16 +1012,24 @@ VkPipelineMultisampleStateCreateInfo create_vk_pipeline_multisample_state() {
     return state;
 }
 
-// `DepthStencilState - All inlined dyn state functions
+// `DepthStencilState
+VkPipelineDepthStencilStateCreateInfo create_vk_pipeline_depth_stencil_state(Create_Vk_Pipeline_Depth_Stencil_State_Info *info) {
+    VkPipelineDepthStencilStateCreateInfo state = {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+    state.depthTestEnable       = info->depth_test_enable;
+    state.depthWriteEnable      = info->depth_write_enable;
+    state.depthBoundsTestEnable = info->depth_bounds_test_enable;
+    state.depthCompareOp        = info->depth_compare_op;
+    state.minDepthBounds        = info->min_depth_bounds;
+    state.maxDepthBounds        = info->max_depth_bounds;
+    return state;
+}
 
 // `BlendState - Lots of inlined dyn states
-VkPipelineColorBlendStateCreateInfo create_vk_pipeline_color_blend_state(Create_Vk_Pl_Color_Blend_State_Info *info) {
+VkPipelineColorBlendStateCreateInfo create_vk_pipeline_color_blend_state(Create_Vk_Pipeline_Color_Blend_State_Info *info) {
     // @PipelineAllocations I think this state is one that contrasts to the others, these will likely be super 
     // ephemeral. I do not know to what extent I can effect color blending. Not very much I assume without 
     // extended dyn state 3... so I think this will require recompilations or state explosion...
     VkPipelineColorBlendStateCreateInfo blend_state = {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
-    blend_state.logicOpEnable   = info->logic_op_enable;
-    blend_state.logicOp         = info->logic_op;
     blend_state.attachmentCount = info->attachment_count;
     blend_state.pAttachments    = info->attachment_states;
 

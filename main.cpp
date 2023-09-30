@@ -27,7 +27,17 @@ int main() {
     draw_info.offsets = (int*)memory_allocate_temp(4 * 20, 4);
     draw_info.file_names = (char**)memory_allocate_temp(8 * 20, 8);
 
-    Renderer_Vertex_Input_State state = renderer_define_vertex_input_state(model.meshes->primitives, &model, &draw_info);
+    Renderer_Vertex_Input_State vertex_input_state = renderer_define_vertex_input_state(model.meshes->primitives, &model, &draw_info);
+
+    u8 polygon_mode_flags = 0x01;
+    u8 cull_mode_flags    = 0x00;
+    Renderer_Rasterization_State rasterization_state = renderer_define_rasterization_state(polygon_mode_flags, cull_mode_flags);
+
+    u8 fragment_shader_flags = 0x0;
+    VkCompareOp compare_op = VK_COMPARE_OP_NEVER;
+    Renderer_Fragment_Shader_State fragment_shader_state = renderer_define_fragment_shader_state(fragment_shader_flags, compare_op, 0, 0);
+
+    Renderer_Fragment_Ouput_State fragment_output_state = renderer_define_fragment_output_state(RENDERER_BLEND_SETTING_OPAQUE_FULL_COLOR);
     
 #if 0
     init_glfw(); 
