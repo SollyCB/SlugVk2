@@ -105,6 +105,11 @@ int main() {
     // the move forward way. But also a quick rewrite of the ending of the spirv parse
     // function would be useful...
     // You ended last night reading lighting calculation code...
+    //
+    // The real todos: sampler setup, but also new descriptor set up, using pools.
+    // I have no idea of the degree to which it is more dynamic to use descriptor buffers.
+    // But since it is more in keeping with the 1.0 vision, I assume it would be more in line
+    // with mu philosophy than the buffers...
 
     destroy_vk_renderpass(gpu->vk_device, renderpass);
 

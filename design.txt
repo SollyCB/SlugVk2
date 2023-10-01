@@ -1,0 +1,29 @@
+Titled: GET A GRIP!
+
+You now have a good handle on what Vulkan does and how it works, so it is time
+to really start putting that into practice. Certain things can be rly heavily
+rewritten, specificically:
+    Spirv parser can be written more cleanly, the end is testament to a misunderstanding of its role;
+
+    Honestly, gltf parser is fine, all the information in it is important. The indexing system is a
+    touch weird, but honestly the grouping of the data is nice.
+
+    Most importantly, the gpu file... I did not properly understand resource creation and use case
+    when I wrote most of that. But there is no need to start from scratch with that file. Just
+    liberally retire stuff. Rewrite a lot of the resource creation stuff whenever it comes up...
+
+    SHADER CODE!! Descriptors and shader resources can be handled well. Have a set number of things
+    which can generally go in any model shader. Models should very very broadly use the same
+    sort of resources: e.g. a maximum number of textures. Then we can always allocate consistent
+    descriptor types, which makes managing descriptor pools far far easier... Then there can
+    be special case stuff for special case stuff, such as water which would likely want
+    more complicated stuff for reflection etc.
+
+I need to make a clearer plan for what I want the engine to do: the gltf file format
+defined endless different methods for achieving similar effects (its written in json ffs),
+I do not need to support or manage all of them. If this was for an org you would tell the
+artists "export your stuff in this format, it is more efficient for the engine". I need
+to think like this: How can I support as many visual/graphical outcomes as I would want
+for my style of game, while limiting resource definitions to the smallest possible set.
+
+Like Mike Acton says, I dont need to be able to place a ladder anywhere, just in these spots.

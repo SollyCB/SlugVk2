@@ -1,0 +1,4 @@
+Resources:
+    Chapter 15. Shader Interfaces
+    Table 21. Shader Resource and Descriptor Type Correspondence
+    Table 22. Shader Resource and Storage Class Correspondence
