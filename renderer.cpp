@@ -104,6 +104,8 @@ VkPipeline renderer_create_pipeline(Renderer_Create_Pipeline_Info *info) {
     VkPipelineColorBlendStateCreateInfo blending = create_vk_pipeline_color_blend_state(&blend_info);
 
     VkPipeline pl;
+
+    destroy_vk_pipeline_shader_stages(device, 2, shader_stages);
     return pl;
 }
 
@@ -149,14 +151,10 @@ Renderer_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primiti
     state.binding_description_bindings  [3] = 3;
     state.attribute_description_bindings[3] = 3;
 
-    //
-    // @Todo look at the benefits of using locations / array access in shaders
-    //  I think it is useful for more homogeneous stuff than this?
-    //
     state.attribute_description_locations[0] = 0; // pos
-    state.attribute_description_locations[1] = 0; // norm
-    state.attribute_description_locations[2] = 0; // tang
-    state.attribute_description_locations[3] = 0; // tex_coord_0
+    state.attribute_description_locations[1] = 1; // norm
+    state.attribute_description_locations[2] = 2; // tang
+    state.attribute_description_locations[3] = 3; // tex_coord_0
 
     int position    = mesh_primitive->position;
     int normal      = mesh_primitive->normal;

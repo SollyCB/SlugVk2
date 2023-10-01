@@ -177,16 +177,9 @@ static inline s32 print_parse_unsigned_int(const char *str, u32 len, char *buf, 
     return end;
 }
 static inline u64 print_parse_string(const char *str, u32 len, char *buf, const char* cstr) {
-    // @Wtf
-    // these were both sefaulting with an avx strcpy and strlen instructions, so I will replace with manual strcpy for now...
-    //u64 str_len = strlen(cstr);
-    //strcpy(buf, cstr);
-    int i = 0;
-    while(cstr[i] != '\0') {
-        buf[i] = cstr[i];
-        ++i;
-    }
-    return i + 1;
+    u64 str_len = strlen(cstr);
+    strcpy(buf, cstr);
+    return str_len;
 }
 
 static void println(const char* str, ...) {

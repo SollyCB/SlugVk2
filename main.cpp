@@ -39,7 +39,15 @@ int main() {
 
     Renderer_Fragment_Ouput_State fragment_output_state = renderer_define_fragment_output_state(RENDERER_BLEND_SETTING_OPAQUE_FULL_COLOR);
     
-#if 0
+    u64 code_sizes[2];
+    const u32 *vertex_code   = (const u32*)file_read_bin_temp("shaders/vertex_2.vert.spv", &code_sizes[0]);
+    const u32 *fragment_code = (const u32*)file_read_bin_temp("shaders/fragment_2.frag.spv", &code_sizes[1]);
+
+    const u32 *codes[2] = {vertex_code, fragment_code};
+    VkShaderStageFlagBits stages[] = {
+        VK_SHADER_STAGE_VERTEX_BIT, 
+        VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
     init_glfw(); 
     Glfw *glfw = get_glfw_instance();
 
@@ -49,6 +57,58 @@ int main() {
     init_window(gpu, glfw);
     Window *window = get_window_instance();
 
+    Create_Vk_Attachment_Description_Info render_attachment_info = {
+        window->swapchain_info.imageFormat, VK_SAMPLE_COUNT_1_BIT,
+        GPU_ATTACHMENT_DESCRIPTION_SETTING_CLEAR_AND_STORE,
+        GPU_ATTACHMENT_DESCRIPTION_SETTING_DONT_CARE_DONT_CARE,
+        GPU_ATTACHMENT_DESCRIPTION_SETTING_UNDEFINED_TO_PRESENT,
+    };
+    VkAttachmentDescription render_attachment = create_vk_attachment_description(&render_attachment_info);
+
+    VkAttachmentReference color_attachment = {0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+    Create_Vk_Subpass_Description_Info subpass_info = {};
+    subpass_info.color_attachment_count = 1;
+    subpass_info.color_attachments = &color_attachment;
+    VkSubpassDescription subpass = create_vk_graphics_subpass_description(&subpass_info);
+
+    Create_Vk_Subpass_Dependency_Info dependency_info = {
+        GPU_SUBPASS_DEPENDENCY_SETTING_ACQUIRE_TO_RENDER_TARGET_BASIC,
+        VK_SUBPASS_EXTERNAL, 0,
+    };
+    VkSubpassDependency dependency = create_vk_subpass_dependency(&dependency_info);
+
+    Create_Vk_Renderpass_Info renderpass_info = {1, 1, 1};
+    renderpass_info.attachments = &render_attachment;
+    renderpass_info.subpasses = &subpass;
+    renderpass_info.dependencies = &dependency;
+    VkRenderPass renderpass = create_vk_renderpass(gpu->vk_device, &renderpass_info);
+
+
+    Parsed_Spirv spirv = parse_spirv(code_sizes[0], vertex_code);
+    u32 descriptor_set_count;
+    VkDescriptorSetLayout *descriptor_sets = create_vk_descriptor_set_layouts(gpu->vk_device, &spirv, &descriptor_set_count);
+
+    Create_Vk_Pipeline_Layout_Info pl_layout_info = {descriptor_set_count, descriptor_sets};
+    VkPipelineLayout pl_layout = create_vk_pipeline_layout(gpu->vk_device, &pl_layout_info);
+
+    Renderer_Create_Pipeline_Info pl_info = {
+        0, 2, code_sizes, codes, stages,
+        &vertex_input_state, &rasterization_state,
+        &fragment_shader_state, &fragment_output_state,
+        NULL, renderpass,
+    };
+
+    VkPipeline pl = renderer_create_pipeline(&pl_info);
+
+
+    // @TODO Current task is really nothing. I guess setup sampler and texture creation is
+    // the move forward way. But also a quick rewrite of the ending of the spirv parse
+    // function would be useful...
+    // You ended last night reading lighting calculation code...
+
+    destroy_vk_renderpass(gpu->vk_device, renderpass);
+
+#if 0
     Create_Vk_Sampler_Info sampler_info = {gpu->info->limits.maxSamplerAnisotropy};
     VkSampler sampler = create_vk_sampler(gpu->vk_device, &sampler_info);
     destroy_vk_sampler(gpu->vk_device, sampler);
@@ -377,10 +437,10 @@ int main() {
     destroy_command_groups_vk(gpu->vk_device, 2,  present_command_groups);
     destroy_command_groups_vk(gpu->vk_device, 2, transfer_command_groups);
 
+#endif
     kill_window(gpu, window);
     kill_gpu(gpu);
     kill_glfw(glfw);
-#endif
 
     kill_allocators();
     return 0;

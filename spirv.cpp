@@ -338,8 +338,11 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
     u16 layout_index = 0;
     ret.layout_infos[layout_index].binding_infos = binding_info;
 
+    // @Todo redo this shit. This is pretty ugly code actually (specifically the group/index counting...
+
     Id *var;
     Id *result_type;
+    u32 hack_count = 0;
     for(int i = 0; i < var_count; ++i) {
 
         var = ids + var_ids[i];
@@ -456,7 +459,10 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
     }
     // The last layout info in the list will not have its binding count set
     ret.layout_infos[layout_index].binding_count = binding_index - previous_binding_index;
-    ret.group_count = layout_index + 1;
+
+    // This is so ugly. There is a @Todo above to rewrite this messy end
+    if (hack_count)
+        ret.group_count = layout_index + 1;
 
     cut_diff_temp(mark);
     return ret;

@@ -105,6 +105,6 @@ struct Renderer_Create_Pipeline_Info {
     VkPipelineLayout pl_layout;
     VkRenderPass     renderpass;
 };
-VkPipeline renderer_create_pipeline(Renderer_Create_Pipeline_Info *info);
+VkPipeline renderer_create_pipeline(Renderer_Create_Pipeline_Info *pl_info);
 
 #endif // include guard

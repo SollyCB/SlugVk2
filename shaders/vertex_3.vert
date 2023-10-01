@@ -1,19 +1,16 @@
 #version 450
 
-layout(binding = 0, set = 4) uniform sampler2D tex_4;
-layout(binding = 0, set = 0) uniform sampler2D tex_0;
-layout(binding = 0, set = 2) uniform sampler2D tex_2;
-layout(binding = 0, set = 1) uniform sampler2D tex_1;
-layout(binding = 0, set = 3) uniform sampler2D tex_3;
+layout(location = 0) in position;
+layout(location = 1) in normal;
+layout(location = 2) in tangent;
+layout(location = 3) in tex_coord_0;
 
-layout(binding = 1, set = 0, std140) uniform UBO {
-    vec3 a_vec;
-} ubo;
+layout(binding = 0) uniform sampler2D tex_sampler_0;
+layout(binding = 1) uniform sampler2D pbr_metallic_roughness_sampler;
 
-layout(binding = 2, set = 0) buffer A_VEC {vec3 a_vec;} storage_vec;
-
-layout(binding = 3, set = 0) uniform textureBuffer tex_buffer;
+layout(location = 0) out vec4 frag_color;
+layout(location = 1) out vec4 pbr_metallic_roughness;
 
 void main() {
-    gl_Position = vec4(1, 1, 1, 1);
+    gl_Position = position;
 }

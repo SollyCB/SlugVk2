@@ -878,35 +878,40 @@ void destroy_vk_descriptor_set_layouts(VkDevice vk_device, u32 count, VkDescript
 VkPipelineShaderStageCreateInfo* create_vk_pipeline_shader_stages(VkDevice vk_device, u32 count, Create_Vk_Pipeline_Shader_Stage_Info *infos) {
     // @Todo like with other aspects of pipeline creation, I think that shader stage infos can all be allocated 
     // and loaded at startup and the  not freed for the duration of the program as these are not changing state
-    u8 *memory_block = memory_allocate_heap(sizeof(VkPipelineShaderStageCreateInfo)  * count +
-                                            sizeof(VkShaderModuleCreateInfo) * count, 8);
+    u8 *memory_block = memory_allocate_heap(sizeof(VkPipelineShaderStageCreateInfo) * count, 8);
+
+    VkResult check;
+    VkShaderModuleCreateInfo          module_info;
     VkPipelineShaderStageCreateInfo  *stage_info;
-    VkShaderModuleCreateInfo         *module_info;
     for(int i = 0; i < count; ++i) {
-        module_info = (VkShaderModuleCreateInfo*)(memory_block + 
-                                                 (sizeof(VkPipelineShaderStageCreateInfo) * count) + 
-                                                 (sizeof(VkShaderModuleCreateInfo) * i));
-        *module_info = {
+
+        module_info = {
             VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, 
             NULL,
             0x0,
             infos[i].code_size,
             infos[i].shader_code,
         };
-        VkShaderModule module;
-        vkCreateShaderModule(vk_device, module_info, ALLOCATION_CALLBACKS, &module);
-        stage_info        = (VkPipelineShaderStageCreateInfo*)(memory_block +
-                                                              (sizeof(VkPipelineShaderStageCreateInfo) * i));
-       *stage_info        = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-        stage_info->pNext = NULL;
-        stage_info->stage = infos[i].stage;
-        stage_info->module = module;
-        stage_info->pName = "main";
+
+        VkShaderModule mod;
+        check = vkCreateShaderModule(vk_device, &module_info, ALLOCATION_CALLBACKS, &mod);
+        DEBUG_OBJ_CREATION(vkCreateShaderModule, check);
+
+        stage_info = (VkPipelineShaderStageCreateInfo*)(memory_block + (sizeof(VkPipelineShaderStageCreateInfo) * i));
+
+       *stage_info = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+
+        stage_info->pNext  = NULL;
+        stage_info->stage  = infos[i].stage;
+        stage_info->module = mod;
+        stage_info->pName  = "main";
+
         // @Todo add specialization support
         stage_info->pSpecializationInfo = NULL;
     }
     return (VkPipelineShaderStageCreateInfo*)memory_block;
 }
+
 void destroy_vk_pipeline_shader_stages(VkDevice vk_device, u32 count, VkPipelineShaderStageCreateInfo *stages) {
     for(int i = 0; i < count; ++i) {
         vkDestroyShaderModule(vk_device, stages[i].module, ALLOCATION_CALLBACKS);
@@ -1113,8 +1118,7 @@ VkPipelineDynamicStateCreateInfo create_vk_pipeline_dyn_state() {
 }
 
 // `PipelineLayout
-VkPipelineLayout* create_vk_pipeline_layouts(VkDevice vk_device, u32 count, Create_Vk_Pipeline_Layout_Info *infos) {
-    VkPipelineLayoutCreateInfo create_info = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+VkPipelineLayout create_vk_pipeline_layout(VkDevice vk_device, Create_Vk_Pipeline_Layout_Info *info) {
 
     // @Todo probably need different functions for different allocation types, eg I can imagine that there are 
     // certain pipelines (like for the map which will be pretty persistent, and so these can maybe be heap allocated?
@@ -1123,19 +1127,19 @@ VkPipelineLayout* create_vk_pipeline_layouts(VkDevice vk_device, u32 count, Crea
     // the heap, as I will not be parsing spirv at run time and recreating those things. Actually as these directly 
     // follow from the descriptor sets these will also just be created once at load time: other state in the pipeline 
     // will change and cause recompilation, but the actual pipelinelayout will be consistent.
-    VkPipelineLayout *layouts = (VkPipelineLayout*)memory_allocate_heap(sizeof(VkPipelineLayout) * count, 8);
+
+    VkPipelineLayoutCreateInfo create_info = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
 
     VkResult check;
-    for(int i = 0; i < count; ++i) {
-        create_info.setLayoutCount         = infos[i].descriptor_set_layout_count;
-        create_info.pSetLayouts            = infos[i].descriptor_set_layouts;
-        create_info.pushConstantRangeCount = infos[i].push_constant_count;
-        create_info.pPushConstantRanges    = infos[i].push_constant_ranges;
+    create_info.setLayoutCount         = info->descriptor_set_layout_count;
+    create_info.pSetLayouts            = info->descriptor_set_layouts;
+    create_info.pushConstantRangeCount = info->push_constant_count;
+    create_info.pPushConstantRanges    = info->push_constant_ranges;
 
-        check = vkCreatePipelineLayout(vk_device, &create_info, ALLOCATION_CALLBACKS, &layouts[i]);
-        DEBUG_OBJ_CREATION(vkCreatePipelineLayout, check);
-    }
-    return layouts;
+    VkPipelineLayout layout;
+    check = vkCreatePipelineLayout(vk_device, &create_info, ALLOCATION_CALLBACKS, &layout);
+    DEBUG_OBJ_CREATION(vkCreatePipelineLayout, check);
+    return layout;
 }
 void destroy_vk_pipeline_layouts(VkDevice vk_device, u32 count, VkPipelineLayout *pl_layouts) {
     for(int i = 0; i < count; ++i) {
@@ -1185,6 +1189,118 @@ void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipeli
         vkDestroyPipeline(vk_device, pipelines[i], ALLOCATION_CALLBACKS);
     }
     memory_free_heap(pipelines);
+}
+
+// `Static Rendering (passes, subpassed, framebuffer)
+VkAttachmentDescription create_vk_attachment_description(Create_Vk_Attachment_Description_Info * info) {
+    VkAttachmentDescription description = {};
+    description.format  = info->image_format;
+    description.samples = info->sample_count;
+
+    switch(info->color_depth_setting) {
+        case GPU_ATTACHMENT_DESCRIPTION_SETTING_DONT_CARE_DONT_CARE:
+            description.loadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            description.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            break;
+        case GPU_ATTACHMENT_DESCRIPTION_SETTING_CLEAR_AND_STORE:
+            description.loadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            description.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            break;
+        default:
+            ASSERT(false, "Invalid setting");
+    }
+
+    switch(info->stencil_setting) {
+        case GPU_ATTACHMENT_DESCRIPTION_SETTING_DONT_CARE_DONT_CARE:
+            description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            break;
+        case GPU_ATTACHMENT_DESCRIPTION_SETTING_CLEAR_AND_STORE:
+            description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
+            break;
+        default:
+            ASSERT(false, "Invalid setting");
+    }
+
+    switch(info->layout_setting) {
+        case GPU_ATTACHMENT_DESCRIPTION_SETTING_UNDEFINED_TO_COLOR:
+            description.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            description.finalLayout   = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            break;
+        case GPU_ATTACHMENT_DESCRIPTION_SETTING_UNDEFINED_TO_PRESENT:
+            description.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            description.finalLayout   = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+            break;
+        default:
+            ASSERT(false, "Invalid setting");
+    }
+
+    return description;
+}
+
+VkSubpassDescription create_vk_graphics_subpass_description(Create_Vk_Subpass_Description_Info *info) {
+    VkSubpassDescription description    = {};
+    description.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    description.inputAttachmentCount    = info->input_attachment_count;
+    description.colorAttachmentCount    = info->color_attachment_count;
+    description.pInputAttachments       = info->input_attachments;
+    description.pColorAttachments       = info->color_attachments;
+    description.pResolveAttachments     = info->resolve_attachments;
+    description.pDepthStencilAttachment = info->depth_stencil_attachment;
+
+    // @Todo preserve attachments
+    return description;
+}
+
+VkSubpassDependency create_vk_subpass_dependency(Create_Vk_Subpass_Dependency_Info *info) {
+    VkSubpassDependency dependency = {};
+    dependency.srcSubpass = info->src_subpass;
+    dependency.dstSubpass = info->dst_subpass;
+
+    switch(info->access_rules) {
+    // @Todo These mainly come from the vulkan sync wiki. The todo part is to implement more of them
+    case GPU_SUBPASS_DEPENDENCY_SETTING_ACQUIRE_TO_RENDER_TARGET_BASIC:
+        // This one is just super basic for now...
+        dependency.srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.srcAccessMask = 0;
+        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        break;
+    case GPU_SUBPASS_DEPENDENCY_SETTING_WRITE_READ_COLOR_FRAGMENT:
+        dependency.srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        dependency.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+        dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        break;
+    case GPU_SUBPASS_DEPENDENCY_SETTING_WRITE_READ_DEPTH_FRAGMENT:
+        dependency.srcStageMask  = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT_KHR | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT_KHR;
+        dependency.dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        dependency.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        dependency.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        break;
+    }
+    return dependency;
+}
+
+VkRenderPass create_vk_renderpass(VkDevice vk_device, Create_Vk_Renderpass_Info *info) {
+    VkRenderPassCreateInfo create_info = {VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
+    create_info.attachmentCount = info->attachment_count;
+    create_info.pAttachments = info->attachments;
+    create_info.subpassCount = info->subpass_count;
+    create_info.pSubpasses = info->subpasses;
+    create_info.dependencyCount = info->dependency_count;
+    create_info.pDependencies = info->dependencies;
+    VkRenderPass renderpass;
+    auto check = vkCreateRenderPass(vk_device, &create_info, ALLOCATION_CALLBACKS, &renderpass);
+    DEBUG_OBJ_CREATION(vkCreateRenderPass, check);
+    return renderpass;
+}
+void destroy_vk_renderpass(VkDevice vk_device, VkRenderPass renderpass) {
+    vkDestroyRenderPass(vk_device, renderpass, ALLOCATION_CALLBACKS);
 }
 
 // `Drawing and `Rendering

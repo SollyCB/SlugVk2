@@ -248,8 +248,8 @@ struct Create_Vk_Pipeline_Layout_Info {
     u32 push_constant_count;
     VkPushConstantRange *push_constant_ranges;
 };
-VkPipelineLayout* create_vk_pipeline_layouts(VkDevice vk_device, u32 count, Create_Vk_Pipeline_Layout_Info *infos);
-void destroy_vk_pipeline_layouts(VkDevice vk_device, u32 count, VkPipelineLayout *pl_layouts);
+VkPipelineLayout create_vk_pipeline_layout(VkDevice vk_device, Create_Vk_Pipeline_Layout_Info *info);
+void destroy_vk_pipeline_layout(VkDevice vk_device, u32 count, VkPipelineLayout pl_layout);
 
 // PipelineRenderingInfo
 struct Create_Vk_Pipeline_Rendering_Info_Info {
@@ -261,13 +261,65 @@ struct Create_Vk_Pipeline_Rendering_Info_Info {
 };
 VkPipelineRenderingCreateInfo create_vk_pipeline_rendering_info(Create_Vk_Pipeline_Rendering_Info_Info *info);
 
-// @Todo pipeline: increase possible use of dyn states, eg. vertex input, raster states etc.
 // `Pipeline Final
 VkPipeline* create_vk_graphics_pipelines_heap(VkDevice vk_device, VkPipelineCache cache, 
         u32 count, VkGraphicsPipelineCreateInfo *create_infos);
 void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipelines); // Also frees memory associated with the 'pipelines' pointer
 
-// `Rendering
+// `Static Rendering (framebuffers, renderpass, subpasses)
+enum Gpu_Attachment_Description_Setting {
+    GPU_ATTACHMENT_DESCRIPTION_SETTING_DONT_CARE_DONT_CARE = 0,
+    GPU_ATTACHMENT_DESCRIPTION_SETTING_UNDEFINED_TO_COLOR,
+    GPU_ATTACHMENT_DESCRIPTION_SETTING_UNDEFINED_TO_PRESENT,
+    GPU_ATTACHMENT_DESCRIPTION_SETTING_CLEAR_AND_STORE,
+};
+struct Create_Vk_Attachment_Description_Info {
+    VkFormat image_format;
+    VkSampleCountFlagBits sample_count;
+    Gpu_Attachment_Description_Setting color_depth_setting;
+    Gpu_Attachment_Description_Setting stencil_setting;
+    Gpu_Attachment_Description_Setting layout_setting;
+};
+VkAttachmentDescription create_vk_attachment_description(Create_Vk_Attachment_Description_Info * info);
+
+struct Create_Vk_Subpass_Description_Info {
+     u32 input_attachment_count;
+    VkAttachmentReference *input_attachments;
+     u32 color_attachment_count;
+    VkAttachmentReference *color_attachments;
+    VkAttachmentReference *resolve_attachments;
+    VkAttachmentReference *depth_stencil_attachment;
+
+    // @Todo preserve attachments
+};
+VkSubpassDescription create_vk_graphics_subpass_description(Create_Vk_Subpass_Description_Info *info);
+
+enum Gpu_Subpass_Dependency_Setting {
+    GPU_SUBPASS_DEPENDENCY_SETTING_ACQUIRE_TO_RENDER_TARGET_BASIC,
+    GPU_SUBPASS_DEPENDENCY_SETTING_WRITE_READ_COLOR_FRAGMENT,
+    GPU_SUBPASS_DEPENDENCY_SETTING_WRITE_READ_DEPTH_FRAGMENT,
+};
+struct Create_Vk_Subpass_Dependency_Info {
+    Gpu_Subpass_Dependency_Setting access_rules;
+    u32 src_subpass;
+    u32 dst_subpass;
+};
+VkSubpassDependency create_vk_subpass_dependency(Create_Vk_Subpass_Dependency_Info *info); 
+
+struct Create_Vk_Renderpass_Info {
+    u32 attachment_count;
+    u32 subpass_count;
+    u32 dependency_count;
+    VkAttachmentDescription *attachments;
+    VkSubpassDescription    *subpasses;
+    VkSubpassDependency     *dependencies;
+};
+VkRenderPass create_vk_renderpass(VkDevice vk_device, Create_Vk_Renderpass_Info *info);
+void destroy_vk_renderpass(VkDevice vk_device, VkRenderPass renderpass);
+
+VkFramebuffer create_vk_framebuffer();
+
+// `Rendering Dyn
 struct Create_Vk_Rendering_Attachment_Info_Info {
     VkImageView image_view;
     // Pretty sure this is left null for now (no multisampling yet...)
@@ -609,7 +661,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_messenger_callback(
         void* pUserData) 
 {
     if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
-        println("Validation Layer: %c\n", pCallbackData->pMessage);
+        println("\nValidation Layer: %c", pCallbackData->pMessage);
+        //std::cout << "Validation Layer: " << pCallbackData->pMessage << "\n";
 
     return VK_FALSE;
 }
