@@ -143,14 +143,23 @@ VkSemaphore* get_binary_semaphores(Binary_Semaphore_Pool *pool, u32 count);
 void reset_binary_semaphore_pool(Binary_Semaphore_Pool *pool);
 void cut_tail_binary_semaphores(Binary_Semaphore_Pool *pool, u32 size);
 
+// Descriptors - static, pool allocated
+// @Note I would like to have a pool for each type of descriptor that I will use to help with
+// fragmentation, and understanding what allocations are where... idk if this possible. But I
+// should think so, since there are so few descriptor types. The over head of having more
+// pools seems unimportant as nowhere does anyone say "Do not allocate too many pools", its
+// more about managing the pools that you have effectively...
+VkDescriptorPool create_vk_sampler_descriptor_pool(VkDevice vk_device);
+VkDescriptorPool create_vk_ubo_descriptor_pool(VkDevice vk_device);
 
-// Descriptors
+void allocate_vk_descriptor_sets(VkDevice vk_device, VkDescriptorPool pool, u32 set_count, const VkDescriptorSetLayout *layouts, VkDescriptorSet *sets);
+
+// Descriptors - buffer, dynamic
 struct Create_Vk_Descriptor_Set_Layout_Info {
     u32 count;
     VkDescriptorSetLayoutBinding *bindings;
 };
-struct Parsed_Spirv;
-VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, Parsed_Spirv *parsed_spirv, u32 *count);
+VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, , u32 *count);
 void destroy_vk_descriptor_set_layouts(VkDevice vk_device, u32 count, VkDescriptorSetLayout *layouts);
 
 // Pipeline Setup
@@ -261,7 +270,78 @@ struct Create_Vk_Pipeline_Rendering_Info_Info {
 };
 VkPipelineRenderingCreateInfo create_vk_pipeline_rendering_info(Create_Vk_Pipeline_Rendering_Info_Info *info);
 
-// `Pipeline Final
+/** `Pipeline Final -- static / descriptor pools **/
+
+// Pl_Stage_1
+struct Gpu_Vertex_Input_State {
+    VkPrimitiveTopology topology;
+    int input_binding_description_count;
+    int input_attribute_description_count;
+
+    // binding description info
+    int *binding_description_bindings;
+    int *binding_description_strides;
+
+    // attribute description info
+    int *attribute_description_locations;
+    int *attribute_description_bindings;
+    VkFormat *formats;
+};
+
+// Pl_Stage_2
+enum Gpu_Polygon_Mode_Flag_Bits {
+    GPU_POLYGON_MODE_FILL_BIT  = 0x01,
+    GPU_POLYGON_MODE_LINE_BIT  = 0x02,
+    GPU_POLYGON_MODE_POINT_BIT = 0x04,
+};
+
+struct Gpu_Rasterization_State {
+    int polygon_mode_count;
+    VkPolygonMode polygon_modes[3];
+    VkCullModeFlags cull_mode;
+    VkFrontFace front_face;
+};
+
+// Pl_Stage_3
+enum Gpu_Fragment_Shader_Flag_Bits {
+    GPU_FRAGMENT_SHADER_DEPTH_TEST_ENABLE_BIT         = 0x01,
+    GPU_FRAGMENT_SHADER_DEPTH_WRITE_ENABLE_BIT        = 0x02,
+    GPU_FRAGMENT_SHADER_DEPTH_BOUNDS_TEST_ENABLE_BIT  = 0x04,
+};
+struct Gpu_Fragment_Shader_State {
+    // 32bits for alignment
+    u32 flags;
+    VkCompareOp depth_compare_op;
+    float min_depth_bounds;
+    float max_depth_bounds;
+    // @Todo multisampling
+};
+
+// Pl_Stage_4
+enum Gpu_Blend_Setting {
+    GPU_BLEND_SETTING_OPAQUE_FULL_COLOR = 0,
+};
+struct Gpu_Fragment_Ouput_State {
+    VkPipelineColorBlendAttachmentState blend_state;
+};
+
+struct Create_Vk_Pipeline_Info {
+    int subpass;
+
+    int shader_stage_count;
+    VkPipelineShaderStageCreateInfo *shader_stages;
+
+    Gpu_Vertex_Input_State    *vertex_input_state;
+    Gpu_Rasterization_State   *rasterization_state;
+    Gpu_Fragment_Shader_State *fragment_shader_state;
+    Gpu_Fragment_Ouput_State  *fragment_output_state;
+
+    VkPipelineLayout layout;
+    VkRenderPass renderpass;
+};
+void create_vk_graphics_pipelines(VkDevice vk_device, VkPipelineCache, int count, Create_Vk_Pipeline_Info *infos, VkPipeline *pipelines);
+
+// `Pipeline Final -- dynamic
 VkPipeline* create_vk_graphics_pipelines_heap(VkDevice vk_device, VkPipelineCache cache, 
         u32 count, VkGraphicsPipelineCreateInfo *create_infos);
 void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipelines); // Also frees memory associated with the 'pipelines' pointer

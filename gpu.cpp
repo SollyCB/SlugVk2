@@ -801,7 +801,62 @@ void cut_tail_binary_semaphores(Binary_Semaphore_Pool *pool, u32 size) {
     pool->in_use -= size;
 }
 
-// `Descriptors
+// `Descriptors -- static / pool allocated
+// @Note I would like to have a pool for each type of descriptor that I will use to help with
+// fragmentation, and understanding what allocations are where... idk if this possible. But I
+// should think so, since there are so few descriptor types. The over head of having more
+// pools seems unimportant as nowhere does anyone say "Do not allocate too many pools", its
+// more about managing the pools that you have effectively...
+static const u32 DESCRIPTOR_POOL_COMBINED_IMAGE_SAMPLER_MAX_SET_COUNT = 64;
+static const u32 DESCRIPTOR_POOL_UBO_MAX_SET_COUNT = 64;
+
+static const u32 DESCRIPTOR_POOL_COMBINED_IMAGE_SAMPLER_ALLOCATION_COUNT = 64;
+static const u32 DESCRIPTOR_POOL_UBO_ALLOCATION_COUNT = 64;
+
+VkDescriptorPool create_vk_sampler_descriptor_pool(VkDevice vk_device) {
+    VkDescriptorPoolSize pool_size = {
+        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        DESCRIPTOR_POOL_COMBINED_IMAGE_SAMPLER_ALLOCATION_COUNT,
+    };
+
+    VkDescriptorPoolCreateInfo create_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    create_info.maxSets = DESCRIPTOR_POOL_COMBINED_IMAGE_SAMPLER_MAX_SET_COUNT;
+    create_info.poolSizeCount = 1;
+    create_info.pPoolSizes = &pool_size;
+
+    VkDescriptorPool pool;
+    auto check = vkCreateDescriptorPool(vk_device, &create_info, ALLOCATION_CALLBACKS, &pool);
+    DEBUG_OBJ_CREATION(vkCreateDescriptorPool, check);
+    return pool;
+}
+VkDescriptorPool create_vk_ubo_descriptor_pool(VkDevice vk_device) {
+    VkDescriptorPoolSize pool_size = {
+        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        DESCRIPTOR_POOL_UBO_ALLOCATION_COUNT,
+    };
+
+    VkDescriptorPoolCreateInfo create_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    create_info.maxSets = DESCRIPTOR_POOL_UBO_MAX_SET_COUNT;
+    create_info.poolSizeCount = 1;
+    create_info.pPoolSizes = &pool_size;
+
+    VkDescriptorPool pool;
+    auto check = vkCreateDescriptorPool(vk_device, &create_info, ALLOCATION_CALLBACKS, &pool);
+    DEBUG_OBJ_CREATION(vkCreateDescriptorPool, check);
+    return pool;
+}
+
+void allocate_vk_descriptor_sets(VkDevice vk_device, VkDescriptorPool pool, u32 set_count, const VkDescriptorSetLayout *layouts, VkDescriptorSet *sets) {
+     VkDescriptorSetAllocateInfo allocate_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+     allocate_info.descriptorPool     = pool;
+     allocate_info.descriptorSetCount = set_count;
+     allocate_info.pSetLayouts        = layouts;
+     // @Todo handle allocation failure
+     auto check = vkAllocateDescriptorSets(vk_device, &allocate_info, sets);
+     DEBUG_OBJ_CREATION(vkAllocateDescriptorSets, check);
+}
+
+// `Descriptors -- buffers / dynamic
 VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, Parsed_Spirv *parsed_spirv, u32 *count) {
     u32 total_binding_count = 0;
     for(int i = 0; i < parsed_spirv->group_count; ++i) {
@@ -1119,15 +1174,6 @@ VkPipelineDynamicStateCreateInfo create_vk_pipeline_dyn_state() {
 
 // `PipelineLayout
 VkPipelineLayout create_vk_pipeline_layout(VkDevice vk_device, Create_Vk_Pipeline_Layout_Info *info) {
-
-    // @Todo probably need different functions for different allocation types, eg I can imagine that there are 
-    // certain pipelines (like for the map which will be pretty persistent, and so these can maybe be heap allocated?
-    // or I just allocate those before everything else in temp storage? And then clear temp up to that mark? 
-    // I need concrete examples to decide completely what to do. I think the descriptor layouts can continue to be on
-    // the heap, as I will not be parsing spirv at run time and recreating those things. Actually as these directly 
-    // follow from the descriptor sets these will also just be created once at load time: other state in the pipeline 
-    // will change and cause recompilation, but the actual pipelinelayout will be consistent.
-
     VkPipelineLayoutCreateInfo create_info = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
 
     VkResult check;
@@ -1159,8 +1205,108 @@ VkPipelineRenderingCreateInfo create_vk_pipeline_rendering_info(Create_Vk_Pipeli
     return create_info;
 }
 
+// `Pipeline Final - static / descriptor pools
+void create_vk_graphics_pipelines(VkDevice vk_device, VkPipelineCache cache, int count, Create_Vk_Pipeline_Info *info, VkPipeline *pipelines) {
+
+    // @Todo wrap this state shit in a loop (multiple pipeline creation)
+    
+    // `Vertex Input Stage 1
+    VkVertexInputBindingDescription *vertex_binding_descriptions = 
+        (VkVertexInputBindingDescription*)memory_allocate_temp(
+            sizeof(VkVertexInputBindingDescription) * info->vertex_input_state->input_binding_description_count, 8);
+
+    Create_Vk_Vertex_Input_Binding_Description_Info binding_info;
+    for(int i = 0; i < info->vertex_input_state->input_binding_description_count; ++i) {
+        binding_info = {
+            (u32)info->vertex_input_state->binding_description_bindings[i],
+            (u32)info->vertex_input_state->binding_description_strides[i],
+        };
+        vertex_binding_descriptions[i] = create_vk_vertex_binding_description(&binding_info);
+    }
+
+    VkVertexInputAttributeDescription *vertex_attribute_descriptions = 
+        (VkVertexInputAttributeDescription*)memory_allocate_temp(
+            sizeof(VkVertexInputAttributeDescription) * info->vertex_input_state->input_attribute_description_count, 8);
+
+    Create_Vk_Vertex_Input_Attribute_Description_Info attribute_info;
+    for(int i = 0; i < info->vertex_input_state->input_attribute_description_count; ++i) {
+        attribute_info = {
+            (u32)info->vertex_input_state->attribute_description_locations[i],
+            (u32)info->vertex_input_state->attribute_description_bindings[i],
+            0, // offset corrected at draw time
+            info->vertex_input_state->formats[i],
+        };
+        vertex_attribute_descriptions[i] = create_vk_vertex_attribute_description(&attribute_info);
+    }
+
+    Create_Vk_Pipeline_Vertex_Input_State_Info create_input_state_info = {
+        (u32)info->vertex_input_state->input_binding_description_count,
+        (u32)info->vertex_input_state->input_attribute_description_count,
+        vertex_binding_descriptions,
+        vertex_attribute_descriptions,
+    };
+    VkPipelineVertexInputStateCreateInfo vertex_input = create_vk_pipeline_vertex_input_states(&create_input_state_info);
+
+    VkPipelineInputAssemblyStateCreateInfo input_assembly = create_vk_pipeline_input_assembly_state(info->vertex_input_state->topology, VK_FALSE);
+
+
+    // `Rasterization Stage 2
+    Window *window = get_window_instance();
+    VkPipelineViewportStateCreateInfo viewport = create_vk_pipeline_viewport_state(window);
+    
+    // @Todo setup multiple pipeline compilation for differing topology state
+    VkPipelineRasterizationStateCreateInfo rasterization = create_vk_pipeline_rasterization_state(info->rasterization_state->polygon_modes[0], info->rasterization_state->cull_mode, info->rasterization_state->front_face);
+
+
+    // `Fragment Shader Stage 3
+    VkPipelineMultisampleStateCreateInfo multisample = create_vk_pipeline_multisample_state();
+
+    Create_Vk_Pipeline_Depth_Stencil_State_Info depth_stencil_info = {
+        (VkBool32)(info->fragment_shader_state->flags & GPU_FRAGMENT_SHADER_DEPTH_TEST_ENABLE_BIT),
+        (VkBool32)(info->fragment_shader_state->flags & GPU_FRAGMENT_SHADER_DEPTH_WRITE_ENABLE_BIT >> 1),
+        (VkBool32)(info->fragment_shader_state->flags & GPU_FRAGMENT_SHADER_DEPTH_WRITE_ENABLE_BIT >> 2),
+        info->fragment_shader_state->depth_compare_op,
+        info->fragment_shader_state->min_depth_bounds,
+        info->fragment_shader_state->max_depth_bounds,
+    };
+    VkPipelineDepthStencilStateCreateInfo depth_stencil = create_vk_pipeline_depth_stencil_state(&depth_stencil_info);
+
+    // `Output Stage 4
+    Create_Vk_Pipeline_Color_Blend_State_Info blend_info = {
+        1,
+        &info->fragment_output_state->blend_state,
+    };
+    VkPipelineColorBlendStateCreateInfo blending = create_vk_pipeline_color_blend_state(&blend_info);
+
+    // `Dynamic
+    VkDynamicState dyn_states[] = {
+        VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
+        VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT
+    };
+    VkPipelineDynamicStateCreateInfo dynamic = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+    dynamic.dynamicStateCount = 2;
+    dynamic.pDynamicStates    = dyn_states;
+
+    VkGraphicsPipelineCreateInfo pl_create_info = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+    pl_create_info.stageCount = info->shader_stage_count;
+    pl_create_info.pStages    = info->shader_stages;
+    pl_create_info.pVertexInputState = &vertex_input;
+    pl_create_info.pInputAssemblyState = &input_assembly;
+    pl_create_info.pViewportState = &viewport;
+    pl_create_info.pRasterizationState = &rasterization;
+    pl_create_info.pDepthStencilState = &depth_stencil;
+    pl_create_info.pColorBlendState = &blending;
+    pl_create_info.pDynamicState = &dynamic;
+    pl_create_info.layout = info->layout;
+    pl_create_info.renderPass = info->renderpass;
+    pl_create_info.subpass = 0;
+
+    auto check = vkCreateGraphicsPipelines(vk_device, cache, 1, &pl_create_info, ALLOCATION_CALLBACKS, pipelines);
+    DEBUG_OBJ_CREATION(vkCreateGraphicsPipelines, check);
+}
+
 // @Todo pipeline: increase possible use of dyn states, eg. vertex input, raster states etc.
-// `Pipeline Final
+// `Pipeline Final - dynamic + descriptor buffers
 VkPipeline* create_vk_graphics_pipelines_heap(VkDevice vk_device, VkPipelineCache cache, u32 count, VkGraphicsPipelineCreateInfo *create_infos) {
     for(int i = 0; i < count; ++i) {
         create_infos[i].sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;

@@ -20,98 +20,39 @@ int renderer_get_byte_stride(Gltf_Accessor_Format);
 // we can just allocate more knowing that the extra stuff is just off the end of the state we
 // just defined.
 
+VkPipelineShaderStageCreateInfo* renderer_create_shader_stages(VkDevice device, int count, Renderer_Create_Shader_Stage_Info *infos) {
+    Create_Vk_Pipeline_Shader_Stage_Info *shader_infos =
+        (Create_Vk_Pipeline_Shader_Stage_Info*)memory_allocate_temp(sizeof(Create_Vk_Pipeline_Shader_Stage_Info) * count, 8);
+
+    for(int i = 0; i < count; ++i) {
+        shader_infos[i].code_size   = infos[i].code_size;
+        shader_infos[i].shader_code = infos[i].spirv;
+        shader_infos[i].stage       = infos[i].stage;
+    }
+    return create_vk_pipeline_shader_stages(device, count, shader_infos);
+}
+
 VkPipeline renderer_create_pipeline(Renderer_Create_Pipeline_Info *info) {
     VkDevice device = get_gpu_instance()->vk_device;
 
-    // `Shader Stages
-    Create_Vk_Pipeline_Shader_Stage_Info *shader_infos =
-        (Create_Vk_Pipeline_Shader_Stage_Info*)memory_allocate_temp(
-            sizeof(Create_Vk_Pipeline_Shader_Stage_Info) * info->shader_count, 8);
-
-    for(int i = 0; i < info->shader_count; ++i) {
-        shader_infos[i].code_size   = info->shader_code_sizes[i];
-        shader_infos[i].shader_code = info->shader_codes[i];
-        shader_infos[i].stage       = info->shader_stages[i];
-    }
-    VkPipelineShaderStageCreateInfo *shader_stages = create_vk_pipeline_shader_stages(device, info->shader_count, shader_infos);
-
-    // `Vertex Input
-    VkVertexInputBindingDescription *vertex_binding_descriptions = 
-        (VkVertexInputBindingDescription*)memory_allocate_temp(
-            sizeof(VkVertexInputBindingDescription) * info->vertex_input_state->input_binding_description_count, 8);
-
-    Create_Vk_Vertex_Input_Binding_Description_Info binding_info;
-    for(int i = 0; i < info->vertex_input_state->input_binding_description_count; ++i) {
-        binding_info = {
-            (u32)info->vertex_input_state->binding_description_bindings[i],
-            (u32)info->vertex_input_state->binding_description_strides[i],
-        };
-        vertex_binding_descriptions[i] = create_vk_vertex_binding_description(&binding_info);
-    }
-
-    VkVertexInputAttributeDescription *vertex_attribute_descriptions = 
-        (VkVertexInputAttributeDescription*)memory_allocate_temp(
-            sizeof(VkVertexInputAttributeDescription) * info->vertex_input_state->input_attribute_description_count, 8);
-
-    Create_Vk_Vertex_Input_Attribute_Description_Info attribute_info;
-    for(int i = 0; i < info->vertex_input_state->input_attribute_description_count; ++i) {
-        attribute_info = {
-            (u32)info->vertex_input_state->attribute_description_locations[i],
-            (u32)info->vertex_input_state->attribute_description_bindings[i],
-            0, // offset corrected at draw time
-            info->vertex_input_state->formats[i],
-        };
-        vertex_attribute_descriptions[i] = create_vk_vertex_attribute_description(&attribute_info);
-    }
-
-    Create_Vk_Pipeline_Vertex_Input_State_Info create_input_state_info = {
-        (u32)info->vertex_input_state->input_binding_description_count,
-        (u32)info->vertex_input_state->input_attribute_description_count,
-        vertex_binding_descriptions,
-        vertex_attribute_descriptions,
-    };
-    VkPipelineVertexInputStateCreateInfo vertex_input = create_vk_pipeline_vertex_input_states(&create_input_state_info);
-
-    VkPipelineInputAssemblyStateCreateInfo input_assembly = create_vk_pipeline_input_assembly_state(info->vertex_input_state->topology, VK_FALSE);
-
-
-    // `Rasterization
-    Window *window = get_window_instance();
-    VkPipelineViewportStateCreateInfo viewport = create_vk_pipeline_viewport_state(window);
-    
-    // @Todo setup multiple pipeline compilation for differing topology state
-    VkPipelineRasterizationStateCreateInfo rasterization = create_vk_pipeline_rasterization_state(info->rasterization_state->polygon_modes[0], info->rasterization_state->cull_mode, info->rasterization_state->front_face);
-
-
-    // `Fragment Shader
-    VkPipelineMultisampleStateCreateInfo multisample = create_vk_pipeline_multisample_state();
-
-    Create_Vk_Pipeline_Depth_Stencil_State_Info depth_stencil_info = {
-        (VkBool32)(info->fragment_shader_state->flags & RENDERER_FRAGMENT_SHADER_DEPTH_TEST_ENABLE_BIT),
-        (VkBool32)(info->fragment_shader_state->flags & RENDERER_FRAGMENT_SHADER_DEPTH_WRITE_ENABLE_BIT >> 1),
-        (VkBool32)(info->fragment_shader_state->flags & RENDERER_FRAGMENT_SHADER_DEPTH_WRITE_ENABLE_BIT >> 2),
-        info->fragment_shader_state->depth_compare_op,
-        info->fragment_shader_state->min_depth_bounds,
-        info->fragment_shader_state->max_depth_bounds,
-    };
-    VkPipelineDepthStencilStateCreateInfo depth_stencil = create_vk_pipeline_depth_stencil_state(&depth_stencil_info);
-
-    // `Output
-    Create_Vk_Pipeline_Color_Blend_State_Info blend_info = {
-        1,
-        &info->fragment_output_state->blend_state,
-    };
-    VkPipelineColorBlendStateCreateInfo blending = create_vk_pipeline_color_blend_state(&blend_info);
+    //
+    // @Todo I need to figure out the shader pipeline. Shader stage state seems like
+    // something which can be a fixed set. It seems like you would have some set of
+    // shaders which work together, and then at load time you can just create state
+    // for this set... (This is why I am passing precompiled shader stages to the
+    // create_pipeline function in gpu.cpp, I think by this point shader state
+    // should be known; shader code for stages shouldnt be being grouped so late...
+    //
 
     VkPipeline pl;
-
-    destroy_vk_pipeline_shader_stages(device, 2, shader_stages);
+    // @Todo pipeline caching
+    create_vk_graphics_pipelines(device, VK_NULL_HANDLE, 1, (Create_Vk_Pipeline_Info*)info, &pl);
     return pl;
 }
 
-Renderer_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info) {
+Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info) {
     
-    Renderer_Vertex_Input_State state = {};
+    Gpu_Vertex_Input_State state = {};
 
     // Enough memory for each array field in 'state'
     int *memory_block = (int*)memory_allocate_temp(sizeof(int) * 4 * 5, 4);
@@ -226,8 +167,8 @@ Renderer_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primiti
     return state;
 }
 
-Renderer_Rasterization_State renderer_define_rasterization_state(u8 polygon_mode_flags, u8 cull_mode_flags) {
-    Renderer_Rasterization_State state = {};
+Gpu_Rasterization_State renderer_define_rasterization_state(u8 polygon_mode_flags, u8 cull_mode_flags) {
+    Gpu_Rasterization_State state = {};
 
     switch(polygon_mode_flags) {
         case 0:
@@ -281,8 +222,8 @@ Renderer_Rasterization_State renderer_define_rasterization_state(u8 polygon_mode
 
 // Currently this function really does not have much to do, since multisampling is all 
 // defaults for now...
-Renderer_Fragment_Shader_State renderer_define_fragment_shader_state(u8 flags, VkCompareOp depth_compare_op, float min_depth_bounds, float max_depth_bounds) {
-    Renderer_Fragment_Shader_State state = {};
+Gpu_Fragment_Shader_State renderer_define_fragment_shader_state(u8 flags, VkCompareOp depth_compare_op, float min_depth_bounds, float max_depth_bounds) {
+    Gpu_Fragment_Shader_State state = {};
 
     state.flags = flags;
     state.depth_compare_op = depth_compare_op;
@@ -292,11 +233,11 @@ Renderer_Fragment_Shader_State renderer_define_fragment_shader_state(u8 flags, V
     return state;
 }
 
-Renderer_Fragment_Ouput_State renderer_define_fragment_output_state(Renderer_Blend_Setting blend_setting) {
-    Renderer_Fragment_Ouput_State state = {};
+Gpu_Fragment_Ouput_State renderer_define_fragment_output_state(Gpu_Blend_Setting blend_setting) {
+    Gpu_Fragment_Ouput_State state = {};
 
     switch (blend_setting) {
-        case RENDERER_BLEND_SETTING_OPAQUE_FULL_COLOR:
+        case GPU_BLEND_SETTING_OPAQUE_FULL_COLOR:
         {
             state.blend_state.blendEnable    = VK_FALSE;
             state.blend_state.colorWriteMask =
