@@ -343,7 +343,7 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv) {
     Id *var;
     Id *result_type;
     u32 hack_count = 0;
-    u32 zero_group = 0;
+    u32 zero_groups = 0;
     for(int i = 0; i < var_count; ++i) {
         zero_groups = 1;
 

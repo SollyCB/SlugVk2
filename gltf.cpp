@@ -322,6 +322,16 @@ Gltf parse_gltf(const char *filename) {
         skin = (Gltf_Skin*)((u8*)skin + skin->stride);
     }
 
+    gltf.texture_count = (int*)memory_allocate_temp(sizeof(int) * texture_count + 1, 4);
+    gltf.texture_count[0] = texture_count;
+    gltf.texture_count++;
+    Gltf_Texture *texture = gltf.textures;
+    for(int i = 0; i < texture_count; ++i) {
+        gltf.texture_count[i] = total_stride;
+        total_stride += texture->stride;
+        texture = (Gltf_Texture*)((u8*)texture + texture->stride);
+    }
+
     return gltf;
 }
 
@@ -1810,31 +1820,31 @@ void test_gltf() {
     Gltf_Accessor *accessor = gltf.accessors;
 
     test_accessors(gltf.accessors);
-    ASSERT(gltf.accessor_count == 3, "Incorrect Accessor Count");
+    ASSERT(gltf.accessor_count[-1] == 3, "Incorrect Accessor Count");
     test_animations(gltf.animations);
-    ASSERT(gltf.animation_count == 4, "Incorrect Animation Count");
+    ASSERT(gltf.animation_count[-1] == 4, "Incorrect Animation Count");
     test_buffers(gltf.buffers);
-    ASSERT(gltf.buffer_count == 5, "Incorrect Buffer Count");
+    ASSERT(gltf.buffer_count[-1] == 5, "Incorrect Buffer Count");
     test_buffer_views(gltf.buffer_views);
-    ASSERT(gltf.buffer_view_count == 4, "Incorrect Buffer View Count");
+    ASSERT(gltf.buffer_view_count[-1] == 4, "Incorrect Buffer View Count");
     test_cameras(gltf.cameras);
-    ASSERT(gltf.camera_count == 3, "Incorrect Camera View Count");
+    ASSERT(gltf.camera_count[-1] == 3, "Incorrect Camera View Count");
     test_images(gltf.images);
-    ASSERT(gltf.image_count == 3, "Incorrect Image Count");
+    ASSERT(gltf.image_count[-1] == 3, "Incorrect Image Count");
     test_materials(gltf.materials);
-    ASSERT(gltf.material_count == 2, "Incorrect Material Count");
+    ASSERT(gltf.material_count[-1] == 2, "Incorrect Material Count");
     test_meshes(gltf.meshes);
-    ASSERT(gltf.mesh_count == 2, "Incorrect Mesh Count");
+    ASSERT(gltf.mesh_count[-1] == 2, "Incorrect Mesh Count");
     test_nodes(gltf.nodes);
-    ASSERT(gltf.node_count == 7, "Incorrect Node Count");
+    ASSERT(gltf.node_count[-1] == 7, "Incorrect Node Count");
     test_samplers(gltf.samplers);
-    ASSERT(gltf.sampler_count == 3, "Incorrect Sampler Count");
+    ASSERT(gltf.sampler_count[-1] == 3, "Incorrect Sampler Count");
     test_scenes(gltf.scenes);
-    ASSERT(gltf.scene_count == 3, "Incorrect Scene Count");
+    ASSERT(gltf.scene_count[-1] == 3, "Incorrect Scene Count");
     test_skins(gltf.skins);
-    ASSERT(gltf.skin_count == 4, "Incorrect Skin Count");
+    ASSERT(gltf.skin_count[-1] == 4, "Incorrect Skin Count");
     test_textures(gltf.textures);
-    ASSERT(gltf.texture_count == 4, "Incorrect Texture Count");
+    ASSERT(gltf.texture_count[-1] == 4, "Incorrect Texture Count");
 }
 
 static void test_accessors(Gltf_Accessor *accessor) {
