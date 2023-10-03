@@ -857,7 +857,7 @@ void allocate_vk_descriptor_sets(VkDevice vk_device, VkDescriptorPool pool, u32 
 }
 
 // `Descriptors -- buffers / dynamic
-VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, Parsed_Spirv *parsed_spirv, u32 *count) {
+/*VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, Parsed_Spirv *parsed_spirv, u32 *count) {
     u32 total_binding_count = 0;
     for(int i = 0; i < parsed_spirv->group_count; ++i) {
         total_binding_count += parsed_spirv->layout_infos[i].binding_count;
@@ -920,7 +920,7 @@ VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, Pars
 
     cut_diff_temp(mark);
     return layouts;
-}
+}*/
 
 void destroy_vk_descriptor_set_layouts(VkDevice vk_device, u32 count, VkDescriptorSetLayout *layouts) {
     for(int i = 0; i < count; ++i)

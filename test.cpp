@@ -24,7 +24,9 @@ void load_tests() {
 void end_tests() {
     Test_Tracker *test = get_test_tracker_instance();
 
-    bool all_pass = true;
+    bool all_pass  = true;
+    bool no_skip   = true;
+    bool no_broken = true;
     for(int i = 0; i < test->modules.len; ++i) {
         Test_Module mod = test->modules.data[i];
         std::cout << string_buffer_to_cstr(&mod.info) << ": \n";
@@ -42,6 +44,7 @@ void end_tests() {
             for(int j = 0; j < mod.failed_test_names.len; ++j) {
                 std::cout << "    " << string_buffer_to_cstr(&mod.failed_test_names.data[j]) << '\n';
             }
+            all_pass = false;
         }
 
         if (mod.broken_test_names.len) {
@@ -52,6 +55,8 @@ void end_tests() {
                     std::cout << "    " << string_buffer_to_cstr(&mod.broken_test_names.data[j]) << '\n';
                 }
             } else { std::cout << '\n'; }
+
+            no_broken = false;
         }
         if (mod.skipped_test_names.len) {
             std::cout << YELLOW << "Skipped " << NC << mod.skipped_test_names.len << " test(s)";
@@ -61,6 +66,7 @@ void end_tests() {
                     std::cout << "    " << string_buffer_to_cstr(&mod.skipped_test_names.data[j]) << '\n';
                 }
             } else { std::cout << '\n'; }
+            no_skip = false;
         }
         if (mod.skipped_broken_test_names.len) {
             std::cout << YELLOW << "Skipped " << NC << mod.skipped_broken_test_names.len << " BROKEN test(s)";
@@ -96,6 +102,21 @@ void end_tests() {
         kill_dyn_array<Heap_String_Buffer>(&mod->skipped_broken_test_names);
     }
     kill_dyn_array<Test_Module>(&test->modules);
+
+    if (!no_skip)
+        std::cout << YELLOW << "TESTS WERE SKIPPED" << NC << '\n';
+    else
+        std::cout << GREEN << "NO TESTS SKIPPED" << NC << '\n';
+
+    if (!no_broken)
+        std::cout << YELLOW << "TESTS ARE BROKEN" << NC << '\n';
+    else
+        std::cout << GREEN << "NO BROKEN TESTS" << NC << '\n';
+
+    if (!all_pass)
+        std::cout << RED << "TESTS FAILED" << NC << '\n';
+    else 
+        std::cout << GREEN << "NO FAILURES" << NC << '\n';
 }
 
 void begin_test_module(const char *name, Test_Module *mod, const char *function_name,

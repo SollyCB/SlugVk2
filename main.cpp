@@ -20,7 +20,10 @@ int main() {
 #if TEST
     run_tests(); 
 #endif
+    /* Begin Code That Actually Does Stuff */
+    Gltf model = parse_gltf("models/cube-static/Cube.gltf");
 
+#if 0
     /* StartUp Code */
     init_glfw(); 
     Glfw *glfw = get_glfw_instance();
@@ -32,14 +35,11 @@ int main() {
     Window *window = get_window_instance();
 
 
-    /* Begin Code That Actually Does Stuff */
-    Gltf model = parse_gltf("models/cube-static/Cube.gltf");
-
-
     /* ShutDown Code */
     kill_window(gpu, window);
     kill_gpu(gpu);
     kill_glfw(glfw);
+#endif
 
     kill_allocators();
     return 0;
