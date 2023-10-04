@@ -161,7 +161,7 @@ enum Gpu_Descriptor_Pool_Type {
     GPU_DESCRIPTOR_POOL_TYPE_SAMPLER,
     GPU_DESCRIPTOR_POOL_TYPE_BUFFER,
 };
-VkDescriptorPool create_vk_descriptor_pool(VkDevice vk_device, Gpu_Descriptor_Pool_Type type);
+VkDescriptorPool create_vk_descriptor_pool(VkDevice vk_device, Gpu_Descriptor_Pool_Type type, int size);
 VkResult reset_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool);
 void destroy_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool);
 Gpu_Descriptor_Pool_Type gpu_get_pool_type(VkDescriptorType type);
@@ -277,7 +277,7 @@ void vkCmdSetDepthClampEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthCl
 void vkCmdSetPolygonModeEXT(VkCommandBuffer commandBuffer, VkPolygonMode polygonMode);
 // `MultisampleState // @Todo support setting multisampling functions
 //struct Create_Vk_Pipeline_Multisample_State_Info {};
-VkPipelineMultisampleStateCreateInfo create_vk_pipeline_multisample_state();
+VkPipelineMultisampleStateCreateInfo create_vk_pipeline_multisample_state(VkSampleCountFlagBits sample_count);
 
 // `DepthStencilState
 struct Create_Vk_Pipeline_Depth_Stencil_State_Info {
@@ -317,7 +317,7 @@ struct Create_Vk_Pipeline_Layout_Info {
     VkPushConstantRange *push_constant_ranges;
 };
 VkPipelineLayout create_vk_pipeline_layout(VkDevice vk_device, Create_Vk_Pipeline_Layout_Info *info);
-void destroy_vk_pipeline_layout(VkDevice vk_device, u32 count, VkPipelineLayout pl_layout);
+void destroy_vk_pipeline_layout(VkDevice vk_device, VkPipelineLayout pl_layout);
 
 // PipelineRenderingInfo
 struct Create_Vk_Pipeline_Rendering_Info_Info {
@@ -371,12 +371,11 @@ enum Gpu_Fragment_Shader_Flag_Bits {
 typedef u8 Gpu_Fragment_Shader_Flags;
 
 struct Gpu_Fragment_Shader_State {
-    // 32bits for alignment
     u32 flags;
     VkCompareOp depth_compare_op;
+    VkSampleCountFlagBits sample_count;
     float min_depth_bounds;
     float max_depth_bounds;
-    // @Todo multisampling
 };
 
 // Pl_Stage_4
@@ -402,6 +401,7 @@ struct Create_Vk_Pipeline_Info {
     VkRenderPass renderpass;
 };
 void create_vk_graphics_pipelines(VkDevice vk_device, VkPipelineCache, int count, Create_Vk_Pipeline_Info *infos, VkPipeline *pipelines);
+void gpu_destroy_pipeline(VkDevice vk_device, VkPipeline pipeline);
 
 // `Pipeline Final -- dynamic
 VkPipeline* create_vk_graphics_pipelines_heap(VkDevice vk_device, VkPipelineCache cache, 
@@ -420,14 +420,14 @@ struct Create_Vk_Attachment_Description_Info {
     VkSampleCountFlagBits sample_count;
     Gpu_Attachment_Description_Setting color_depth_setting;
     Gpu_Attachment_Description_Setting stencil_setting;
-    Gpu_Attachment_Description_Setting layout_setting;
+    Gpu_Attachment_Description_Setting layout_transition;
 };
 VkAttachmentDescription create_vk_attachment_description(Create_Vk_Attachment_Description_Info * info);
 
 struct Create_Vk_Subpass_Description_Info {
-     u32 input_attachment_count;
+    u32 input_attachment_count;
     VkAttachmentReference *input_attachments;
-     u32 color_attachment_count;
+    u32 color_attachment_count;
     VkAttachmentReference *color_attachments;
     VkAttachmentReference *resolve_attachments;
     VkAttachmentReference *depth_stencil_attachment;

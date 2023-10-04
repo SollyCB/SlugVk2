@@ -37,9 +37,7 @@ void renderer_destroy_shader_stages(VkDevice device, int count, VkPipelineShader
 }
 
 
-VkPipeline renderer_create_pipeline(Renderer_Create_Pipeline_Info *info) {
-    VkDevice device = get_gpu_instance()->vk_device;
-
+VkPipeline renderer_create_pipeline(VkDevice vk_device, Renderer_Create_Pipeline_Info *info) {
     //
     // @Todo I need to figure out the shader pipeline. Shader stage state seems like
     // something which can be a fixed set. It seems like you would have some set of
@@ -51,7 +49,7 @@ VkPipeline renderer_create_pipeline(Renderer_Create_Pipeline_Info *info) {
 
     VkPipeline pl;
     // @Todo pipeline caching
-    create_vk_graphics_pipelines(device, VK_NULL_HANDLE, 1, (Create_Vk_Pipeline_Info*)info, &pl);
+    create_vk_graphics_pipelines(vk_device, VK_NULL_HANDLE, 1, (Create_Vk_Pipeline_Info*)info, &pl);
     return pl;
 }
 
@@ -254,13 +252,13 @@ Gpu_Rasterization_State renderer_define_rasterization_state(Gpu_Polygon_Mode_Fla
 
 // Currently this function really does not have much to do, since multisampling is all 
 // defaults for now...
-Gpu_Fragment_Shader_State renderer_define_fragment_shader_state(u8 flags, VkCompareOp depth_compare_op, float min_depth_bounds, float max_depth_bounds) {
+Gpu_Fragment_Shader_State renderer_define_fragment_shader_state(Renderer_Fragment_Shader_State_Info *info) {
     Gpu_Fragment_Shader_State state = {};
-
-    state.flags = flags;
-    state.depth_compare_op = depth_compare_op;
-    state.min_depth_bounds = min_depth_bounds;
-    state.max_depth_bounds = max_depth_bounds;
+    state.flags = info->flags;
+    state.depth_compare_op = info->depth_compare_op;
+    state.sample_count = info->sample_count;
+    state.min_depth_bounds = info->min_depth_bounds;
+    state.max_depth_bounds = info->max_depth_bounds;
 
     return state;
 }

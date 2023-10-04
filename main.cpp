@@ -42,8 +42,9 @@ int main() {
     Gpu_Rasterization_State pl_stage_2 =
         renderer_define_rasterization_state(GPU_POLYGON_MODE_FILL_BIT, VK_CULL_MODE_NONE);
 
+    Renderer_Fragment_Shader_State_Info renderer_stage3_info = {};
     Gpu_Fragment_Shader_State pl_stage_3 =
-        renderer_define_fragment_shader_state(0x0, VK_COMPARE_OP_NEVER);
+        renderer_define_fragment_shader_state(&renderer_stage3_info);
 
     Gpu_Fragment_Output_State pl_stage_4 =
         renderer_define_fragment_output_state(GPU_BLEND_SETTING_OPAQUE_FULL_COLOR);
@@ -87,7 +88,57 @@ int main() {
     Gpu_Descriptor_Allocation descriptor_sets = gpu_queue_descriptor_set_allocation(&descriptor_allocator, 2, descriptor_set_layouts);
     Gpu_Descriptor_Resource_List resource_list = gpu_allocate_descriptor_sets(gpu->vk_device, &descriptor_allocator);
 
+    VkDescriptorSetLayout pl_layout_sets[8];
+    for(int i = 0; i < set_info_count; ++i)
+        pl_layout_sets[i] = descriptor_set_layouts[i].layout;
+    Create_Vk_Pipeline_Layout_Info pl_layout_info = {2, pl_layout_sets, 0, NULL};
+
+    VkPipelineLayout pl_layout = create_vk_pipeline_layout(gpu->vk_device, &pl_layout_info);
+
+    Create_Vk_Attachment_Description_Info attachment_description_info = {}; 
+    attachment_description_info.image_format = window->swapchain_info.imageFormat;
+    attachment_description_info.sample_count = VK_SAMPLE_COUNT_1_BIT;
+    attachment_description_info.color_depth_setting = GPU_ATTACHMENT_DESCRIPTION_SETTING_CLEAR_AND_STORE;
+    attachment_description_info.layout_transition = GPU_ATTACHMENT_DESCRIPTION_SETTING_UNDEFINED_TO_PRESENT;
+    VkAttachmentDescription attachment_description = create_vk_attachment_description(&attachment_description_info);
+
+    VkAttachmentReference color_attachment_reference = {0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+    Create_Vk_Subpass_Description_Info subpass_description_info = {};
+    subpass_description_info.color_attachment_count = 1;
+    subpass_description_info.color_attachments = &color_attachment_reference;
+    VkSubpassDescription subpass_description = create_vk_graphics_subpass_description(&subpass_description_info);
+
+    Create_Vk_Subpass_Dependency_Info subpass_dependency_info = {};
+    subpass_dependency_info.access_rules = GPU_SUBPASS_DEPENDENCY_SETTING_ACQUIRE_TO_RENDER_TARGET_BASIC;
+    subpass_dependency_info.src_subpass = VK_SUBPASS_EXTERNAL;
+    subpass_dependency_info.dst_subpass = 0;
+    VkSubpassDependency subpass_dependency = create_vk_subpass_dependency(&subpass_dependency_info);
+
+    Create_Vk_Renderpass_Info renderpass_info = {};
+    renderpass_info.attachment_count = 1;
+    renderpass_info.subpass_count    = 1;
+    renderpass_info.dependency_count = 1;
+    renderpass_info.attachments      = &attachment_description;
+    renderpass_info.subpasses        = &subpass_description;
+    renderpass_info.dependencies     = &subpass_dependency;
+    VkRenderPass renderpass = create_vk_renderpass(gpu->vk_device, &renderpass_info);
+
+    Renderer_Create_Pipeline_Info pl_info = {};
+    pl_info.layout                = pl_layout;
+    pl_info.renderpass            = renderpass;
+    pl_info.subpass               = 0;
+    pl_info.shader_stage_count    = 2;
+    pl_info.shader_stages         = pl_shader_stages;
+    pl_info.vertex_input_state    = &pl_stage_1;
+    pl_info.rasterization_state   = &pl_stage_2;
+    pl_info.fragment_shader_state = &pl_stage_3;
+    pl_info.fragment_output_state = &pl_stage_4;
+    VkPipeline pipeline = renderer_create_pipeline(gpu->vk_device, &pl_info);
+
     /* ShutDown Code */
+    gpu_destroy_pipeline(gpu->vk_device, pipeline);
+    destroy_vk_renderpass(gpu->vk_device, renderpass);
+    destroy_vk_pipeline_layout(gpu->vk_device, pl_layout);
     renderer_destroy_shader_stages(gpu->vk_device, 2, pl_shader_stages);
     gpu_destroy_descriptor_allocator(gpu->vk_device, &descriptor_allocator);
     gpu_destroy_descriptor_set_layouts(gpu->vk_device, 2, descriptor_set_layouts);

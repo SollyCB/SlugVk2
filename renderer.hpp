@@ -40,7 +40,14 @@ Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *m
 
 Gpu_Rasterization_State renderer_define_rasterization_state(Gpu_Polygon_Mode_Flags polygon_mode_flags = GPU_POLYGON_MODE_FILL_BIT, VkCullModeFlags cull_mode_flags = VK_CULL_MODE_NONE); // top bit of cull mode flags indicates clockwise front face or not; a pipeline is compiled for each polygon mode set
 
-Gpu_Fragment_Shader_State renderer_define_fragment_shader_state(Gpu_Fragment_Shader_Flags flags = 0x0, VkCompareOp depth_compare_op = VK_COMPARE_OP_NEVER, float min_depth_bounds = 0, float max_depth_bounds = 100);
+struct Renderer_Fragment_Shader_State_Info {
+    Gpu_Fragment_Shader_Flags flags = 0x0;
+    VkCompareOp depth_compare_op = VK_COMPARE_OP_NEVER;
+    VkSampleCountFlagBits sample_count = VK_SAMPLE_COUNT_1_BIT;
+    float min_depth_bounds = 0;
+    float max_depth_bounds = 100;
+};
+Gpu_Fragment_Shader_State renderer_define_fragment_shader_state(Renderer_Fragment_Shader_State_Info *info);
 
 // @Todo color blending. The goal here is to have an enum with a bunch of options for typical combinations. 
 Gpu_Fragment_Output_State renderer_define_fragment_output_state(Gpu_Blend_Setting blend_setting = GPU_BLEND_SETTING_OPAQUE_FULL_COLOR);
@@ -65,9 +72,9 @@ struct Renderer_Create_Pipeline_Info {
     Gpu_Fragment_Shader_State *fragment_shader_state;
     Gpu_Fragment_Output_State  *fragment_output_state;
 
-    VkPipelineLayout pl_layout;
+    VkPipelineLayout layout;
     VkRenderPass     renderpass;
 };
-VkPipeline renderer_create_pipeline(Renderer_Create_Pipeline_Info *pl_info);
+VkPipeline renderer_create_pipeline(VkDevice vk_device, Renderer_Create_Pipeline_Info *pl_info);
 
 #endif // include guard

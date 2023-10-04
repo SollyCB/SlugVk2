@@ -803,36 +803,37 @@ void cut_tail_binary_semaphores(Binary_Semaphore_Pool *pool, u32 size) {
 }
 
 // `Descriptors -- static / pool allocated
-// @Note I would like to have a pool for each type of descriptor that I will use to help with
-// fragmentation, and understanding what allocations are where... idk if this possible. But I
-// should think so, since there are so few descriptor types. The over head of having more
-// pools seems unimportant as nowhere does anyone say "Do not allocate too many pools", its
-// more about managing the pools that you have effectively...
-static constexpr u32 DESCRIPTOR_POOL_SAMPLER_MAX_SET_COUNT    = 64;
-static constexpr u32 DESCRIPTOR_POOL_BUFFER_MAX_SET_COUNT     = 64;
 
-static constexpr u32 DESCRIPTOR_POOL_SAMPLER_ALLOCATION_COUNT = 64;
-static constexpr u32 DESCRIPTOR_POOL_BUFFER_ALLOCATION_COUNT  = 64;
+// @Todo Get an idea for average descriptor allocation patterns, so that pools can be created with
+// descriptor counts which are representative of the application's usage patterns...
+VkDescriptorPool create_vk_descriptor_pool(VkDevice vk_device, Gpu_Descriptor_Pool_Type type, int size) {
 
-VkDescriptorPool create_vk_descriptor_pool(VkDevice vk_device, Gpu_Descriptor_Pool_Type type) {
-    VkDescriptorPoolSize pool_size = {VK_DESCRIPTOR_TYPE_SAMPLER};
-    VkDescriptorPoolCreateInfo create_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-
+    u32 pool_size_count;
+    VkDescriptorPoolSize pool_sizes[10];
     switch(type) {
     case GPU_DESCRIPTOR_POOL_TYPE_SAMPLER:
-        create_info.maxSets       = DESCRIPTOR_POOL_SAMPLER_MAX_SET_COUNT;
-        pool_size.descriptorCount = DESCRIPTOR_POOL_SAMPLER_ALLOCATION_COUNT;
+        pool_size_count = 2;
+        pool_sizes[0] = {VK_DESCRIPTOR_TYPE_SAMPLER, 16};
+        pool_sizes[1] = {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 48};
         break;
     case GPU_DESCRIPTOR_POOL_TYPE_BUFFER:
-        create_info.maxSets       = DESCRIPTOR_POOL_BUFFER_MAX_SET_COUNT;
-        pool_size.descriptorCount = DESCRIPTOR_POOL_BUFFER_ALLOCATION_COUNT;
+        pool_size_count = 7;
+        pool_sizes[0] = {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE       ,  8};
+        pool_sizes[1] = {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE       ,  4};
+        pool_sizes[2] = {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,  2};
+        pool_sizes[3] = {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,  2};
+        pool_sizes[4] = {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER      , 24};
+        pool_sizes[5] = {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER      , 12};
+        pool_sizes[6] = {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT    , 12};
         break;
     default:
         ASSERT(false, "Not a valid DescriptorPool type");
         break;
     }
-    create_info.poolSizeCount = 1;
-    create_info.pPoolSizes = &pool_size;
+    VkDescriptorPoolCreateInfo create_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    create_info.maxSets       = size;
+    create_info.poolSizeCount = pool_size_count;
+    create_info.pPoolSizes    = pool_sizes;
 
     VkDescriptorPool pool;
     auto check = vkCreateDescriptorPool(vk_device, &create_info, ALLOCATION_CALLBACKS, &pool);
@@ -856,11 +857,10 @@ Gpu_Descriptor_Allocator gpu_create_descriptor_allocator(VkDevice vk_device, int
     allocator.sampler_cap = sampler_size;
     allocator.buffer_cap  = buffer_size;
 
-    ASSERT(sampler_size <= DESCRIPTOR_POOL_SAMPLER_MAX_SET_COUNT, "Sampler Pool Create Size Too Large");
-    ASSERT(sampler_size <= DESCRIPTOR_POOL_BUFFER_MAX_SET_COUNT,  "Sampler Pool Create Size Too Large");
-
-    allocator.sampler_pool    = create_vk_descriptor_pool(vk_device, GPU_DESCRIPTOR_POOL_TYPE_SAMPLER);
-    allocator.buffer_pool     = create_vk_descriptor_pool(vk_device, GPU_DESCRIPTOR_POOL_TYPE_BUFFER);
+    allocator.sampler_pool    = 
+        create_vk_descriptor_pool(vk_device, GPU_DESCRIPTOR_POOL_TYPE_SAMPLER, sampler_size);
+    allocator.buffer_pool     = 
+        create_vk_descriptor_pool(vk_device, GPU_DESCRIPTOR_POOL_TYPE_BUFFER, buffer_size);
 
     u8 *memory_block_samplers = memory_allocate_heap(
        (sizeof(VkDescriptorSetLayout) * sampler_size) +
@@ -1219,6 +1219,7 @@ VkPipelineRasterizationStateCreateInfo create_vk_pipeline_rasterization_state(Vk
     state.polygonMode = polygon_mode;
     state.cullMode    = cull_mode;
     state.frontFace   = front_face;
+    state.lineWidth   = 1.0f;
     return state;
 }
 void vkCmdSetDepthClampEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthClampEnable) {
@@ -1237,9 +1238,9 @@ void vkCmdSetPolygonModeEXT(VkCommandBuffer commandBuffer, VkPolygonMode polygon
 }
 
 // `MultisampleState // @Todo actually support setting multisampling functions
-VkPipelineMultisampleStateCreateInfo create_vk_pipeline_multisample_state() {
+VkPipelineMultisampleStateCreateInfo create_vk_pipeline_multisample_state(VkSampleCountFlagBits sample_count) {
     VkPipelineMultisampleStateCreateInfo state = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO}; 
-    state.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT; 
+    state.rasterizationSamples = sample_count; 
     state.sampleShadingEnable = VK_FALSE;
     return state;
 }
@@ -1347,23 +1348,18 @@ VkPipelineDynamicStateCreateInfo create_vk_pipeline_dyn_state() {
 // `PipelineLayout
 VkPipelineLayout create_vk_pipeline_layout(VkDevice vk_device, Create_Vk_Pipeline_Layout_Info *info) {
     VkPipelineLayoutCreateInfo create_info = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-
-    VkResult check;
     create_info.setLayoutCount         = info->descriptor_set_layout_count;
     create_info.pSetLayouts            = info->descriptor_set_layouts;
     create_info.pushConstantRangeCount = info->push_constant_count;
     create_info.pPushConstantRanges    = info->push_constant_ranges;
 
     VkPipelineLayout layout;
-    check = vkCreatePipelineLayout(vk_device, &create_info, ALLOCATION_CALLBACKS, &layout);
+    auto check = vkCreatePipelineLayout(vk_device, &create_info, ALLOCATION_CALLBACKS, &layout);
     DEBUG_OBJ_CREATION(vkCreatePipelineLayout, check);
     return layout;
 }
-void destroy_vk_pipeline_layouts(VkDevice vk_device, u32 count, VkPipelineLayout *pl_layouts) {
-    for(int i = 0; i < count; ++i) {
-        vkDestroyPipelineLayout(vk_device, pl_layouts[i], ALLOCATION_CALLBACKS);
-    }
-    memory_free_heap((void*)pl_layouts);
+void destroy_vk_pipeline_layout(VkDevice vk_device, VkPipelineLayout pl_layout) {
+    vkDestroyPipelineLayout(vk_device, pl_layout, ALLOCATION_CALLBACKS);
 }
 
 // PipelineRenderingInfo
@@ -1431,7 +1427,7 @@ void create_vk_graphics_pipelines(VkDevice vk_device, VkPipelineCache cache, int
 
 
     // `Fragment Shader Stage 3
-    VkPipelineMultisampleStateCreateInfo multisample = create_vk_pipeline_multisample_state();
+    VkPipelineMultisampleStateCreateInfo multisample = create_vk_pipeline_multisample_state(info->fragment_shader_state->sample_count);
 
     Create_Vk_Pipeline_Depth_Stencil_State_Info depth_stencil_info = {
         (VkBool32)(info->fragment_shader_state->flags & GPU_FRAGMENT_SHADER_DEPTH_TEST_ENABLE_BIT),
@@ -1460,21 +1456,25 @@ void create_vk_graphics_pipelines(VkDevice vk_device, VkPipelineCache cache, int
     dynamic.pDynamicStates    = dyn_states;
 
     VkGraphicsPipelineCreateInfo pl_create_info = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
-    pl_create_info.stageCount = info->shader_stage_count;
-    pl_create_info.pStages    = info->shader_stages;
-    pl_create_info.pVertexInputState = &vertex_input;
+    pl_create_info.stageCount          = info->shader_stage_count;
+    pl_create_info.pStages             = info->shader_stages;
+    pl_create_info.pVertexInputState   = &vertex_input;
     pl_create_info.pInputAssemblyState = &input_assembly;
-    pl_create_info.pViewportState = &viewport;
+    pl_create_info.pViewportState      = &viewport;
     pl_create_info.pRasterizationState = &rasterization;
-    pl_create_info.pDepthStencilState = &depth_stencil;
-    pl_create_info.pColorBlendState = &blending;
-    pl_create_info.pDynamicState = &dynamic;
-    pl_create_info.layout = info->layout;
-    pl_create_info.renderPass = info->renderpass;
-    pl_create_info.subpass = 0;
+    pl_create_info.pMultisampleState   = &multisample;
+    pl_create_info.pDepthStencilState  = &depth_stencil;
+    pl_create_info.pColorBlendState    = &blending;
+    pl_create_info.pDynamicState       = &dynamic;
+    pl_create_info.layout              = info->layout;
+    pl_create_info.renderPass          = info->renderpass;
+    pl_create_info.subpass             = 0;
 
     auto check = vkCreateGraphicsPipelines(vk_device, cache, 1, &pl_create_info, ALLOCATION_CALLBACKS, pipelines);
     DEBUG_OBJ_CREATION(vkCreateGraphicsPipelines, check);
+}
+void gpu_destroy_pipeline(VkDevice vk_device, VkPipeline pipeline) {
+    vkDestroyPipeline(vk_device, pipeline, ALLOCATION_CALLBACKS);
 }
 
 // @Todo pipeline: increase possible use of dyn states, eg. vertex input, raster states etc.
@@ -1541,7 +1541,7 @@ VkAttachmentDescription create_vk_attachment_description(Create_Vk_Attachment_De
             ASSERT(false, "Invalid setting");
     }
 
-    switch(info->layout_setting) {
+    switch(info->layout_transition) {
         case GPU_ATTACHMENT_DESCRIPTION_SETTING_UNDEFINED_TO_COLOR:
             description.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
             description.finalLayout   = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
