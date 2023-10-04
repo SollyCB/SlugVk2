@@ -22,6 +22,60 @@
 #include "file.hpp"
 #endif
 
+//     ** DO NOT BIND A DESCRIPTOR TO A NON CONTIGUOUS BINDING **
+// This function relies on bindings being incremented the same way as descriptor sets
+Spirv_Set* group_spirv(int count, Parsed_Spirv *parsed_spirv, int *returned_set_count) {
+    // Find total number of descriptor sets
+    u64 set_mask = 0x0; // Assume fewer than 64 sets
+    for(int i = 0; i < count; ++i) {
+        for(int j = 0; j < parsed_spirv[i].binding_count; ++j)
+            set_mask |= 1 << parsed_spirv[i].bindings[j].set;
+    }
+    int set_count = pop_count64(set_mask);
+
+    // Find unique bindings per mask
+    u64 *binding_masks = (u64*)memory_allocate_temp(sizeof(u64) * set_count, 8);
+    u64 *binding_mask;
+    for(int i = 0; i < count; ++i) {
+        for(int j = 0; j < parsed_spirv[i].binding_count; ++j)
+            binding_masks[parsed_spirv[i].bindings[j].set] |= 1 << parsed_spirv[i].bindings[j].binding;
+    }
+
+    // Allocate memory to each bindings array (this could be done as one allocation, and then bind offsets into it,
+    // but since this is a linear allocator the difference would be negligible...)
+    Spirv_Set *sets = (Spirv_Set*)memory_allocate_temp(sizeof(Spirv_Set) * set_count, 8);
+    int total_binding_count = 0;
+    for(int i = 0; i < set_count; ++i) {
+        sets[i].binding_count = pop_count64(binding_masks[i]);
+        total_binding_count += sets[i].binding_count;
+
+        sets[i].bindings =
+            (VkDescriptorSetLayoutBinding*)memory_allocate_temp(
+                sizeof(VkDescriptorSetLayoutBinding) * sets[i].binding_count, 8);
+    }
+    memset(sets->bindings, 0x0, sizeof(VkDescriptorSetLayoutBinding) * total_binding_count);
+
+    Parsed_Spirv *spirv;
+    Spirv_Descriptor *descriptor;
+    VkDescriptorSetLayoutBinding *binding;
+
+    // merge parsed spirv
+    for(int i = 0; i < count; ++i) {
+         spirv = &parsed_spirv[i];
+         for(int j = 0; j < spirv->binding_count; ++j) {
+            descriptor               = &spirv->bindings[j];
+            binding                  = &sets[descriptor->set].bindings[descriptor->binding];
+            binding->binding         = descriptor->binding;
+            binding->descriptorCount = descriptor->count;
+            binding->descriptorType  = descriptor->type;
+            binding->stageFlags     |= spirv->stage;
+         }
+    }
+
+    *returned_set_count = set_count;
+    return sets;
+}
+
 // u32s to prevent compiler warnings when assigning values by derefing spirv
 struct Spirv_Type {
     u32 id;
@@ -44,27 +98,26 @@ inline static Spirv_Type* spirv_find_type(Spirv_Type *types, int *type_count, in
     Spirv_Type *type = &types[*type_count];
     type->id = id;
     type->binding = Max_u32;
-    type->descriptor_set = Max_u32; // to make finding types actually decorated with descriptor set easier...
-    type->descriptor_count = Max_u32; // to make finding arrayed types easier...
+    type->descriptor_set = Max_u32; // to make finding types actually decorated with descriptor set easier
     type->descriptor_type = (VkDescriptorType)Max_u32;
     (*type_count)++;
     return type;
 }
 
 inline static Spirv_Type* spirv_find_descriptor(Spirv_Type *types, int type_count, int *last_descriptor_index) {
-    for(int i = *last_descriptor_index + 1; i < type_count; ++i) {
+    for(int i = *last_descriptor_index; i < type_count; ++i) {
         if (types[i].descriptor_set != Max_u32) {
-            *last_descriptor_index = i;
+            *last_descriptor_index = i + 1;
             return &types[i];
         }
     }
     return NULL;
 }
 
-void spirv_sort_bindings(Spirv_Binding *array, int start, int end) {
+void spirv_sort_bindings(Spirv_Descriptor *array, int start, int end) {
     if (start < end) {
         int lower = start - 1;
-        Spirv_Binding tmp;
+        Spirv_Descriptor tmp;
         for(int i = start; i < end; ++i) {
             if (array[i].set < array[end].set) {
                 lower++;
@@ -258,7 +311,7 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv, int *set_count) {
     }
 
     ret.binding_count = descriptor_count;
-    ret.bindings = (Spirv_Binding*)memory_allocate_temp(sizeof(Spirv_Binding) * descriptor_count, 4);
+    ret.bindings = (Spirv_Descriptor*)memory_allocate_temp(sizeof(Spirv_Descriptor) * descriptor_count, 4);
 
     Spirv_Type *result_type;
     int last_descriptor_index = 0;
@@ -274,7 +327,7 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv, int *set_count) {
         ret.bindings[i].binding = (int)type->binding;
         ret.bindings[i].set     = (int)type->descriptor_set;
 
-        if (result_type->descriptor_count != Max_u32) {
+        if (result_type->descriptor_count != 0) {
             ret.bindings[i].count = (int)result_type->descriptor_count;
             result_type = spirv_find_type(types, &type_count, result_type->result_id); // deref array to its element type
         } else {
@@ -295,7 +348,15 @@ Parsed_Spirv parse_spirv(u64 byte_count, const u32 *spirv, int *set_count) {
 }
 
 #if TEST
+static void test_parser();
+static void test_grouper(); 
+
 void test_spirv() {
+    test_parser();
+    test_grouper();
+}
+
+void test_parser() {
     BEGIN_TEST_MODULE("Parsed_Spirv", true, false);
 
     u64 byte_count;
@@ -335,6 +396,73 @@ void test_spirv() {
     TEST_EQ("bindings[5].count"  , spirv.bindings[5].count  , 1, false);
     TEST_EQ("bindings[5].binding", spirv.bindings[5].binding, 0, false);
     TEST_EQ("bindings[5].type"   , spirv.bindings[5].type   , VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, false);
+
+    END_TEST_MODULE();
+}
+
+void test_grouper() {
+    BEGIN_TEST_MODULE("Spirv_Set", true, false);
+
+    u64 byte_counts[4];
+    const u32 *spirv_blob_vert_1 = (const u32*)file_read_bin_temp("shaders/test_grouper_1.vert.spv", &byte_counts[0]);
+    const u32 *spirv_blob_frag_1 = (const u32*)file_read_bin_temp("shaders/test_grouper_1.frag.spv", &byte_counts[1]);
+    //const u32 *spirv_blob = (const u32*)file_read_bin_temp("shaders/test_grouper_2.vert.spv", &byte_counts[2]);
+    //const u32 *spirv_blob = (const u32*)file_read_bin_temp("shaders/test_grouper_2.frag.spv", &byte_counts[3]);
+
+    int vert_set_count;
+    Parsed_Spirv vert_spirv = parse_spirv(byte_counts[0], spirv_blob_vert_1, &vert_set_count);
+    int frag_set_count;
+    Parsed_Spirv frag_spirv = parse_spirv(byte_counts[1], spirv_blob_frag_1, &frag_set_count);
+
+    Parsed_Spirv parsed[] = {vert_spirv, frag_spirv};
+    int set_count;
+    Spirv_Set *sets = group_spirv(2, parsed, &set_count);
+
+    TEST_EQ("set_count", set_count, 4, false);
+    TEST_EQ("sets[0].binding_count", sets[0].binding_count, 3, false);
+    TEST_EQ("sets[1].binding_count", sets[1].binding_count, 2, false);
+    TEST_EQ("sets[2].binding_count", sets[2].binding_count, 2, false);
+    TEST_EQ("sets[3].binding_count", sets[3].binding_count, 1, false);
+
+    TEST_EQ("sets[0].bindings[0].binding"        , sets[0].bindings[0].binding        , 0, false);
+    TEST_EQ("sets[0].bindings[0].descriptorType" , sets[0].bindings[0].descriptorType , VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false);
+    TEST_EQ("sets[0].bindings[0].descriptorCount", sets[0].bindings[0].descriptorCount, 1, false);
+    TEST_EQ("sets[0].bindings[0].stageFlags"     , sets[0].bindings[0].stageFlags     , VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, false);
+
+    TEST_EQ("sets[0].bindings[1].binding"        , sets[0].bindings[1].binding        , 1, false);
+    TEST_EQ("sets[0].bindings[1].descriptorType" , sets[0].bindings[1].descriptorType , VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false);
+    TEST_EQ("sets[0].bindings[1].descriptorCount", sets[0].bindings[1].descriptorCount, 2, false);
+    TEST_EQ("sets[0].bindings[1].stageFlags"     , sets[0].bindings[1].stageFlags     , VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, false);
+
+    TEST_EQ("sets[0].bindings[2].binding"        , sets[0].bindings[2].binding        , 2, false);
+    TEST_EQ("sets[0].bindings[2].descriptorType" , sets[0].bindings[2].descriptorType , VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false);
+    TEST_EQ("sets[0].bindings[2].descriptorCount", sets[0].bindings[2].descriptorCount, 3, false);
+    TEST_EQ("sets[0].bindings[2].stageFlags"     , sets[0].bindings[2].stageFlags     , VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, false);
+
+    TEST_EQ("sets[1].bindings[0].binding"        , sets[1].bindings[0].binding        , 0, false);
+    TEST_EQ("sets[1].bindings[0].descriptorType" , sets[1].bindings[0].descriptorType , VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, false);
+    TEST_EQ("sets[1].bindings[0].descriptorCount", sets[1].bindings[0].descriptorCount, 1, false);
+    TEST_EQ("sets[1].bindings[0].stageFlags"     , sets[1].bindings[0].stageFlags     , VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, false);
+
+    TEST_EQ("sets[1].bindings[1].binding"        , sets[1].bindings[1].binding        , 1, false);
+    TEST_EQ("sets[1].bindings[1].descriptorType" , sets[1].bindings[1].descriptorType , VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, false);
+    TEST_EQ("sets[1].bindings[1].descriptorCount", sets[1].bindings[1].descriptorCount, 1, false);
+    TEST_EQ("sets[1].bindings[1].stageFlags"     , sets[1].bindings[1].stageFlags     , VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, false);
+
+    TEST_EQ("sets[2].bindings[0].binding"        , sets[2].bindings[0].binding        , 0, false);
+    TEST_EQ("sets[2].bindings[0].descriptorType" , sets[2].bindings[0].descriptorType , VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, false);
+    TEST_EQ("sets[2].bindings[0].descriptorCount", sets[2].bindings[0].descriptorCount, 1, false);
+    TEST_EQ("sets[2].bindings[0].stageFlags"     , sets[2].bindings[0].stageFlags     , VK_SHADER_STAGE_VERTEX_BIT, false);
+
+    TEST_EQ("sets[2].bindings[1].binding"        , sets[2].bindings[1].binding        , 1, false);
+    TEST_EQ("sets[2].bindings[1].descriptorType" , sets[2].bindings[1].descriptorType , VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, false);
+    TEST_EQ("sets[2].bindings[1].descriptorCount", sets[2].bindings[1].descriptorCount, 1, false);
+    TEST_EQ("sets[2].bindings[1].stageFlags"     , sets[2].bindings[1].stageFlags     , VK_SHADER_STAGE_VERTEX_BIT, false);
+
+    TEST_EQ("sets[3].bindings[2].binding"        , sets[3].bindings[0].binding        , 0, false);
+    TEST_EQ("sets[3].bindings[2].descriptorType" , sets[3].bindings[0].descriptorType , VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false);
+    TEST_EQ("sets[3].bindings[2].descriptorCount", sets[3].bindings[0].descriptorCount, 4, false);
+    TEST_EQ("sets[3].bindings[2].stageFlags"     , sets[3].bindings[0].stageFlags     , VK_SHADER_STAGE_FRAGMENT_BIT, false);
 
     END_TEST_MODULE();
 }

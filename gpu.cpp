@@ -856,71 +856,12 @@ void allocate_vk_descriptor_sets(VkDevice vk_device, VkDescriptorPool pool, u32 
      DEBUG_OBJ_CREATION(vkAllocateDescriptorSets, check);
 }
 
+VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, Create_Vk_Descriptor_Set_Layout_Info *info, u32 *returned_set_count) {
+        
+}
+
 // `Descriptors -- buffers / dynamic
-/*VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, Parsed_Spirv *parsed_spirv, u32 *count) {
-    u32 total_binding_count = 0;
-    for(int i = 0; i < parsed_spirv->group_count; ++i) {
-        total_binding_count += parsed_spirv->layout_infos[i].binding_count;
-    }
-
-    u64 mark = get_mark_temp();
-    u8 *memory_block = memory_allocate_temp(
-        (sizeof(VkDescriptorSetLayoutCreateInfo) * parsed_spirv->group_count) +
-        (sizeof(VkDescriptorSetLayoutBinding)    * total_binding_count)
-        , 8);
-
-    u32 memory_index = 0;
-    u32 *sizes = (u32*)memory_allocate_temp(sizeof(u32) * parsed_spirv->group_count, 8);
-
-    VkDescriptorSetLayoutCreateInfo *create_info;
-    VkDescriptorSetLayoutBinding *binding;
-    for(int i = 0; i < parsed_spirv->group_count; ++i) {
-        create_info = (VkDescriptorSetLayoutCreateInfo*)(memory_block + memory_index);
-
-        create_info->sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        create_info->pNext = NULL;
-
-        // @Todo add descriptor setup support for embedded immutable samplers
-        // @Todo learn push descriptors
-        create_info->flags        = VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
-        create_info->bindingCount = parsed_spirv->layout_infos[i].binding_count;
-
-        sizes[i] = memory_index;
-        memory_index += sizeof(VkDescriptorSetLayoutCreateInfo);
-
-        create_info->pBindings = (VkDescriptorSetLayoutBinding*)(memory_block + memory_index);
-
-        for(int j = 0; j < create_info->bindingCount; ++j) {
-            binding = (VkDescriptorSetLayoutBinding*)(create_info->pBindings + j);
-
-            binding->binding         = parsed_spirv->layout_infos[i].binding_infos[j].binding;
-            binding->descriptorType  = (VkDescriptorType)parsed_spirv->layout_infos[i].binding_infos[j].descriptor_type;
-            binding->descriptorCount = parsed_spirv->layout_infos[i].binding_infos[j].descriptor_count;
-
-            // @Todo add support for vertex shaders accessing samplers for height maps and shit
-            binding->stageFlags = parsed_spirv->layout_infos[i].binding_infos[j].access_flags;
-
-            // @Todo add descriptor setup support for embedded immutable samplers
-            binding->pImmutableSamplers = NULL;
-
-            memory_index += sizeof(VkDescriptorSetLayoutBinding);
-        }
-    }
-
-    *count = parsed_spirv->group_count;
-    VkResult check;
-    VkDescriptorSetLayout *layouts =
-        (VkDescriptorSetLayout*)memory_allocate_heap(*count * sizeof(VkDescriptorSetLayout), 8);
-
-    for(int i = 0; i < *count; ++i) {
-        create_info = (VkDescriptorSetLayoutCreateInfo*)(memory_block + sizes[i]);
-        check = vkCreateDescriptorSetLayout(vk_device, create_info, ALLOCATION_CALLBACKS, &layouts[i]);
-        DEBUG_OBJ_CREATION(vkCreateDescriptorSetLayout, check);
-    }
-
-    cut_diff_temp(mark);
-    return layouts;
-}*/
+//VkDescriptorSetLayout* create_vk_descriptor_set_layout();
 
 void destroy_vk_descriptor_set_layouts(VkDevice vk_device, u32 count, VkDescriptorSetLayout *layouts) {
     for(int i = 0; i < count; ++i)

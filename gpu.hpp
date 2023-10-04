@@ -159,7 +159,7 @@ struct Create_Vk_Descriptor_Set_Layout_Info {
     u32 count;
     VkDescriptorSetLayoutBinding *bindings;
 };
-//VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, , u32 *count);
+VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, Create_Vk_Descriptor_Set_Layout_Info *info, u32 *returned_set_count);
 void destroy_vk_descriptor_set_layouts(VkDevice vk_device, u32 count, VkDescriptorSetLayout *layouts);
 
 // Pipeline Setup
