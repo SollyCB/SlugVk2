@@ -55,15 +55,17 @@ int main() {
     Create_Vk_Descriptor_Set_Layout_Info *descriptor_set_info = 
         group_spirv(2, parsed_spirv, &set_info_count);
 
-    VkDescriptorSetLayout *descriptor_set_layouts =
+    Gpu_Allocate_Descriptor_Set_Info *descriptor_set_layouts =
         create_vk_descriptor_set_layouts(gpu->vk_device, 2, descriptor_set_info);
 
-    VkDescriptorPool combined_image_sampler_pool =
-        create_vk_descriptor_pool(gpu->vk_device, DESCRIPTOR_POOL_TYPE_SAMPLER);
+    Gpu_Descriptor_Allocator descriptor_allocator =
+        gpu_create_descriptor_allocator(gpu->vk_device, 64, 64);
 
-        
+    Gpu_Descriptor_Allocation descriptor_sets = gpu_queue_descriptor_set_allocation(&descriptor_allocator, 2, descriptor_set_layouts);
 
     /* ShutDown Code */
+    gpu_destroy_descriptor_allocator(gpu->vk_device, &descriptor_allocator);
+    gpu_destroy_descriptor_set_layouts(gpu->vk_device, 2, descriptor_set_layouts);
     kill_window(gpu, window);
     kill_gpu(gpu);
     kill_glfw(glfw);

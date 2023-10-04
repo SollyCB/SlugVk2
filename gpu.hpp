@@ -154,13 +154,19 @@ enum Gpu_Descriptor_Pool_Type {
     GPU_DESCRIPTOR_POOL_TYPE_SAMPLER,
     GPU_DESCRIPTOR_POOL_TYPE_BUFFER,
 };
-VkDescriptorPool create_vk_descriptor_pool(VkDevice vk_device, Descriptor_Pool_Type type);
+VkDescriptorPool create_vk_descriptor_pool(VkDevice vk_device, Gpu_Descriptor_Pool_Type type);
 VkResult reset_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool);
 void destroy_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool);
+Gpu_Descriptor_Pool_Type gpu_get_pool_type(VkDescriptorType type);
 
 struct Gpu_Descriptor_Allocator {
+    // @Todo maybe cut down on the size here? These could easily be shorts, not ints...?
+    int sampler_cap;
+    int buffer_cap;
     int sampler_count;
     int buffer_count;
+    int sampler_mark;
+    int buffer_mark;
 
     VkDescriptorSetLayout *sampler_layouts;
     VkDescriptorSetLayout *buffer_layouts;
@@ -171,21 +177,33 @@ struct Gpu_Descriptor_Allocator {
     VkDescriptorPool buffer_pool;
 };
 Gpu_Descriptor_Allocator gpu_create_descriptor_allocator(VkDevice vk_device, int sampler_size, int buffer_size);
-void gpu_destroy_descriptor_allocator(Gpu_Descriptor_Allocator *allocator);
-void gpu_reset_descriptor_allocator(Gpu_Descriptor_Allocator *allocator);
-VkDescriptorSet* gpu_allocate_descriptor_sets(Gpu_Descriptor_Allocator *allocator, int count, VkDescriptorSetLayoutInfo *info);
-VkDescriptorSet* gpu_allocate_final_descriptor_sets(Gpu_Descriptor_Allocator *allocator, int count, VkDescriptorSetLayoutInfo *info);
+void gpu_destroy_descriptor_allocator(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator);
+void gpu_reset_descriptor_allocator(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator);
 
-Gpu_Descriptor_Pool_Type gpu_get_pool_type(VkDescriptorType type);
-void allocate_vk_descriptor_sets(VkDevice vk_device, VkDescriptorPool pool, int set_count, const VkDescriptorSetLayout *layouts, VkDescriptorSet *sets);
+struct Gpu_Descriptor_Allocation {
+    VkDescriptorSet *sampler_sets;
+    VkDescriptorSet *buffer_sets;
+};
+struct Gpu_Allocate_Descriptor_Set_Info {
+    Gpu_Descriptor_Pool_Type type;
+    VkDescriptorSetLayout layout;
+};
+Gpu_Descriptor_Allocation gpu_queue_descriptor_set_allocation(Gpu_Descriptor_Allocator *allocator, int count, Gpu_Allocate_Descriptor_Set_Info *layouts, VkResult *sampler_result = NULL, VkResult *buffer_result = NULL);
+void gpu_allocate_descriptor_sets(Gpu_Descriptor_Allocator *allocator);
 
-// Descriptors - buffer, dynamic
 struct Create_Vk_Descriptor_Set_Layout_Info {
     int count;
     VkDescriptorSetLayoutBinding *bindings;
 };
-VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, int count, Create_Vk_Descriptor_Set_Layout_Info *binding_info);
-void destroy_vk_descriptor_set_layouts(VkDevice vk_device, int count, VkDescriptorSetLayout *layouts);
+Gpu_Allocate_Descriptor_Set_Info* create_vk_descriptor_set_layouts(VkDevice vk_device, int count, Create_Vk_Descriptor_Set_Layout_Info *infos);
+void gpu_destroy_descriptor_set_layouts(VkDevice vk_device, int count, VkDescriptorSetLayout *layouts);
+void gpu_destroy_descriptor_set_layouts(VkDevice vk_device, int count, Gpu_Allocate_Descriptor_Set_Info *layouts);
+
+
+// Descriptors - buffer, dynamic
+
+//Gpu_Allocate_Descriptor_Set_Info* create_vk_descriptor_set_layouts(VkDevice vk_device, int count, Create_Vk_Descriptor_Set_Layout_Info *binding_info);
+//void destroy_vk_descriptor_set_layouts(VkDevice vk_device, int count, VkDescriptorSetLayout *layouts);
 
 // Pipeline Setup
 // `ShaderStages
