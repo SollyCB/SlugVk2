@@ -807,20 +807,29 @@ void cut_tail_binary_semaphores(Binary_Semaphore_Pool *pool, u32 size) {
 // should think so, since there are so few descriptor types. The over head of having more
 // pools seems unimportant as nowhere does anyone say "Do not allocate too many pools", its
 // more about managing the pools that you have effectively...
-static const u32 DESCRIPTOR_POOL_COMBINED_IMAGE_SAMPLER_MAX_SET_COUNT = 64;
-static const u32 DESCRIPTOR_POOL_UBO_MAX_SET_COUNT = 64;
+static constexpr u32 DESCRIPTOR_POOL_SAMPLER_MAX_SET_COUNT    = 64;
+static constexpr u32 DESCRIPTOR_POOL_BUFFER_MAX_SET_COUNT     = 64;
 
-static const u32 DESCRIPTOR_POOL_COMBINED_IMAGE_SAMPLER_ALLOCATION_COUNT = 64;
-static const u32 DESCRIPTOR_POOL_UBO_ALLOCATION_COUNT = 64;
+static constexpr u32 DESCRIPTOR_POOL_SAMPLER_ALLOCATION_COUNT = 64;
+static constexpr u32 DESCRIPTOR_POOL_BUFFER_ALLOCATION_COUNT  = 64;
 
-VkDescriptorPool create_vk_sampler_descriptor_pool(VkDevice vk_device) {
-    VkDescriptorPoolSize pool_size = {
-        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        DESCRIPTOR_POOL_COMBINED_IMAGE_SAMPLER_ALLOCATION_COUNT,
-    };
-
+VkDescriptorPool create_vk_descriptor_pool(VkDevice vk_device, Descriptor_Pool_Type type) {
+    VkDescriptorPoolSize pool_size = {VK_DESCRIPTOR_TYPE_SAMPLER};
     VkDescriptorPoolCreateInfo create_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-    create_info.maxSets = DESCRIPTOR_POOL_COMBINED_IMAGE_SAMPLER_MAX_SET_COUNT;
+
+    switch(type) {
+    case DESCRIPTOR_POOL_TYPE_SAMPLER:
+        create_info.maxSets       = DESCRIPTOR_POOL_SAMPLER_MAX_SET_COUNT;
+        pool_size.descriptorCount = DESCRIPTOR_POOL_SAMPLER_ALLOCATION_COUNT;
+        break;
+    case DESCRIPTOR_POOL_TYPE_UNIFORM_BUFFER:
+        create_info.maxSets       = DESCRIPTOR_POOL_BUFFER_MAX_SET_COUNT;
+        pool_size.descriptorCount = DESCRIPTOR_POOL_BUFFER_ALLOCATION_COUNT;
+        break;
+    default:
+        ASSERT(false, "Not a valid DescriptorPool type");
+        break;
+    }
     create_info.poolSizeCount = 1;
     create_info.pPoolSizes = &pool_size;
 
@@ -829,24 +838,71 @@ VkDescriptorPool create_vk_sampler_descriptor_pool(VkDevice vk_device) {
     DEBUG_OBJ_CREATION(vkCreateDescriptorPool, check);
     return pool;
 }
-VkDescriptorPool create_vk_ubo_descriptor_pool(VkDevice vk_device) {
-    VkDescriptorPoolSize pool_size = {
-        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        DESCRIPTOR_POOL_UBO_ALLOCATION_COUNT,
-    };
+VkResult reset_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool) {
+    return vkResetDescriptorPool(vk_device, pool, 0x0);
+}
+void destroy_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool) {
+    vkDestroyDescriptorPool(vk_device, pool, ALLOCATION_CALLBACKS);
+} 
 
-    VkDescriptorPoolCreateInfo create_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-    create_info.maxSets = DESCRIPTOR_POOL_UBO_MAX_SET_COUNT;
-    create_info.poolSizeCount = 1;
-    create_info.pPoolSizes = &pool_size;
+Gpu_Descriptor_Allocator gpu_create_descriptor_allocator(VkDevice vk_device, int sampler_size, int buffer_size) {
+    Gpu_Descriptor_Allocator allocator = {};
+    sampler_size = align(sampler_size, 8);
+    buffer_size  = align(buffer_size, 8);
 
-    VkDescriptorPool pool;
-    auto check = vkCreateDescriptorPool(vk_device, &create_info, ALLOCATION_CALLBACKS, &pool);
-    DEBUG_OBJ_CREATION(vkCreateDescriptorPool, check);
-    return pool;
+    ASSERT(sampler_size <= DESCRIPTOR_POOL_SAMPLER_MAX_SET_COUNT, "Sampler Pool Create Size Too Large");
+    ASSERT(sampler_size <= DESCRIPTOR_POOL_BUFFER_MAX_SET_COUNT,  "Sampler Pool Create Size Too Large");
+
+    allocator.sampler_pool    = create_vk_descriptor_pool(vk_device, GPU_DESCRIPTOR_POOL_TYPE_SAMPLER);
+    allocator.buffer_pool     = create_vk_descriptor_pool(vk_device, GPU_DESCRIPTOR_POOL_TYPE_BUFFER);
+
+    u8 *memory_block = memory_allocate_heap(
+       (sizeof(VkDescriptorSetLayout) * sampler_size) +
+       (sizeof(VkDescriptorSetLayout) * buffer_size ) +
+       (     sizeof(VkDescriptorSet)  * sampler_size) +
+       (     sizeof(VkDescriptorSet)  * buffer_size ), 8);
+
+    allocator.sampler_layouts = (VkDescriptorSetLayout*)memory_block;
+    allocator.buffer_layouts  = allocator.sampler_layouts + sampler_size;
+    allocator.sampler_sets    = (VkDescriptorSet*)(allocator.buffer_layouts + buffer_size);
+    allocator.buffer_sets     = allocator.sampler_sets + sampler_size;
+
+    return allocator;
 }
 
-void allocate_vk_descriptor_sets(VkDevice vk_device, VkDescriptorPool pool, u32 set_count, const VkDescriptorSetLayout *layouts, VkDescriptorSet *sets) {
+// @Todo I dont know what is the best allocation/pool pattern for these descriptors yet...
+Gpu_Descriptor_Pool_Type gpu_get_pool_type(VkDescriptorType type) {
+    switch(type) {
+    case VK_DESCRIPTOR_TYPE_SAMPLER:
+    case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+        return GPU_DESCRIPTOR_POOL_TYPE_SAMPLER;
+
+    case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+    case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+    case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+    case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+    case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+        return GPU_DESCRIPTOR_POOL_TYPE_BUFFER;
+
+    default:
+        ASSERT(false, "Invalid VkDescriptorType");
+        break;
+    }
+    return GPU_DESCRIPTOR_POOL_TYPE_BUFFER;
+}
+//
+// @Goal For descriptor allocation, I would like all descriptors (for a thread) to allocated in one go:
+//     When smtg wants to get a descriptor set, it gets put in a buffer, and then this buffer is at
+//     whatever fill level and all the sets are allocated and returned... - sol 4 oct 2023
+//
+// -- (Really, I dont know why you cant just create all the descriptors necessary for shaders in one
+// go store them for the lifetime of the program, tbf big programs can have A LOT of shaders, but many
+// sets should be usable across many shaders and pipelines etc. I feel like with proper planning,
+// this would be possible... idk maybe I am miles off) -- - sol 4 oct 2023
+//
+void allocate_vk_descriptor_sets(VkDevice vk_device, int pool_count, VkDescriptorPool *pools, int set_count, const VkDescriptorSetLayout *layouts, VkDescriptorSet *sets) {
      VkDescriptorSetAllocateInfo allocate_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
      allocate_info.descriptorPool     = pool;
      allocate_info.descriptorSetCount = set_count;
@@ -856,8 +912,17 @@ void allocate_vk_descriptor_sets(VkDevice vk_device, VkDescriptorPool pool, u32 
      DEBUG_OBJ_CREATION(vkAllocateDescriptorSets, check);
 }
 
-VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, Create_Vk_Descriptor_Set_Layout_Info *info, u32 *returned_set_count) {
-        
+VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, int count, Create_Vk_Descriptor_Set_Layout_Info *infos) {
+    VkDescriptorSetLayout *layouts = 
+        (VkDescriptorSetLayout*)memory_allocate_temp(sizeof(VkDescriptorSetLayout) * count, 8);
+    VkDescriptorSetLayoutCreateInfo create_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    VkResult check;
+    for(int i = 0; i < count; ++i) {
+        create_info.bindingCount = infos[i].count;
+        create_info.pBindings    = infos[i].bindings;
+        check = vkCreateDescriptorSetLayout(vk_device, &create_info, ALLOCATION_CALLBACKS, &layouts[i]);
+    }
+    return layouts;
 }
 
 // `Descriptors -- buffers / dynamic

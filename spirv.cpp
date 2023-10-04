@@ -15,6 +15,7 @@
 // InlineUniformBlock   = UniformConstant      , OpTypeStruct <-- (confusing because it is identical to uniform buffer, I think the spirv spec it has decorations)
 
 #include "spirv.hpp"
+#include "gpu.hpp"
 #include "builtin_wrappers.h"
 
 #if TEST
@@ -24,7 +25,7 @@
 
 //     ** DO NOT BIND A DESCRIPTOR TO A NON CONTIGUOUS BINDING **
 // This function relies on bindings being incremented the same way as descriptor sets
-Spirv_Set* group_spirv(int count, Parsed_Spirv *parsed_spirv, int *returned_set_count) {
+Create_Vk_Descriptor_Set_Layout_Info* group_spirv(int count, Parsed_Spirv *parsed_spirv, int *returned_set_count) {
     // Find total number of descriptor sets
     u64 set_mask = 0x0; // Assume fewer than 64 sets
     for(int i = 0; i < count; ++i) {
@@ -43,15 +44,15 @@ Spirv_Set* group_spirv(int count, Parsed_Spirv *parsed_spirv, int *returned_set_
 
     // Allocate memory to each bindings array (this could be done as one allocation, and then bind offsets into it,
     // but since this is a linear allocator the difference would be negligible...)
-    Spirv_Set *sets = (Spirv_Set*)memory_allocate_temp(sizeof(Spirv_Set) * set_count, 8);
+    Create_Vk_Descriptor_Set_Layout_Info *sets = (Create_Vk_Descriptor_Set_Layout_Info*)memory_allocate_temp(sizeof(Create_Vk_Descriptor_Set_Layout_Info) * set_count, 8);
     int total_binding_count = 0;
     for(int i = 0; i < set_count; ++i) {
-        sets[i].binding_count = pop_count64(binding_masks[i]);
-        total_binding_count += sets[i].binding_count;
+        sets[i].count = pop_count64(binding_masks[i]);
+        total_binding_count += sets[i].count;
 
         sets[i].bindings =
             (VkDescriptorSetLayoutBinding*)memory_allocate_temp(
-                sizeof(VkDescriptorSetLayoutBinding) * sets[i].binding_count, 8);
+                sizeof(VkDescriptorSetLayoutBinding) * sets[i].count, 8);
     }
     memset(sets->bindings, 0x0, sizeof(VkDescriptorSetLayoutBinding) * total_binding_count);
 
@@ -63,12 +64,12 @@ Spirv_Set* group_spirv(int count, Parsed_Spirv *parsed_spirv, int *returned_set_
     for(int i = 0; i < count; ++i) {
          spirv = &parsed_spirv[i];
          for(int j = 0; j < spirv->binding_count; ++j) {
-            descriptor               = &spirv->bindings[j];
-            binding                  = &sets[descriptor->set].bindings[descriptor->binding];
-            binding->binding         = descriptor->binding;
-            binding->descriptorCount = descriptor->count;
-            binding->descriptorType  = descriptor->type;
-            binding->stageFlags     |= spirv->stage;
+            descriptor                 = &spirv->bindings[j];
+            binding                    = &sets[descriptor->set].bindings[descriptor->binding];
+            binding->binding           = descriptor->binding;
+            binding->descriptorCount   = descriptor->count;
+            binding->descriptorType    = descriptor->type;
+            binding->stageFlags       |= spirv->stage;
          }
     }
 
@@ -416,13 +417,13 @@ void test_grouper() {
 
     Parsed_Spirv parsed[] = {vert_spirv, frag_spirv};
     int set_count;
-    Spirv_Set *sets = group_spirv(2, parsed, &set_count);
+    Create_Vk_Descriptor_Set_Layout_Info *sets = group_spirv(2, parsed, &set_count);
 
     TEST_EQ("set_count", set_count, 4, false);
-    TEST_EQ("sets[0].binding_count", sets[0].binding_count, 3, false);
-    TEST_EQ("sets[1].binding_count", sets[1].binding_count, 2, false);
-    TEST_EQ("sets[2].binding_count", sets[2].binding_count, 2, false);
-    TEST_EQ("sets[3].binding_count", sets[3].binding_count, 1, false);
+    TEST_EQ("sets[0].count", sets[0].count, 3, false);
+    TEST_EQ("sets[1].count", sets[1].count, 2, false);
+    TEST_EQ("sets[2].count", sets[2].count, 2, false);
+    TEST_EQ("sets[3].count", sets[3].count, 1, false);
 
     TEST_EQ("sets[0].bindings[0].binding"        , sets[0].bindings[0].binding        , 0, false);
     TEST_EQ("sets[0].bindings[0].descriptorType" , sets[0].bindings[0].descriptorType , VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, false);

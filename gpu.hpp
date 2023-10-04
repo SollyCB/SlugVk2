@@ -144,23 +144,48 @@ void reset_binary_semaphore_pool(Binary_Semaphore_Pool *pool);
 void cut_tail_binary_semaphores(Binary_Semaphore_Pool *pool, u32 size);
 
 // Descriptors - static, pool allocated
+
 // @Note I would like to have a pool for each type of descriptor that I will use to help with
 // fragmentation, and understanding what allocations are where... idk if this possible. But I
 // should think so, since there are so few descriptor types. The over head of having more
 // pools seems unimportant as nowhere does anyone say "Do not allocate too many pools", its
 // more about managing the pools that you have effectively...
-VkDescriptorPool create_vk_sampler_descriptor_pool(VkDevice vk_device);
-VkDescriptorPool create_vk_ubo_descriptor_pool(VkDevice vk_device);
+enum Gpu_Descriptor_Pool_Type {
+    GPU_DESCRIPTOR_POOL_TYPE_SAMPLER,
+    GPU_DESCRIPTOR_POOL_TYPE_BUFFER,
+};
+VkDescriptorPool create_vk_descriptor_pool(VkDevice vk_device, Descriptor_Pool_Type type);
+VkResult reset_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool);
+void destroy_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool);
 
-void allocate_vk_descriptor_sets(VkDevice vk_device, VkDescriptorPool pool, u32 set_count, const VkDescriptorSetLayout *layouts, VkDescriptorSet *sets);
+struct Gpu_Descriptor_Allocator {
+    int sampler_count;
+    int buffer_count;
+
+    VkDescriptorSetLayout *sampler_layouts;
+    VkDescriptorSetLayout *buffer_layouts;
+    VkDescriptorSet       *sampler_sets;
+    VkDescriptorSet       *buffer_sets;
+
+    VkDescriptorPool sampler_pool;
+    VkDescriptorPool buffer_pool;
+};
+Gpu_Descriptor_Allocator gpu_create_descriptor_allocator(VkDevice vk_device, int sampler_size, int buffer_size);
+void gpu_destroy_descriptor_allocator(Gpu_Descriptor_Allocator *allocator);
+void gpu_reset_descriptor_allocator(Gpu_Descriptor_Allocator *allocator);
+VkDescriptorSet* gpu_allocate_descriptor_sets(Gpu_Descriptor_Allocator *allocator, int count, VkDescriptorSetLayoutInfo *info);
+VkDescriptorSet* gpu_allocate_final_descriptor_sets(Gpu_Descriptor_Allocator *allocator, int count, VkDescriptorSetLayoutInfo *info);
+
+Gpu_Descriptor_Pool_Type gpu_get_pool_type(VkDescriptorType type);
+void allocate_vk_descriptor_sets(VkDevice vk_device, VkDescriptorPool pool, int set_count, const VkDescriptorSetLayout *layouts, VkDescriptorSet *sets);
 
 // Descriptors - buffer, dynamic
 struct Create_Vk_Descriptor_Set_Layout_Info {
-    u32 count;
+    int count;
     VkDescriptorSetLayoutBinding *bindings;
 };
-VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, Create_Vk_Descriptor_Set_Layout_Info *info, u32 *returned_set_count);
-void destroy_vk_descriptor_set_layouts(VkDevice vk_device, u32 count, VkDescriptorSetLayout *layouts);
+VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, int count, Create_Vk_Descriptor_Set_Layout_Info *binding_info);
+void destroy_vk_descriptor_set_layouts(VkDevice vk_device, int count, VkDescriptorSetLayout *layouts);
 
 // Pipeline Setup
 // `ShaderStages

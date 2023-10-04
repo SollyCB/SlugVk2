@@ -21,7 +21,7 @@ int main() {
     run_tests(); 
 #endif
 
-    #if 0
+    #if 1
     /* StartUp Code */
     init_glfw(); 
     Glfw *glfw = get_glfw_instance();
@@ -35,7 +35,33 @@ int main() {
 
     /* Begin Code That Actually Does Stuff */
     Gltf model = parse_gltf("models/cube-static/Cube.gltf");
+    
+    u64 code_sizes[2];
+    const u32 *shader_blobs[2] = { 
+        (const u32*)file_read_bin_heap("shaders/vertex_4.vert.spv", &code_sizes[0]),
+        (const u32*)file_read_bin_heap("shaders/fragment_4.frag.spv", &code_sizes[1]),
+    };
 
+    int descriptor_set_counts[2];
+    Parsed_Spirv parsed_spirv[2] = {
+        parse_spirv(code_sizes[0], shader_blobs[0], &descriptor_set_counts[0]),
+        parse_spirv(code_sizes[1], shader_blobs[1], &descriptor_set_counts[1]),
+    };
+
+    memory_free_heap((void*)shader_blobs[0]); // cast for constness
+    memory_free_heap((void*)shader_blobs[1]);
+
+    int set_info_count;
+    Create_Vk_Descriptor_Set_Layout_Info *descriptor_set_info = 
+        group_spirv(2, parsed_spirv, &set_info_count);
+
+    VkDescriptorSetLayout *descriptor_set_layouts =
+        create_vk_descriptor_set_layouts(gpu->vk_device, 2, descriptor_set_info);
+
+    VkDescriptorPool combined_image_sampler_pool =
+        create_vk_descriptor_pool(gpu->vk_device, DESCRIPTOR_POOL_TYPE_SAMPLER);
+
+        
 
     /* ShutDown Code */
     kill_window(gpu, window);
