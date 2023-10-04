@@ -31,6 +31,11 @@ VkPipelineShaderStageCreateInfo* renderer_create_shader_stages(VkDevice device, 
     }
     return create_vk_pipeline_shader_stages(device, count, shader_infos);
 }
+void renderer_destroy_shader_stages(VkDevice device, int count, VkPipelineShaderStageCreateInfo *stages) {
+    for(int i = 0; i < count; ++i)
+        vkDestroyShaderModule(device, stages[i].module, ALLOCATION_CALLBACKS_VULKAN);
+}
+
 
 VkPipeline renderer_create_pipeline(Renderer_Create_Pipeline_Info *info) {
     VkDevice device = get_gpu_instance()->vk_device;
@@ -260,8 +265,8 @@ Gpu_Fragment_Shader_State renderer_define_fragment_shader_state(u8 flags, VkComp
     return state;
 }
 
-Gpu_Fragment_Ouput_State renderer_define_fragment_output_state(Gpu_Blend_Setting blend_setting) {
-    Gpu_Fragment_Ouput_State state = {};
+Gpu_Fragment_Output_State renderer_define_fragment_output_state(Gpu_Blend_Setting blend_setting) {
+    Gpu_Fragment_Output_State state = {};
 
     switch (blend_setting) {
         case GPU_BLEND_SETTING_OPAQUE_FULL_COLOR:

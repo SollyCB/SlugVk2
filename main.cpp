@@ -41,6 +41,12 @@ int main() {
 
     Gpu_Rasterization_State pl_stage_2 =
         renderer_define_rasterization_state(GPU_POLYGON_MODE_FILL_BIT, VK_CULL_MODE_NONE);
+
+    Gpu_Fragment_Shader_State pl_stage_3 =
+        renderer_define_fragment_shader_state(0x0, VK_COMPARE_OP_NEVER);
+
+    Gpu_Fragment_Output_State pl_stage_4 =
+        renderer_define_fragment_output_state(GPU_BLEND_SETTING_OPAQUE_FULL_COLOR);
     
     u64 code_sizes[2];
     const u32 *shader_blobs[2] = { 
@@ -53,6 +59,17 @@ int main() {
         parse_spirv(code_sizes[0], shader_blobs[0], &descriptor_set_counts[0]),
         parse_spirv(code_sizes[1], shader_blobs[1], &descriptor_set_counts[1]),
     };
+
+    Renderer_Create_Shader_Stage_Info create_shader_stage_infos[] = {
+        {
+            VK_SHADER_STAGE_VERTEX_BIT, code_sizes[0], shader_blobs[0]
+        },
+        {
+            VK_SHADER_STAGE_FRAGMENT_BIT, code_sizes[1], shader_blobs[1]
+        }
+    };
+    VkPipelineShaderStageCreateInfo* pl_shader_stages = 
+        renderer_create_shader_stages(gpu->vk_device, 2, create_shader_stage_infos);
 
     memory_free_heap((void*)shader_blobs[0]); // cast for constness
     memory_free_heap((void*)shader_blobs[1]);
@@ -68,8 +85,10 @@ int main() {
         gpu_create_descriptor_allocator(gpu->vk_device, 64, 64); // allocate 64 sampler descriptors, 64 buffer descriptors
 
     Gpu_Descriptor_Allocation descriptor_sets = gpu_queue_descriptor_set_allocation(&descriptor_allocator, 2, descriptor_set_layouts);
+    Gpu_Descriptor_Resource_List resource_list = gpu_allocate_descriptor_sets(gpu->vk_device, &descriptor_allocator);
 
     /* ShutDown Code */
+    renderer_destroy_shader_stages(gpu->vk_device, 2, pl_shader_stages);
     gpu_destroy_descriptor_allocator(gpu->vk_device, &descriptor_allocator);
     gpu_destroy_descriptor_set_layouts(gpu->vk_device, 2, descriptor_set_layouts);
     kill_window(gpu, window);

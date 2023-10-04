@@ -38,12 +38,12 @@ struct Renderer_Draw_Info {
 
 Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info);
 
-Gpu_Rasterization_State renderer_define_rasterization_state(Gpu_Polygon_Mode_Flags polygon_mode_flags, VkCullModeFlags cull_mode_flags); // top bit of cull mode flags indicates clockwise front face or not; a pipeline is compiled for each polygon mode set
+Gpu_Rasterization_State renderer_define_rasterization_state(Gpu_Polygon_Mode_Flags polygon_mode_flags = GPU_POLYGON_MODE_FILL_BIT, VkCullModeFlags cull_mode_flags = VK_CULL_MODE_NONE); // top bit of cull mode flags indicates clockwise front face or not; a pipeline is compiled for each polygon mode set
 
-Gpu_Fragment_Shader_State renderer_define_fragment_shader_state(Gpu_Fragment_Shader_Flags flags, VkCompareOp depth_compare_op, float min_depth_bounds, float max_depth_bounds);
+Gpu_Fragment_Shader_State renderer_define_fragment_shader_state(Gpu_Fragment_Shader_Flags flags = 0x0, VkCompareOp depth_compare_op = VK_COMPARE_OP_NEVER, float min_depth_bounds = 0, float max_depth_bounds = 100);
 
-// @Todo color blending. The goal here is to have an enum with a bunch of options for typical combinations. (Fill out above)
-Gpu_Fragment_Ouput_State renderer_define_fragment_output_state(Gpu_Blend_Setting blend_setting);
+// @Todo color blending. The goal here is to have an enum with a bunch of options for typical combinations. 
+Gpu_Fragment_Output_State renderer_define_fragment_output_state(Gpu_Blend_Setting blend_setting = GPU_BLEND_SETTING_OPAQUE_FULL_COLOR);
 
 struct Renderer_Create_Shader_Stage_Info {
     VkShaderStageFlagBits stage;
@@ -51,6 +51,7 @@ struct Renderer_Create_Shader_Stage_Info {
     const u32 *spirv;
 };
 VkPipelineShaderStageCreateInfo* renderer_create_shader_stages(VkDevice device, int count, Renderer_Create_Shader_Stage_Info *infos);
+void renderer_destroy_shader_stages(VkDevice device, int count, VkPipelineShaderStageCreateInfo *stages);
 
 struct Renderer_Create_Pipeline_Info {
     int        subpass;
@@ -62,7 +63,7 @@ struct Renderer_Create_Pipeline_Info {
     Gpu_Vertex_Input_State    *vertex_input_state;
     Gpu_Rasterization_State   *rasterization_state;
     Gpu_Fragment_Shader_State *fragment_shader_state;
-    Gpu_Fragment_Ouput_State  *fragment_output_state;
+    Gpu_Fragment_Output_State  *fragment_output_state;
 
     VkPipelineLayout pl_layout;
     VkRenderPass     renderpass;

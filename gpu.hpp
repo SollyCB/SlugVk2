@@ -3,6 +3,13 @@
 
 #include <vulkan/vulkan_core.h>
 
+#define VULKAN_ALLOCATOR_IS_NULL true
+
+#if VULKAN_ALLOCATOR_IS_NULL
+#define ALLOCATION_CALLBACKS_VULKAN NULL
+#define ALLOCATION_CALLBACKS NULL
+#endif
+
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
 #define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
 #include "external/vk_mem_alloc.h" // vma allocator
@@ -159,8 +166,10 @@ VkResult reset_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool);
 void destroy_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool);
 Gpu_Descriptor_Pool_Type gpu_get_pool_type(VkDescriptorType type);
 
+struct Gpu_Allocate_Descriptor_Set_Info;
 struct Gpu_Descriptor_Allocator {
     // @Todo maybe cut down on the size here? These could easily be shorts, not ints...?
+    // Remove the mark fields and say an allocator is used after being allocated from? <- (cannot add to the queue after calling allocate) --
     int sampler_cap;
     int buffer_cap;
     int sampler_count;
@@ -168,9 +177,12 @@ struct Gpu_Descriptor_Allocator {
     int sampler_mark;
     int buffer_mark;
 
+    VkDescriptorType      *sampler_types;
     VkDescriptorSetLayout *sampler_layouts;
-    VkDescriptorSetLayout *buffer_layouts;
     VkDescriptorSet       *sampler_sets;
+
+    VkDescriptorType      *buffer_types;
+    VkDescriptorSetLayout *buffer_layouts;
     VkDescriptorSet       *buffer_sets;
 
     VkDescriptorPool sampler_pool;
@@ -185,11 +197,15 @@ struct Gpu_Descriptor_Allocation {
     VkDescriptorSet *buffer_sets;
 };
 struct Gpu_Allocate_Descriptor_Set_Info {
-    Gpu_Descriptor_Pool_Type type;
+    VkDescriptorType type;
     VkDescriptorSetLayout layout;
 };
 Gpu_Descriptor_Allocation gpu_queue_descriptor_set_allocation(Gpu_Descriptor_Allocator *allocator, int count, Gpu_Allocate_Descriptor_Set_Info *layouts, VkResult *sampler_result = NULL, VkResult *buffer_result = NULL);
-void gpu_allocate_descriptor_sets(Gpu_Descriptor_Allocator *allocator);
+
+struct Gpu_Descriptor_Resource_List {
+    int counts[10];// 10 integers - counts corresponding to respective descriptor types
+};
+Gpu_Descriptor_Resource_List gpu_allocate_descriptor_sets(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator);
 
 struct Create_Vk_Descriptor_Set_Layout_Info {
     int count;
@@ -367,7 +383,7 @@ struct Gpu_Fragment_Shader_State {
 enum Gpu_Blend_Setting {
     GPU_BLEND_SETTING_OPAQUE_FULL_COLOR = 0,
 };
-struct Gpu_Fragment_Ouput_State {
+struct Gpu_Fragment_Output_State {
     VkPipelineColorBlendAttachmentState blend_state;
 };
 
@@ -380,7 +396,7 @@ struct Create_Vk_Pipeline_Info {
     Gpu_Vertex_Input_State    *vertex_input_state;
     Gpu_Rasterization_State   *rasterization_state;
     Gpu_Fragment_Shader_State *fragment_shader_state;
-    Gpu_Fragment_Ouput_State  *fragment_output_state;
+    Gpu_Fragment_Output_State  *fragment_output_state;
 
     VkPipelineLayout layout;
     VkRenderPass renderpass;
