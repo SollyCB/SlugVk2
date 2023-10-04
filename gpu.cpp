@@ -420,7 +420,8 @@ VkSwapchainKHR recreate_vk_swapchain(Gpu *gpu, Window *window) {
     window->swapchain_info.oldSwapchain = window->vk_swapchain;
 
     // Image setup
-    vkGetSwapchainImagesKHR(gpu->vk_device, window->vk_swapchain, &window->image_count, window->vk_images);
+    auto img_check = vkGetSwapchainImagesKHR(gpu->vk_device, window->vk_swapchain, &window->image_count, window->vk_images);
+    DEBUG_OBJ_CREATION(vkGetSwapchainImagesKHR, img_check);
 
     VkImageViewCreateInfo view_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO}; 
     view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
@@ -520,7 +521,13 @@ VkSwapchainKHR create_vk_swapchain(Gpu *gpu, VkSurfaceKHR vk_surface) {
     window->vk_images = (VkImage*)(window + 1);
     window->vk_image_views = (VkImageView*)(window->vk_images + image_count);
 
-    vkGetSwapchainImagesKHR(gpu->vk_device, window->vk_swapchain, &image_count, window->vk_images);
+    u32 image_count_check;
+    vkGetSwapchainImagesKHR(gpu->vk_device, window->vk_swapchain, &image_count_check, NULL);
+    ASSERT(image_count_check == image_count, "Incorrect return value from GetSwapchainImages");
+
+    auto check_swapchain_img_count = 
+        vkGetSwapchainImagesKHR(gpu->vk_device, window->vk_swapchain, &image_count, window->vk_images);
+    DEBUG_OBJ_CREATION(vkGetSwapchainImagesKHR, check_swapchain_img_count);
 
     // Create Views
     VkImageViewCreateInfo view_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO}; 
