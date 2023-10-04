@@ -337,6 +337,7 @@ enum Gpu_Polygon_Mode_Flag_Bits {
     GPU_POLYGON_MODE_LINE_BIT  = 0x02,
     GPU_POLYGON_MODE_POINT_BIT = 0x04,
 };
+typedef u8 Gpu_Polygon_Mode_Flags;
 
 struct Gpu_Rasterization_State {
     int polygon_mode_count;
@@ -351,6 +352,8 @@ enum Gpu_Fragment_Shader_Flag_Bits {
     GPU_FRAGMENT_SHADER_DEPTH_WRITE_ENABLE_BIT        = 0x02,
     GPU_FRAGMENT_SHADER_DEPTH_BOUNDS_TEST_ENABLE_BIT  = 0x04,
 };
+typedef u8 Gpu_Fragment_Shader_Flags;
+
 struct Gpu_Fragment_Shader_State {
     // 32bits for alignment
     u32 flags;

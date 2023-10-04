@@ -78,6 +78,7 @@ Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *m
     state.input_binding_description_count   = 4;
     state.input_attribute_description_count = 4;
     draw_info->offset_count = 4;
+    draw_info->offsets = (int*)memory_allocate_temp(sizeof(int) * draw_info->offset_count, 4);
 
     // pos
     state.binding_description_bindings  [0] = 0;
@@ -108,10 +109,12 @@ Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *m
 
     draw_info->draw_count = accessor->count; // take the number of elements to draw from the 'position' vertex attribute
 
+    char *file_names[4];
+
     Gltf_Buffer_View *buffer_view = (Gltf_Buffer_View*)((u8*)model->buffer_views + model->buffer_view_count[accessor->buffer_view]);
     draw_info->offsets[0] = accessor->byte_offset + buffer_view->byte_offset;
     Gltf_Buffer *buffer = (Gltf_Buffer*)((u8*)model->buffers + model->buffer_count[buffer_view->buffer]);
-    draw_info->file_names[0] = buffer->uri;
+    file_names[0] = buffer->uri;
 
     if (buffer_view->byte_stride) {
         state.binding_description_strides[0] = buffer_view->byte_stride;
@@ -126,7 +129,7 @@ Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *m
     buffer_view = (Gltf_Buffer_View*)((u8*)model->buffer_views + model->buffer_view_count[accessor->buffer_view]);
     draw_info->offsets[1] = accessor->byte_offset + buffer_view->byte_offset;
     buffer = (Gltf_Buffer*)((u8*)model->buffers + model->buffer_count[buffer_view->buffer]);
-    draw_info->file_names[1] = buffer->uri;
+    file_names[1] = buffer->uri;
 
     if (buffer_view->byte_stride) {
         state.binding_description_strides[1] = buffer_view->byte_stride;
@@ -141,7 +144,7 @@ Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *m
     buffer_view = (Gltf_Buffer_View*)((u8*)model->buffer_views + model->buffer_view_count[accessor->buffer_view]);
     draw_info->offsets[2] = accessor->byte_offset + buffer_view->byte_offset;
     buffer = (Gltf_Buffer*)((u8*)model->buffers + model->buffer_count[buffer_view->buffer]);
-    draw_info->file_names[2] = buffer->uri;
+    file_names[2] = buffer->uri;
 
     if (buffer_view->byte_stride) {
         state.binding_description_strides[2] = buffer_view->byte_stride;
@@ -156,7 +159,7 @@ Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *m
     buffer_view = (Gltf_Buffer_View*)((u8*)model->buffer_views + model->buffer_view_count[accessor->buffer_view]);
     draw_info->offsets[3] = accessor->byte_offset + buffer_view->byte_offset;
     buffer = (Gltf_Buffer*)((u8*)model->buffers + model->buffer_count[buffer_view->buffer]);
-    draw_info->file_names[3] = buffer->uri;
+    file_names[3] = buffer->uri;
 
     if (buffer_view->byte_stride) {
         state.binding_description_strides[3] = buffer_view->byte_stride;
@@ -164,10 +167,34 @@ Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *m
         state.binding_description_strides[3] = renderer_get_byte_stride(accessor->format);
     }
 
+    //
+    // @Ugly This below code is ugly. I dont like it...
+    //
+    draw_info->file_count = 0;
+    draw_info->file_names = (char**)memory_allocate_temp(sizeof(char*) * 4, 8);
+    const char *empty = "";
+    for(int i = 0; i < 4; ++i)
+        draw_info->file_names[i] = (char*)empty;
+
+    bool unique;
+    for(int i = 0; i < 4; ++i) {
+        unique = true;
+        for(int j = 0; j < 4; ++j) {
+            if (strcmp(draw_info->file_names[j], file_names[i]) == 0) {
+                unique = false;
+                break;
+            }
+        }
+        if (!unique)
+            continue;
+        draw_info->file_names[draw_info->file_count] = file_names[i];
+        draw_info->file_count++;
+    }
+
     return state;
 }
 
-Gpu_Rasterization_State renderer_define_rasterization_state(u8 polygon_mode_flags, u8 cull_mode_flags) {
+Gpu_Rasterization_State renderer_define_rasterization_state(Gpu_Polygon_Mode_Flags polygon_mode_flags, VkCullModeFlags cull_mode_flags) {
     Gpu_Rasterization_State state = {};
 
     switch(polygon_mode_flags) {

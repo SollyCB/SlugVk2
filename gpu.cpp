@@ -854,6 +854,8 @@ void destroy_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool) {
 
 Gpu_Descriptor_Allocator gpu_create_descriptor_allocator(VkDevice vk_device, int sampler_size, int buffer_size) {
     Gpu_Descriptor_Allocator allocator = {};
+
+    // @Todo Align these to the actual deviceProperties sizes...
     sampler_size = align(sampler_size, 8);
     buffer_size  = align(buffer_size, 8);
 

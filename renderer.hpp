@@ -28,6 +28,7 @@ struct Renderer_Draw_Info {
     // @Todo Move away from using uri style file names (as in the gltf files). Instead,
     // keep a list of all resource files and store indices into that list.
     // Group the list by resources which are frequently used together.
+    int file_count;
     char **file_names; // buffer data
 
     // @Todo find the best way to reference the file data for the buffers, 
@@ -37,9 +38,9 @@ struct Renderer_Draw_Info {
 
 Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info);
 
-Gpu_Rasterization_State renderer_define_rasterization_state(u8 polygon_mode_flags, u8 cull_mode_flags); // top bit of cull mode flags indicates clockwise front face or not; a pipeline is compiled for each polygon mode set
+Gpu_Rasterization_State renderer_define_rasterization_state(Gpu_Polygon_Mode_Flags polygon_mode_flags, VkCullModeFlags cull_mode_flags); // top bit of cull mode flags indicates clockwise front face or not; a pipeline is compiled for each polygon mode set
 
-Gpu_Fragment_Shader_State renderer_define_fragment_shader_state(u8 flags, VkCompareOp depth_compare_op, float min_depth_bounds, float max_depth_bounds);
+Gpu_Fragment_Shader_State renderer_define_fragment_shader_state(Gpu_Fragment_Shader_Flags flags, VkCompareOp depth_compare_op, float min_depth_bounds, float max_depth_bounds);
 
 // @Todo color blending. The goal here is to have an enum with a bunch of options for typical combinations. (Fill out above)
 Gpu_Fragment_Ouput_State renderer_define_fragment_output_state(Gpu_Blend_Setting blend_setting);

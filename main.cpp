@@ -32,9 +32,15 @@ int main() {
     init_window(gpu, glfw);
     Window *window = get_window_instance();
 
-
     /* Begin Code That Actually Does Stuff */
     Gltf model = parse_gltf("models/cube-static/Cube.gltf");
+    Renderer_Draw_Info draw_info = {};
+
+    Gpu_Vertex_Input_State pl_stage_1 =
+        renderer_define_vertex_input_state(model.meshes->primitives, &model, &draw_info);
+
+    Gpu_Rasterization_State pl_stage_2 =
+        renderer_define_rasterization_state(GPU_POLYGON_MODE_FILL_BIT, VK_CULL_MODE_NONE);
     
     u64 code_sizes[2];
     const u32 *shader_blobs[2] = { 
@@ -59,7 +65,7 @@ int main() {
         create_vk_descriptor_set_layouts(gpu->vk_device, 2, descriptor_set_info);
 
     Gpu_Descriptor_Allocator descriptor_allocator =
-        gpu_create_descriptor_allocator(gpu->vk_device, 64, 64);
+        gpu_create_descriptor_allocator(gpu->vk_device, 64, 64); // allocate 64 sampler descriptors, 64 buffer descriptors
 
     Gpu_Descriptor_Allocation descriptor_sets = gpu_queue_descriptor_set_allocation(&descriptor_allocator, 2, descriptor_set_layouts);
 
