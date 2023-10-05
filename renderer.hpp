@@ -22,25 +22,32 @@
 // draw info buffered, we dispatch draw calls.
 struct Renderer_Draw_Info {
     int draw_count;
-
     int offset_count;
     int *offsets; // offsets per binding into buffer data
-
-    // @Todo Move away from using uri style file names (as in the gltf files). Instead,
-    // keep a list of all resource files and store indices into that list.
-    // Group the list by resources which are frequently used together.
-    int file_count;
-    char **file_names; // buffer data
-
-    // @Todo find the best way to reference the file data for the buffers, 
-    // e.g. just the filename? and then read the file at draw time? or read file earlier
-    // and keep in memory?
 };
+enum Renderer_Resource {
+    RENDERER_RESOURCE_DEVICE_VERTEX_BUFFER  = 0,
+    RENDERER_RESOURCE_DEVICE_INDEX_BUFFER   = 1,
+    RENDERER_RESOURCE_DEVICE_UNIFORM_BUFFER = 2,
+    RENDERER_RESOURCE_DEVICE_STORAGE_BUFFER = 3,
+    RENDERER_RESOURCE_DEVICE_SAMPLED_IMAGE  = 4,
+    RENDERER_RESOURCE_DEVICE_STORAGE_IMAGE  = 5,
+};
+// Counts corresponds to the counts of the above resource types required to draw the model
+struct Renderer_Resource_List {
+    int counts[6]; 
+};
+// Get list of required resources from gltf model
+Renderer_Resource_List renderer_make_buffer_list(Gltf *model);
+Renderer_Resource_List renderer_make_buffer_list(Gltf *model);
 
+// Pl_Stage_1
 Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info);
 
+// Pl_Stage_2
 Gpu_Rasterization_State renderer_define_rasterization_state(Gpu_Polygon_Mode_Flags polygon_mode_flags = GPU_POLYGON_MODE_FILL_BIT, VkCullModeFlags cull_mode_flags = VK_CULL_MODE_NONE); // top bit of cull mode flags indicates clockwise front face or not; a pipeline is compiled for each polygon mode set
 
+// Pl_Stage_3
 struct Renderer_Fragment_Shader_State_Info {
     Gpu_Fragment_Shader_Flags flags = 0x0;
     VkCompareOp depth_compare_op = VK_COMPARE_OP_NEVER;
@@ -51,6 +58,7 @@ struct Renderer_Fragment_Shader_State_Info {
 Gpu_Fragment_Shader_State renderer_define_fragment_shader_state(Renderer_Fragment_Shader_State_Info *info);
 
 // @Todo color blending. The goal here is to have an enum with a bunch of options for typical combinations. 
+// Pl_Stage_4
 Gpu_Fragment_Output_State renderer_define_fragment_output_state(Gpu_Blend_Setting blend_setting = GPU_BLEND_SETTING_OPAQUE_FULL_COLOR);
 
 struct Renderer_Create_Shader_Stage_Info {

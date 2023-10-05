@@ -806,34 +806,21 @@ void cut_tail_binary_semaphores(Binary_Semaphore_Pool *pool, u32 size) {
 
 // @Todo Get an idea for average descriptor allocation patterns, so that pools can be created with
 // descriptor counts which are representative of the application's usage patterns...
-VkDescriptorPool create_vk_descriptor_pool(VkDevice vk_device, Gpu_Descriptor_Pool_Type type, int size) {
-
-    u32 pool_size_count;
-    VkDescriptorPoolSize pool_sizes[10];
-    switch(type) {
-    case GPU_DESCRIPTOR_POOL_TYPE_SAMPLER:
-        pool_size_count = 2;
-        pool_sizes[0] = {VK_DESCRIPTOR_TYPE_SAMPLER, 16};
-        pool_sizes[1] = {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 48};
-        break;
-    case GPU_DESCRIPTOR_POOL_TYPE_BUFFER:
-        pool_size_count = 7;
-        pool_sizes[0] = {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE       ,  8};
-        pool_sizes[1] = {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE       ,  4};
-        pool_sizes[2] = {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,  2};
-        pool_sizes[3] = {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,  2};
-        pool_sizes[4] = {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER      , 24};
-        pool_sizes[5] = {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER      , 12};
-        pool_sizes[6] = {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT    , 12};
-        break;
-    default:
-        ASSERT(false, "Not a valid DescriptorPool type");
-        break;
+VkDescriptorPool create_vk_descriptor_pool(VkDevice vk_device, int max_set_count, int counts[11]) {
+    VkDescriptorPoolSize pool_sizes[11];
+    int size_count = 0;
+    for(int i = 0; i < 11; ++i) {
+        if (counts[i] != 0) {
+            pool_sizes[size_count].descriptorCount = counts[i];
+            pool_sizes[size_count].type = (VkDescriptorType)i;
+            size_count++;
+        }
     }
+
     VkDescriptorPoolCreateInfo create_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-    create_info.maxSets       = size;
-    create_info.poolSizeCount = pool_size_count;
+    create_info.maxSets       = max_set_count;
     create_info.pPoolSizes    = pool_sizes;
+    create_info.poolSizeCount     = size_count;
 
     VkDescriptorPool pool;
     auto check = vkCreateDescriptorPool(vk_device, &create_info, ALLOCATION_CALLBACKS, &pool);
@@ -847,188 +834,82 @@ void destroy_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool) {
     vkDestroyDescriptorPool(vk_device, pool, ALLOCATION_CALLBACKS);
 } 
 
-Gpu_Descriptor_Allocator gpu_create_descriptor_allocator(VkDevice vk_device, int sampler_size, int buffer_size) {
+Gpu_Descriptor_Allocator gpu_create_descriptor_allocator(VkDevice vk_device, int max_sets, int counts[11]) {
     Gpu_Descriptor_Allocator allocator = {};
+    for(int i = 0; i < 11; ++i)
+        allocator.cap[i] = counts[i];
 
-    // @Todo Align these to the actual deviceProperties sizes...
-    sampler_size = align(sampler_size, 8);
-    buffer_size  = align(buffer_size, 8);
+    allocator.pool = 
+        create_vk_descriptor_pool(vk_device, max_sets, counts);
+    allocator.set_cap = max_sets;
 
-    allocator.sampler_cap = sampler_size;
-    allocator.buffer_cap  = buffer_size;
+    u8 *memory_block = memory_allocate_heap(
+       (sizeof(VkDescriptorSetLayout) * max_sets) +
+       (      sizeof(VkDescriptorSet) * max_sets), 8); 
 
-    allocator.sampler_pool    = 
-        create_vk_descriptor_pool(vk_device, GPU_DESCRIPTOR_POOL_TYPE_SAMPLER, sampler_size);
-    allocator.buffer_pool     = 
-        create_vk_descriptor_pool(vk_device, GPU_DESCRIPTOR_POOL_TYPE_BUFFER, buffer_size);
-
-    u8 *memory_block_samplers = memory_allocate_heap(
-       (sizeof(VkDescriptorSetLayout) * sampler_size) +
-       (     sizeof(VkDescriptorType) * sampler_size) +
-       (      sizeof(VkDescriptorSet) * sampler_size), 8); 
-    u8 *memory_block_buffers = memory_allocate_heap(
-       (sizeof(VkDescriptorSetLayout) * buffer_size ) +
-       (     sizeof(VkDescriptorType) * buffer_size)  +
-       (      sizeof(VkDescriptorSet) * buffer_size ), 8);
-
-    allocator.sampler_types   = (VkDescriptorType*)memory_block_samplers;
-    allocator.sampler_layouts = (VkDescriptorSetLayout*)(allocator.sampler_types + sampler_size);
-    allocator.sampler_sets    = (VkDescriptorSet*)(allocator.sampler_layouts     + sampler_size);
-
-    allocator.buffer_types    = (VkDescriptorType*)memory_block_buffers;
-    allocator.buffer_layouts  = (VkDescriptorSetLayout*)(allocator.buffer_types  + buffer_size);
-    allocator.buffer_sets     = (VkDescriptorSet*)(allocator.buffer_layouts      + buffer_size);
+    allocator.layouts = (VkDescriptorSetLayout*)(memory_block);
+    allocator.sets    = (VkDescriptorSet*)(allocator.layouts + max_sets);
 
     return allocator;
 }
 void gpu_destroy_descriptor_allocator(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator) {
-    vkDestroyDescriptorPool(vk_device, allocator->sampler_pool, ALLOCATION_CALLBACKS);
-    vkDestroyDescriptorPool(vk_device, allocator->buffer_pool,  ALLOCATION_CALLBACKS);
-    memory_free_heap(allocator->sampler_types); // sets array is in the same allocation as the layouts
-    memory_free_heap(allocator->buffer_types);
+    vkDestroyDescriptorPool(vk_device, allocator->pool, ALLOCATION_CALLBACKS);
+    memory_free_heap(allocator->layouts);
     *allocator = {};
 }
 void gpu_reset_descriptor_allocator(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator) {
-    allocator->sampler_count = 0;
-    allocator->buffer_count  = 0;
-    vkResetDescriptorPool(vk_device, allocator->sampler_pool, 0x0);
-    vkResetDescriptorPool(vk_device, allocator->buffer_pool, 0x0);
+    allocator->sets_queued    = 0;
+    allocator->sets_allocated = 0;
+    // Zeroing this way seems dumb, but I dont want to memset...
+    for(int i = 0; i < 11; ++i)
+        allocator->counts[i] = 0;
+    vkResetDescriptorPool(vk_device, allocator->pool, 0x0);
 }
-Gpu_Descriptor_Allocation gpu_queue_descriptor_set_allocation(Gpu_Descriptor_Allocator *allocator, int count, Gpu_Allocate_Descriptor_Set_Info *layouts, VkResult *sampler_result, VkResult *buffer_result) {
-    int sampler_allocation = 0;
-    int buffer_allocation  = 0;
+VkDescriptorSet* gpu_queue_descriptor_set_allocation(
+    Gpu_Descriptor_Allocator *allocator, Gpu_Queue_Descriptor_Set_Allocation_Info *info, VkResult *result)
+{
+    ASSERT(allocator->sets_queued + info->layout_count >= allocator->sets_allocated, "Overflow Check");
 
-    // Count allocation sizes here to avoid branches inside a loop (trade off: have to loop twice...)
-    for(int i = 0; i < count; ++i) {
-        switch(layouts[i].type) {
-        case GPU_DESCRIPTOR_POOL_TYPE_SAMPLER:
-            sampler_allocation++;
-            break;
-        case GPU_DESCRIPTOR_POOL_TYPE_BUFFER:
-            buffer_allocation++;
-            break;
+    for(int i = 0; i < 11; ++i) {
+        ASSERT(allocator->counts[i] + info->descriptor_counts[i] >= allocator->counts[i], 
+               "Overflow Check");
+        allocator->counts[i] += info->descriptor_counts[i];
+
+        #if DEBUG // Check for individual descriptor overflow
+        if (allocator->counts[i] > allocator->cap[i]) {
+            *result = VK_ERROR_OUT_OF_POOL_MEMORY;
+            ASSERT(false, "Descriptor Allocator Descriptor Overflow");
+            return NULL;
         }
+        #endif
     }
+    ASSERT(info->descriptor_counts[(int)VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC] == 0,
+           "Type Not Supported");
+    ASSERT(info->descriptor_counts[(int)VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC] == 0,
+           "Type Not Supported");
 
-    bool fail = false;
-    if (sampler_allocation + allocator->sampler_count > allocator->sampler_cap) {
-        if(sampler_result) *sampler_result= VK_ERROR_OUT_OF_POOL_MEMORY;
-        fail = true;
-    }
-    if (buffer_allocation + allocator->buffer_count   > allocator->buffer_cap) {
-        if (buffer_result) *buffer_result = VK_ERROR_OUT_OF_POOL_MEMORY;
-        fail = true;
-    }
-    if (fail)
-        return {};
-
-    int sampler_pos = allocator->sampler_count;
-    int buffer_pos  = allocator->buffer_count;
-
-    for(int i = 0; i < count; ++i) {
-        switch(gpu_get_pool_type(layouts[i].type)) {
-        case GPU_DESCRIPTOR_POOL_TYPE_SAMPLER:
-        {
-            allocator->sampler_layouts[allocator->sampler_count] = layouts[i].layout;
-            allocator->sampler_types[allocator->sampler_count]   = layouts[i].type;
-            allocator->sampler_count++;
+    for(int i = 0; i < info->layout_count; ++i) {
+            allocator->layouts[allocator->sets_queued] = info->layouts[i];
+            allocator->sets_queued++;
             break;
-        }
-        case GPU_DESCRIPTOR_POOL_TYPE_BUFFER:
-        {
-            allocator->buffer_layouts[allocator->buffer_count] = layouts[i].layout;
-            allocator->buffer_types[allocator->buffer_count]   = layouts[i].type;
-            allocator->buffer_count++;
-            break;
-        }
-        default:
-            ASSERT(false, "Invalid Descriptor Type");
-            break;
-        }
     }
+    ASSERT(allocator->sets_queued <= allocator->set_cap, "Descriptor Allocator Set Overflow");
 
-    return {allocator->sampler_sets + sampler_pos,
-            allocator->buffer_sets  + buffer_pos};
+    return allocator->sets + (allocator->sets_queued - info->layout_count);
 }
 // This should never fail with 'OUT_OF_POOL_MEMORY' or 'FRAGMENTED_POOL' because of the way the pools 
 // are managed by the allocator... I will manage the out of host and device memory with just an
 // assert for now, as handling an error like that would require a large management op...
-Gpu_Descriptor_Resource_List gpu_allocate_descriptor_sets(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator) {
+void gpu_allocate_descriptor_sets(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator) {
     VkDescriptorSetAllocateInfo info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-    info.descriptorPool     = allocator->sampler_pool;
-    info.descriptorSetCount = allocator->sampler_count   - allocator->sampler_mark;
-    info.pSetLayouts        = allocator->sampler_layouts + allocator->sampler_mark;
-
-    int sampler_offset = allocator->sampler_mark;
-    allocator->sampler_mark = allocator->sampler_count;
+    info.descriptorPool     = allocator->pool;
+    info.descriptorSetCount = allocator->sets_queued - allocator->sets_allocated;
+    info.pSetLayouts        = allocator->layouts     + allocator->sets_allocated;
 
     auto check =
-        vkAllocateDescriptorSets(vk_device, &info, allocator->sampler_sets + sampler_offset);
+        vkAllocateDescriptorSets(vk_device, &info, allocator->sets + allocator->sets_allocated);
     DEBUG_OBJ_CREATION(vkAllocateDescriptorSets, check);
-
-    info.descriptorPool     = allocator->buffer_pool;
-    info.descriptorSetCount = allocator->buffer_count   - allocator->buffer_mark;
-    info.pSetLayouts        = allocator->buffer_layouts + allocator->buffer_mark;
-
-    int buffer_offset = allocator->buffer_mark;
-    allocator->buffer_mark  = allocator->buffer_count;
-
-    check =
-        vkAllocateDescriptorSets(vk_device, &info, allocator->buffer_sets + buffer_offset);
-    DEBUG_OBJ_CREATION(vkAllocateDescriptorSets, check);
-
-    Gpu_Descriptor_Resource_List ret = {};
-    for(int i = sampler_offset; i < allocator->sampler_count; ++i) {
-        switch(allocator->sampler_types[i]) {
-        case VK_DESCRIPTOR_TYPE_SAMPLER:
-            ret.counts[(int)VK_DESCRIPTOR_TYPE_SAMPLER]++;
-            break;
-        case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-            ret.counts[(int)VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER];
-            break;
-
-        default:
-            ASSERT(false, "Invalid Descriptor Type");
-            break;
-        }
-    }
-
-    for(int i = buffer_offset; i < allocator->buffer_count; ++i) {
-        switch(allocator->buffer_types[i]) {
-        case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-            ret.counts[(int)VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE]++;
-            break;
-        case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-            ret.counts[(int)VK_DESCRIPTOR_TYPE_STORAGE_IMAGE]++;
-            break;
-        case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
-            ret.counts[(int)VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER]++;
-            break;
-        case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-            ret.counts[(int)VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER]++;
-            break;
-        case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-            ret.counts[(int)VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER]++;
-            break;
-        case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-            ret.counts[(int)VK_DESCRIPTOR_TYPE_STORAGE_BUFFER]++;
-            break;
-        case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
-            ret.counts[(int)VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT]++;
-            break;
-
-        case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
-        case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
-            ASSERT(false, "I dont use these types...");
-            break;
-
-        default:
-            ASSERT(false, "Invalid Descriptor Type");
-            break;
-        }
-    }
-
-    return ret;
+    allocator->sets_allocated = allocator->sets_queued;
 }
 
 // @Todo I dont know what is the best allocation/pool pattern for these descriptors yet...
@@ -1063,21 +944,20 @@ Gpu_Descriptor_Pool_Type gpu_get_pool_type(VkDescriptorType type) {
 // sets should be usable across many shaders and pipelines etc. I feel like with proper planning,
 // this would be possible... idk maybe I am miles off) -- - sol 4 oct 2023
 //
-Gpu_Allocate_Descriptor_Set_Info* 
+VkDescriptorSetLayout* 
 create_vk_descriptor_set_layouts(VkDevice vk_device, int count, Create_Vk_Descriptor_Set_Layout_Info *infos) {
     // @Todo think about the lifetime of this allocation
-    Gpu_Allocate_Descriptor_Set_Info *layouts = 
-        (Gpu_Allocate_Descriptor_Set_Info*)memory_allocate_temp(
-            sizeof(Gpu_Allocate_Descriptor_Set_Info) * count, 8);
+    VkDescriptorSetLayout *layouts = 
+        (VkDescriptorSetLayout*)memory_allocate_temp(
+            sizeof(VkDescriptorSetLayout) * count, 8);
 
     VkDescriptorSetLayoutCreateInfo create_info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
     VkResult check;
     for(int i = 0; i < count; ++i) {
         create_info.bindingCount = infos[i].count;
         create_info.pBindings    = infos[i].bindings;
-        layouts[i].type = infos[i].bindings[0].descriptorType;
         check = vkCreateDescriptorSetLayout(
-                    vk_device, &create_info, ALLOCATION_CALLBACKS, &layouts[i].layout);
+                    vk_device, &create_info, ALLOCATION_CALLBACKS, &layouts[i]);
         DEBUG_OBJ_CREATION(vkCreateDescriptorSetLayout, check);
     }
     return layouts;
@@ -1086,9 +966,17 @@ void gpu_destroy_descriptor_set_layouts(VkDevice vk_device, int count, VkDescrip
     for(int i = 0; i < count; ++i)
         vkDestroyDescriptorSetLayout(vk_device, layouts[i], ALLOCATION_CALLBACKS);
 }
-void gpu_destroy_descriptor_set_layouts(VkDevice vk_device, int count, Gpu_Allocate_Descriptor_Set_Info *layouts) {
-    for(int i = 0; i < count; ++i)
-        vkDestroyDescriptorSetLayout(vk_device, layouts[i].layout, ALLOCATION_CALLBACKS);
+
+Gpu_Descriptor_List gpu_make_descriptor_list(int count, Create_Vk_Descriptor_Set_Layout_Info *infos) {
+    Gpu_Descriptor_List ret = {};
+    VkDescriptorSetLayoutBinding *binding;
+    for(int i = 0; i < count; ++i) {
+        for(int j = 0; j < infos[i].count; ++j) {
+            binding = &infos[i].bindings[j];
+            ret.counts[(int)binding->descriptorType] += binding->descriptorCount;
+        }
+    }
+    return ret;
 }
 
 // `Descriptors -- buffers / dynamic
@@ -1401,7 +1289,7 @@ void create_vk_graphics_pipelines(VkDevice vk_device, VkPipelineCache cache, int
         attribute_info = {
             (u32)info->vertex_input_state->attribute_description_locations[i],
             (u32)info->vertex_input_state->attribute_description_bindings[i],
-            0, // offset corrected at draw time
+            (u32)info->vertex_input_state->offsets[i], // gltf accessor offset
             info->vertex_input_state->formats[i],
         };
         vertex_attribute_descriptions[i] = create_vk_vertex_attribute_description(&attribute_info);
@@ -1796,10 +1684,11 @@ VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info) {
 
 // `GpuLinearAllocator - Buffer optimisation
 // returns offset into the buffer;
-Gpu_Linear_Allocator gpu_create_linear_allocator_host(VmaAllocator vma_allocator, u64 size) {
+Gpu_Linear_Allocator gpu_create_linear_allocator_host(
+    VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type) {
     VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     buffer_create_info.size  = size;
-    buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    buffer_create_info.usage = (VkBufferUsageFlags)usage_type;
 
     VmaAllocationCreateInfo allocation_create_info = {};
     allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
@@ -1812,10 +1701,11 @@ Gpu_Linear_Allocator gpu_create_linear_allocator_host(VmaAllocator vma_allocator
 
     return gpu_linear_allocator;
 }
-Gpu_Linear_Allocator gpu_create_linear_allocator_device(VmaAllocator vma_allocator, u64 size) {
+Gpu_Linear_Allocator gpu_create_linear_allocator_device(
+    VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type) {
     VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     buffer_create_info.size  = size;
-    buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    buffer_create_info.usage = (VkBufferUsageFlags)usage_type;
 
     VmaAllocationCreateInfo allocation_create_info = {};
     allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
@@ -1827,7 +1717,7 @@ Gpu_Linear_Allocator gpu_create_linear_allocator_device(VmaAllocator vma_allocat
     return gpu_linear_allocator;
 }
 void gpu_destroy_linear_allocator(VmaAllocator vma_allocator, Gpu_Linear_Allocator *linear_allocator) {
-    vmaDestroyBuffer(vma_allocator, linear_allocator->buffer, linear_allocator->allocation);
+    vmaDestroyBuffer(vma_allocator, linear_allocator->buffer, linear_allocator->vma_allocation);
     linear_allocator->used = 0;
     linear_allocator->cap  = 0;
 }
@@ -1851,10 +1741,10 @@ void gpu_cut_tail_linear_allocator(Gpu_Linear_Allocator *allocator, u64 size) {
 VkBufferCopy gpu_linear_allocator_get_copy_info(Gpu_Linear_Allocator *to_allocator, u64 offset_into_src_buffer, u64 size) {
     VkBufferCopy ret = {};
     ret.srcOffset    = offset_into_src_buffer;
-    ret.dstOffset    = to->used;
+    ret.dstOffset    = to_allocator->used;
     size = align(size, 8);
     ret.size         = size;
-    gpu_make_linear_allocation(device_allocator, size);
+    gpu_make_linear_allocation(to_allocator, size);
     return ret;
 }
 

@@ -161,60 +161,59 @@ enum Gpu_Descriptor_Pool_Type {
     GPU_DESCRIPTOR_POOL_TYPE_SAMPLER,
     GPU_DESCRIPTOR_POOL_TYPE_BUFFER,
 };
-VkDescriptorPool create_vk_descriptor_pool(VkDevice vk_device, int max_set_count, int counts[11]);
+VkDescriptorPool create_vk_descriptor_pool(VkDevice vk_device, Gpu_Descriptor_Pool_Type type, int size);
 VkResult reset_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool);
 void destroy_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool);
 Gpu_Descriptor_Pool_Type gpu_get_pool_type(VkDescriptorType type);
 
 struct Gpu_Allocate_Descriptor_Set_Info;
 struct Gpu_Descriptor_Allocator {
-    u16 sets_queued;
-    u16 sets_allocated;
-    u16 set_cap;
+    // @Todo maybe cut down on the size here? These could easily be shorts, not ints...?
+    // Remove the mark fields and say an allocator is used after being allocated from? <- (cannot add to the queue after calling allocate) --
+    int sampler_cap;
+    int buffer_cap;
+    int sampler_count;
+    int buffer_count;
+    int sampler_mark;
+    int buffer_mark;
 
-    VkDescriptorSetLayout *layouts;
-    VkDescriptorSet       *sets;
+    VkDescriptorType      *sampler_types;
+    VkDescriptorSetLayout *sampler_layouts;
+    VkDescriptorSet       *sampler_sets;
 
-    VkDescriptorPool pool;
+    VkDescriptorType      *buffer_types;
+    VkDescriptorSetLayout *buffer_layouts;
+    VkDescriptorSet       *buffer_sets;
 
-    // @Todo @Note This is a trial style. These arrays make this struct verrrryy big, but also super
-    // detailed so you can really see what is up with the pool. Probably better to enable this
-    // functionality only in debug mode?? Or maybe this information can be useful even in release?
-    // Tbf this struct isnt smtg which is an array that gets looped through all the time, for instance
-    // it will only ever be being loaded once per function so the size honestly wont matter 
-    // (I dont think...)
-    u16 cap[11];
-    u16 counts[11]; // tracks individual descriptor allocations
+    VkDescriptorPool sampler_pool;
+    VkDescriptorPool buffer_pool;
 };
-// 'count' arg corresponds to the number of descriptors for each of the first 11 descriptor types
-Gpu_Descriptor_Allocator 
-gpu_create_descriptor_allocator(VkDevice vk_device, int max_sets, int counts[11]);
+Gpu_Descriptor_Allocator gpu_create_descriptor_allocator(VkDevice vk_device, int sampler_size, int buffer_size);
 void gpu_destroy_descriptor_allocator(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator);
 void gpu_reset_descriptor_allocator(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator);
 
-struct Gpu_Descriptor_List;
-struct Gpu_Queue_Descriptor_Set_Allocation_Info {
-    int layout_count;
-    VkDescriptorSetLayout *layouts;
-    int *descriptor_counts; // array of len 11
+struct Gpu_Descriptor_Allocation {
+    VkDescriptorSet *sampler_sets;
+    VkDescriptorSet *buffer_sets;
 };
-VkDescriptorSet* gpu_queue_descriptor_set_allocation(
-    Gpu_Descriptor_Allocator *allocator, Gpu_Queue_Descriptor_Set_Allocation_Info *info, VkResult *result);
+struct Gpu_Allocate_Descriptor_Set_Info {
+    VkDescriptorType type;
+    VkDescriptorSetLayout layout;
+};
+Gpu_Descriptor_Allocation gpu_queue_descriptor_set_allocation(Gpu_Descriptor_Allocator *allocator, int count, Gpu_Allocate_Descriptor_Set_Info *layouts, VkResult *sampler_result = NULL, VkResult *buffer_result = NULL);
 
-void gpu_allocate_descriptor_sets(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator);
+struct Gpu_Descriptor_Resource_List {
+    int counts[10];// 10 integers - counts corresponding to respective descriptor types
+};
+Gpu_Descriptor_Resource_List gpu_allocate_descriptor_sets(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator);
 
 struct Create_Vk_Descriptor_Set_Layout_Info {
     int count;
     VkDescriptorSetLayoutBinding *bindings;
 };
-VkDescriptorSetLayout* create_vk_descriptor_set_layouts(VkDevice vk_device, int count, Create_Vk_Descriptor_Set_Layout_Info *infos);
+Gpu_Allocate_Descriptor_Set_Info* create_vk_descriptor_set_layouts(VkDevice vk_device, int count, Create_Vk_Descriptor_Set_Layout_Info *infos);
 void gpu_destroy_descriptor_set_layouts(VkDevice vk_device, int count, VkDescriptorSetLayout *layouts);
 void gpu_destroy_descriptor_set_layouts(VkDevice vk_device, int count, Gpu_Allocate_Descriptor_Set_Info *layouts);
-
-struct Gpu_Descriptor_List {
-    int counts[11]; // count per descriptor type
-};
-Gpu_Descriptor_List gpu_make_descriptor_list(int count, Create_Vk_Descriptor_Set_Layout_Info *infos);
 
 
 // Descriptors - buffer, dynamic
@@ -778,40 +777,12 @@ struct Gpu_Linear_Allocator {
     VkBuffer buffer;
     VmaAllocation vma_allocation;
 };
-enum Gpu_Allocator_Type {
-    GPU_ALLOCATOR_TYPE_VERTEX       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_INDEX        = VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_UNIFORM      = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_STORAGE      = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_TRANSFER_SRC = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-    GPU_ALLOCATOR_TYPE_TRANSFER_DST = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-
-    GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_SRC = 
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_DST = 
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-
-    GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_DST = 
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_SRC = 
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-
-    GPU_ALLOCATOR_TYPE_UNIFORM_TRANSFER_DST = 
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_UNIFORM_TRANSFER_SRC = 
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-
-    GPU_ALLOCATOR_TYPE_STORAGE_TRANSFER_DST = 
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_STORAGE_TRANSFER_SRC = 
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-};
 // Memory is close to the host
 Gpu_Linear_Allocator gpu_create_linear_allocator_host(
-    VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type);
+    VmaAllocator vma_allocator, u64 size, VkBufferUsageFlags usage_type);
 // Memory is close to the device
 Gpu_Linear_Allocator gpu_create_linear_allocator_device(
-    VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type);
+    VmaAllocator vma_allocator, u64 size, VkBufferUsageFlags usage_type);
 // Returns offset to beginning of new allocation
 u64 gpu_make_linear_allocation(Gpu_Linear_Allocator *allocator, u64 size);
 // Reduce used by size

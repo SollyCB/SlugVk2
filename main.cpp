@@ -79,18 +79,33 @@ int main() {
     Create_Vk_Descriptor_Set_Layout_Info *descriptor_set_info = 
         group_spirv(2, parsed_spirv, &set_info_count);
 
-    Gpu_Allocate_Descriptor_Set_Info *descriptor_set_layouts =
+    Gpu_Descriptor_List descriptor_list =
+        gpu_make_descriptor_list(2, descriptor_set_info);
+
+    VkDescriptorSetLayout *descriptor_set_layouts =
         create_vk_descriptor_set_layouts(gpu->vk_device, 2, descriptor_set_info);
 
     Gpu_Descriptor_Allocator descriptor_allocator =
-        gpu_create_descriptor_allocator(gpu->vk_device, 64, 64); // allocate 64 sampler descriptors, 64 buffer descriptors
+        gpu_create_descriptor_allocator(gpu->vk_device, 64, descriptor_list.counts);
 
-    Gpu_Descriptor_Allocation descriptor_sets = gpu_queue_descriptor_set_allocation(&descriptor_allocator, 2, descriptor_set_layouts);
-    Gpu_Descriptor_Resource_List resource_list = gpu_allocate_descriptor_sets(gpu->vk_device, &descriptor_allocator);
+    Gpu_Queue_Descriptor_Set_Allocation_Info descriptor_set_allocation_info = {
+        2, descriptor_set_layouts, descriptor_list.counts, 
+    };
+
+    Gpu_Queue_Descriptor_Set_Allocation_Info descriptor_sets_queue_info = {};
+    descriptor_sets_queue_info.layout_count = 2;
+    descriptor_sets_queue_info.layouts = descriptor_set_layouts;
+    descriptor_sets_queue_info.descriptor_counts = descriptor_list.counts;
+
+    VkResult descriptor_result;
+    VkDescriptorSet *descriptor_sets = 
+        gpu_queue_descriptor_set_allocation(
+            &descriptor_allocator, &descriptor_sets_queue_info, &descriptor_result);
+    gpu_allocate_descriptor_sets(gpu->vk_device, &descriptor_allocator);
 
     VkDescriptorSetLayout pl_layout_sets[8];
     for(int i = 0; i < set_info_count; ++i)
-        pl_layout_sets[i] = descriptor_set_layouts[i].layout;
+        pl_layout_sets[i] = descriptor_set_layouts[i];
     Create_Vk_Pipeline_Layout_Info pl_layout_info = {2, pl_layout_sets, 0, NULL};
 
     VkPipelineLayout pl_layout = create_vk_pipeline_layout(gpu->vk_device, &pl_layout_info);

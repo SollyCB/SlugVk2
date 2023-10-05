@@ -3,23 +3,6 @@
 
 int renderer_get_byte_stride(Gltf_Accessor_Format);
 
-// @Goal. Having to specify the state up front I think is fine, as I can generate
-// state for models and then bake that state. So at runtime I have all the state for
-// models in whatever configuration prebaked, making pipeline compilation easy. I think.
-// so really I would want this code to be in a different file, called "baker.cpp" or smtg,
-// which takes gltf files and bakes their state for use in vulkan, and then this state can
-// be read at run time. This baking should be pretty easy, as vulkan structs use counts
-// and array everywhere, so resetting pointers should be trivial, as everything tells
-// you how big it is...
-
-// @Goal draw_infos all kept in a memory pool. The below functions allocate into this pool
-// as they read gltf data. When the pool is full, or full enough that dispatching another
-// call to the below functions could overflow it, we call draw and empty the pool, ready
-// to fill again. input_states etc, use the temp allocator, so all the state info is
-// kept contiguous, and if there is extra stuff like for the 'extra_attributes' field, 
-// we can just allocate more knowing that the extra stuff is just off the end of the state we
-// just defined.
-
 VkPipelineShaderStageCreateInfo* renderer_create_shader_stages(VkDevice device, int count, Renderer_Create_Shader_Stage_Info *infos) {
     Create_Vk_Pipeline_Shader_Stage_Info *shader_infos =
         (Create_Vk_Pipeline_Shader_Stage_Info*)memory_allocate_temp(sizeof(Create_Vk_Pipeline_Shader_Stage_Info) * count, 8);
@@ -34,6 +17,7 @@ VkPipelineShaderStageCreateInfo* renderer_create_shader_stages(VkDevice device, 
 void renderer_destroy_shader_stages(VkDevice device, int count, VkPipelineShaderStageCreateInfo *stages) {
     for(int i = 0; i < count; ++i)
         vkDestroyShaderModule(device, stages[i].module, ALLOCATION_CALLBACKS_VULKAN);
+    memory_free_heap(stages);
 }
 
 
@@ -53,25 +37,24 @@ VkPipeline renderer_create_pipeline(VkDevice vk_device, Renderer_Create_Pipeline
     return pl;
 }
 
+//Renderer_Resource_List renderer_get_resource_list(Gltf *model) {
+//    int *buffer_sizes = (int*)memory_allocate_temp(sizeof(int) * model->buffer_count, 4);
+//    char *buffer_names
+//    Gltf_Buffer *gltf_buffer = model->buffers;
+//}
+
 Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info) {
     
     Gpu_Vertex_Input_State state = {};
 
-    // Enough memory for each array field in 'state'
-    int *memory_block = (int*)memory_allocate_temp(sizeof(int) * 4 * 5, 4);
+    // Enough memory for each array field in 'state' (6 int pointers for 4 bindings)
+    int *memory_block = (int*)memory_allocate_temp(sizeof(int) * 6 * 4, 4);
     state.binding_description_bindings    = memory_block;
     state.binding_description_strides     = memory_block + 4;
     state.attribute_description_locations = memory_block + 8;
     state.attribute_description_bindings  = memory_block + 12;
     state.formats = (VkFormat*)(memory_block + 16);
-
-    // @Todo @Incomplete ... This needs to be handled before allocating memory for this 
-    // struct? Or keep the basic stuff together and allocate more for this off the end,
-    // adding a field to the struct to track how much we added?
-    // account for extra attributes
-    /*if (mesh_primitive->extra_attribute_count) {
-        //state.input_binding_description_count += primitive->extra_attribute_count;
-    } */
+    state.offsets = (memory_block + 20);
 
     // @Todo add normals etc.
     // @Todo account for sparse accessors (replace the correct vertices at draw time)
@@ -109,90 +92,22 @@ Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *m
     // position
     Gltf_Accessor *accessor = (Gltf_Accessor*)((u8*)model->accessors + model->accessor_count[position]);
     state.formats[0] = (VkFormat)accessor->format;
-
-    draw_info->draw_count = accessor->count; // take the number of elements to draw from the 'position' vertex attribute
-
-    char *file_names[4];
-
-    Gltf_Buffer_View *buffer_view = (Gltf_Buffer_View*)((u8*)model->buffer_views + model->buffer_view_count[accessor->buffer_view]);
-    draw_info->offsets[0] = accessor->byte_offset + buffer_view->byte_offset;
-    Gltf_Buffer *buffer = (Gltf_Buffer*)((u8*)model->buffers + model->buffer_count[buffer_view->buffer]);
-    file_names[0] = buffer->uri;
-
-    if (buffer_view->byte_stride) {
-        state.binding_description_strides[0] = buffer_view->byte_stride;
-    } else {
-        state.binding_description_strides[0] = renderer_get_byte_stride(accessor->format);
-    }
+    state.offsets[0] = accessor->byte_offset;
 
     // normal
     accessor = (Gltf_Accessor*)((u8*)model->accessors + model->accessor_count[normal]);
     state.formats[1] = (VkFormat)accessor->format;
-
-    buffer_view = (Gltf_Buffer_View*)((u8*)model->buffer_views + model->buffer_view_count[accessor->buffer_view]);
-    draw_info->offsets[1] = accessor->byte_offset + buffer_view->byte_offset;
-    buffer = (Gltf_Buffer*)((u8*)model->buffers + model->buffer_count[buffer_view->buffer]);
-    file_names[1] = buffer->uri;
-
-    if (buffer_view->byte_stride) {
-        state.binding_description_strides[1] = buffer_view->byte_stride;
-    } else {
-        state.binding_description_strides[1] = renderer_get_byte_stride(accessor->format);
-    }
+    state.offsets[1] = accessor->byte_offset;
 
     // tangent
     accessor = (Gltf_Accessor*)((u8*)model->accessors + model->accessor_count[tangent]);
     state.formats[2] = (VkFormat)accessor->format;
-
-    buffer_view = (Gltf_Buffer_View*)((u8*)model->buffer_views + model->buffer_view_count[accessor->buffer_view]);
-    draw_info->offsets[2] = accessor->byte_offset + buffer_view->byte_offset;
-    buffer = (Gltf_Buffer*)((u8*)model->buffers + model->buffer_count[buffer_view->buffer]);
-    file_names[2] = buffer->uri;
-
-    if (buffer_view->byte_stride) {
-        state.binding_description_strides[2] = buffer_view->byte_stride;
-    } else {
-        state.binding_description_strides[2] = renderer_get_byte_stride(accessor->format);
-    }
+    state.offsets[2] = accessor->byte_offset;
 
     // tex_coord_0
     accessor = (Gltf_Accessor*)((u8*)model->accessors + model->accessor_count[tex_coord_0]);
     state.formats[3] = (VkFormat)accessor->format;
-
-    buffer_view = (Gltf_Buffer_View*)((u8*)model->buffer_views + model->buffer_view_count[accessor->buffer_view]);
-    draw_info->offsets[3] = accessor->byte_offset + buffer_view->byte_offset;
-    buffer = (Gltf_Buffer*)((u8*)model->buffers + model->buffer_count[buffer_view->buffer]);
-    file_names[3] = buffer->uri;
-
-    if (buffer_view->byte_stride) {
-        state.binding_description_strides[3] = buffer_view->byte_stride;
-    } else {
-        state.binding_description_strides[3] = renderer_get_byte_stride(accessor->format);
-    }
-
-    //
-    // @Ugly This below code is ugly. I dont like it...
-    //
-    draw_info->file_count = 0;
-    draw_info->file_names = (char**)memory_allocate_temp(sizeof(char*) * 4, 8);
-    const char *empty = "";
-    for(int i = 0; i < 4; ++i)
-        draw_info->file_names[i] = (char*)empty;
-
-    bool unique;
-    for(int i = 0; i < 4; ++i) {
-        unique = true;
-        for(int j = 0; j < 4; ++j) {
-            if (strcmp(draw_info->file_names[j], file_names[i]) == 0) {
-                unique = false;
-                break;
-            }
-        }
-        if (!unique)
-            continue;
-        draw_info->file_names[draw_info->file_count] = file_names[i];
-        draw_info->file_count++;
-    }
+    state.offsets[3] = accessor->byte_offset;
 
     return state;
 }
