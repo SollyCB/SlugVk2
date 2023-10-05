@@ -1795,37 +1795,16 @@ VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info) {
 // `Resources
 
 // `GpuLinearAllocator - Buffer optimisation
-struct Gpu_Linear_Allocator {
-    u64 used;
-    u64 cap;
-    VkBuffer buffer;
-    VmaAllocation vma_allocation;
-};
 // returns offset into the buffer;
-u64 make_gpu_allocation(Gpu_Linear_Allocator *allocator, u64 size, u8 alignment) {
-    u8 alignment_mask = allocator->used & (alignment - 1);
-    allocator->used = (allocator->used + alignment_mask) & ~alignment_mask;
-
-    u64 ret = allocator->used;
-    allocator->used += size;
-    return ret;
-}
-void empty_gpu_allocator(Gpu_Linear_Allocator *allocator) {
-    allocator->used = 0;
-}
-void cut_tail_gpu_allocator(Gpu_Linear_Allocator *allocator, u64 size) {
-    allocator->used -= size;
-}
-
-// Allocate the perframe and persistent buffers
-Gpu_Linear_Allocator create_gpu_linear_allocator_host(VmaAllocator vma_allocator, u64 size) {
+Gpu_Linear_Allocator gpu_create_linear_allocator_host(VmaAllocator vma_allocator, u64 size) {
     VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     buffer_create_info.size  = size;
     buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
     VmaAllocationCreateInfo allocation_create_info = {};
     allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
-    allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                                   VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
     Gpu_Linear_Allocator gpu_linear_allocator;
     auto check = vmaCreateBuffer(vma_allocator, &buffer_create_info, &allocation_create_info, &gpu_linear_allocator.buffer, &gpu_linear_allocator.vma_allocation, NULL);
@@ -1833,8 +1812,7 @@ Gpu_Linear_Allocator create_gpu_linear_allocator_host(VmaAllocator vma_allocator
 
     return gpu_linear_allocator;
 }
-
-Gpu_Linear_Allocator create_gpu_linear_allocator_device(VmaAllocator vma_allocator, u64 size) {
+Gpu_Linear_Allocator gpu_create_linear_allocator_device(VmaAllocator vma_allocator, u64 size) {
     VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     buffer_create_info.size  = size;
     buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -1847,6 +1825,37 @@ Gpu_Linear_Allocator create_gpu_linear_allocator_device(VmaAllocator vma_allocat
     DEBUG_OBJ_CREATION(vmaCreateBuffer, check);
 
     return gpu_linear_allocator;
+}
+void gpu_destroy_linear_allocator(VmaAllocator vma_allocator, Gpu_Linear_Allocator *linear_allocator) {
+    vmaDestroyBuffer(vma_allocator, linear_allocator->buffer, linear_allocator->allocation);
+    linear_allocator->used = 0;
+    linear_allocator->cap  = 0;
+}
+u64 gpu_make_linear_allocation(Gpu_Linear_Allocator *allocator, u64 size) {
+    // @Note I removed alignment here, I need to better check alignment rules for Vulkan resources
+    // to see if 8 is actually fine, or if stuff actually needs greater alignment
+    u64 alignment = 8;
+    u64 alignment_mask = allocator->used & (alignment - 1);
+    allocator->used = (allocator->used + alignment_mask) & ~alignment_mask;
+
+    u64 ret = allocator->used;
+    allocator->used += align(size, alignment);
+    return ret;
+}
+void gpu_reset_linear_allocator(Gpu_Linear_Allocator *allocator) {
+    allocator->used = 0;
+}
+void gpu_cut_tail_linear_allocator(Gpu_Linear_Allocator *allocator, u64 size) {
+    allocator->used -= size;
+}
+VkBufferCopy gpu_linear_allocator_get_copy_info(Gpu_Linear_Allocator *to_allocator, u64 offset_into_src_buffer, u64 size) {
+    VkBufferCopy ret = {};
+    ret.srcOffset    = offset_into_src_buffer;
+    ret.dstOffset    = to->used;
+    size = align(size, 8);
+    ret.size         = size;
+    gpu_make_linear_allocation(device_allocator, size);
+    return ret;
 }
 
 // `Buffers

@@ -250,8 +250,11 @@ Gpu_Rasterization_State renderer_define_rasterization_state(Gpu_Polygon_Mode_Fla
     return state; 
 }
 
-// Currently this function really does not have much to do, since multisampling is all 
-// defaults for now...
+//
+// These last two function will be built out to do more real work when I start using stuff like
+// blending and multisampling...
+//
+
 Gpu_Fragment_Shader_State renderer_define_fragment_shader_state(Renderer_Fragment_Shader_State_Info *info) {
     Gpu_Fragment_Shader_State state = {};
     state.flags = info->flags;

@@ -762,13 +762,46 @@ struct Gpu_Buffer {
     VmaAllocation vma_allocation;
 };
 
-// @Note this really needs to be inlined?
 static inline void* get_vma_mapped_ptr(VmaAllocator vma_allocator, Gpu_Buffer *gpu_buffer) {
     VmaAllocationInfo info;
     vmaGetAllocationInfo(vma_allocator, gpu_buffer->vma_allocation, &info);
     return info.pMappedData;
 }
 void destroy_vma_buffer(VmaAllocator vma_allocator, Gpu_Buffer *gpu_buffer);
+
+/* Beginning new buffer */
+struct Gpu_Linear_Allocator {
+    u64 used;
+    u64 cap;
+    VkBuffer buffer;
+    VmaAllocation vma_allocation;
+};
+// Memory is close to the host
+Gpu_Linear_Allocator gpu_create_linear_allocator_host(VmaAllocator vma_allocator, u64 size);
+// Memory is close to the device
+Gpu_Linear_Allocator gpu_create_linear_allocator_device(VmaAllocator vma_allocator, u64 size);
+// Returns offset to beginning of new allocation
+u64 gpu_make_linear_allocation(Gpu_Linear_Allocator *allocator, u64 size);
+// Reduce used by size
+void gpu_cut_tail_linear_allocator(Gpu_Linear_Allocator *allocator, u64 size);
+// Set used to zero
+void gpu_reset_linear_allocator(Gpu_Linear_Allocator *allocator);
+// Get copy information for an allocation
+VkBufferCopy gpu_linear_allocator_get_copy_info(Gpu_Linear_Allocator *to_allocator, u64 offset_into_src_buffer, u64 size);
+// Get mapped pointer to beginning of gpu linear allocator
+inline static void* gpu_linear_allocator_get_ptr(VmaAllocator vma_allocator, Gpu_Linear_Allocator *linear_allocator) {
+    return get_vma_mapped_ptr(vma_allocator, linear_allocator->vma_allocation);
+}
+
+enum Gpu_Resource_Setting {
+    GPU_RESOURCE_SETTING_HOST_LOCAL_VERTEX   = 0,
+    GPU_RESOURCE_SETTING_DEVICE_LOCAL_VERTEX = 1,
+};
+// @Unimplemented
+Gpu_Buffer gpu_create_buffer(VmaAllocator vma_allocator, Gpu_Resource_Setting setting, u64 size);
+Gpu_Buffer gpu_create_image(VmaAllocator vma_allocator, Gpu_Resource_Setting setting, u64 size);
+
+/* End new buffer */
 
 void create_src_dst_vertex_buffer_pair(VmaAllocator vma_allocator, u64 size, Gpu_Buffer *src, Gpu_Buffer *dst);
 Gpu_Buffer create_src_buffer(VmaAllocator vma_allocator, u64 size);

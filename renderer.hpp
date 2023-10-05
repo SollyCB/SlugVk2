@@ -22,6 +22,7 @@
 // draw info buffered, we dispatch draw calls.
 struct Renderer_Draw_Info {
     int draw_count;
+
     int offset_count;
     int *offsets; // offsets per binding into buffer data
 
