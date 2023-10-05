@@ -151,16 +151,6 @@ void reset_binary_semaphore_pool(Binary_Semaphore_Pool *pool);
 void cut_tail_binary_semaphores(Binary_Semaphore_Pool *pool, u32 size);
 
 // Descriptors - static, pool allocated
-
-// @Note I would like to have a pool for each type of descriptor that I will use to help with
-// fragmentation, and understanding what allocations are where... idk if this possible. But I
-// should think so, since there are so few descriptor types. The over head of having more
-// pools seems unimportant as nowhere does anyone say "Do not allocate too many pools", its
-// more about managing the pools that you have effectively...
-enum Gpu_Descriptor_Pool_Type {
-    GPU_DESCRIPTOR_POOL_TYPE_SAMPLER,
-    GPU_DESCRIPTOR_POOL_TYPE_BUFFER,
-};
 VkDescriptorPool create_vk_descriptor_pool(VkDevice vk_device, int max_set_count, int counts[11]);
 VkResult reset_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool);
 void destroy_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool);
@@ -779,6 +769,15 @@ struct Gpu_Linear_Allocator {
     VmaAllocation vma_allocation;
 };
 enum Gpu_Allocator_Type {
+    GPU_ALLOCATOR_TYPE_BUFFER_GENERAL_SRC = 
+                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | 
+                VK_BUFFER_USAGE_INDEX_BUFFER_BIT  |
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+    GPU_ALLOCATOR_TYPE_BUFFER_GENERAL_DST = 
+                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | 
+                VK_BUFFER_USAGE_INDEX_BUFFER_BIT  |
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+
     GPU_ALLOCATOR_TYPE_VERTEX       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
     GPU_ALLOCATOR_TYPE_INDEX        = VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
     GPU_ALLOCATOR_TYPE_UNIFORM      = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,

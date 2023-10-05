@@ -19,8 +19,6 @@ void renderer_destroy_shader_stages(VkDevice device, int count, VkPipelineShader
         vkDestroyShaderModule(device, stages[i].module, ALLOCATION_CALLBACKS_VULKAN);
     memory_free_heap(stages);
 }
-
-
 VkPipeline renderer_create_pipeline(VkDevice vk_device, Renderer_Create_Pipeline_Info *info) {
     //
     // @Todo I need to figure out the shader pipeline. Shader stage state seems like
@@ -36,14 +34,22 @@ VkPipeline renderer_create_pipeline(VkDevice vk_device, Renderer_Create_Pipeline
     create_vk_graphics_pipelines(vk_device, VK_NULL_HANDLE, 1, (Create_Vk_Pipeline_Info*)info, &pl);
     return pl;
 }
+struct Buffer_Range {
+    int byte_offset;
+    int byte_length;
+    int buffer_view;
+    int buffer;
+};
+Renderer_Resource_List renderer_get_model_resource_list(Gltf *model) {
+    // @Todo Animation buffer ranges filtered into uniform buffer allocators.
+    // @Todo Images filtered into image allocators.
+    // @Todo Node transforms filtered into uniform buffers.
+    // @Todo Primitive indices filtered into index buffer allocators.
+    // @Todo Primitive vertex filtered into vertex buffer allocators.
 
-//Renderer_Resource_List renderer_get_resource_list(Gltf *model) {
-//    int *buffer_sizes = (int*)memory_allocate_temp(sizeof(int) * model->buffer_count, 4);
-//    char *buffer_names
-//    Gltf_Buffer *gltf_buffer = model->buffers;
-//}
-
-Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info) {
+}
+Gpu_Vertex_Input_State renderer_define_vertex_input_state(
+    Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info) {
     
     Gpu_Vertex_Input_State state = {};
 

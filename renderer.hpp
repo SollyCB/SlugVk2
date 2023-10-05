@@ -29,17 +29,20 @@ enum Renderer_Resource {
     RENDERER_RESOURCE_DEVICE_VERTEX_BUFFER  = 0,
     RENDERER_RESOURCE_DEVICE_INDEX_BUFFER   = 1,
     RENDERER_RESOURCE_DEVICE_UNIFORM_BUFFER = 2,
-    RENDERER_RESOURCE_DEVICE_STORAGE_BUFFER = 3,
-    RENDERER_RESOURCE_DEVICE_SAMPLED_IMAGE  = 4,
+    RENDERER_RESOURCE_DEVICE_SAMPLED_IMAGE  = 3,
+    RENDERER_RESOURCE_DEVICE_STORAGE_BUFFER = 4,
     RENDERER_RESOURCE_DEVICE_STORAGE_IMAGE  = 5,
 };
+enum Renderer_Resource_View {};
 // Counts corresponds to the counts of the above resource types required to draw the model
 struct Renderer_Resource_List {
     int counts[6]; 
 };
+struct Renderer_Resource_View_List {
+    int counts[6]; 
+};
 // Get list of required resources from gltf model
-Renderer_Resource_List renderer_make_buffer_list(Gltf *model);
-Renderer_Resource_List renderer_make_buffer_list(Gltf *model);
+Renderer_Resource_List renderer_get_model_resource_list(Gltf *model);
 
 // Pl_Stage_1
 Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info);
