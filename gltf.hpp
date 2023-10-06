@@ -415,6 +415,20 @@ Gltf_Scene* gltf_scene_by_index(Gltf *gltf, int i);
 Gltf_Skin* gltf_skin_by_index(Gltf *gltf, int i);
 Gltf_Texture* gltf_texture_by_index(Gltf *gltf, int i);
 
+int gltf_accessor_get_count(Gltf *gltf);
+int gltf_animation_get_count(Gltf *gltf);
+int gltf_buffer_get_count(Gltf *gltf);
+int gltf_buffer_view_get_count(Gltf *gltf);
+int gltf_camera_get_count(Gltf *gltf);
+int gltf_image_get_count(Gltf *gltf);
+int gltf_material_get_count(Gltf *gltf);
+int gltf_mesh_get_count(Gltf *gltf);
+int gltf_node_get_count(Gltf *gltf);
+int gltf_sampler_get_count(Gltf *gltf);
+int gltf_scene_get_count(Gltf *gltf);
+int gltf_skin_get_count(Gltf *gltf);
+int gltf_texture_get_count(Gltf *gltf);
+
 #if TEST
     void test_gltf();
 #endif

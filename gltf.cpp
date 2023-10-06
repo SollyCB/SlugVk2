@@ -1856,6 +1856,46 @@ Gltf_Texture* gltf_texture_by_index(Gltf *gltf, int i) {
     return (Gltf_Texture*)((u8*)gltf->textures + gltf->texture_count[i]);
 }
 
+int gltf_accessor_get_count(Gltf *gltf) {
+    return gltf->accessor_count[-1];
+}
+int gltf_animation_get_count(Gltf *gltf) {
+    return gltf->animation_count[-1];
+}
+int gltf_buffer_get_count(Gltf *gltf) {
+    return gltf->buffer_count[-1];
+}
+int gltf_buffer_view_get_count(Gltf *gltf) {
+    return gltf->buffer_view_count[-1];
+}
+int gltf_camera_get_count(Gltf *gltf) {
+    return gltf->camera_count[-1];
+}
+int gltf_image_get_count(Gltf *gltf) {
+    return gltf->image_count[-1];
+}
+int gltf_material_get_count(Gltf *gltf) {
+    return gltf->material_count[-1];
+}
+int gltf_mesh_get_count(Gltf *gltf) {
+    return gltf->mesh_count[-1];
+}
+int gltf_node_get_count(Gltf *gltf) {
+    return gltf->node_count[-1];
+}
+int gltf_sampler_get_count(Gltf *gltf) {
+    return gltf->sampler_count[-1];
+}
+int gltf_scene_get_count(Gltf *gltf) {
+    return gltf->scene_count[-1];
+}
+int gltf_skin_get_count(Gltf *gltf) {
+    return gltf->skin_count[-1];
+}
+int gltf_texture_get_count(Gltf *gltf) {
+    return gltf->texture_count[-1];
+}
+
 #if TEST
 static void test_accessors(Gltf_Accessor *accessor);
 static void test_animations(Gltf_Animation *animation);
