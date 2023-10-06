@@ -276,6 +276,7 @@ enum Gltf_Primitive_Topology {
 struct Gltf_Mesh_Primitive {
     int stride;
 
+    // @BigTodo This type needs to be rejigged to better support different counts of vertex attributes
     int extra_attribute_count;
     int target_count;
     int indices;

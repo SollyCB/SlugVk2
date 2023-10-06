@@ -154,7 +154,6 @@ void cut_tail_binary_semaphores(Binary_Semaphore_Pool *pool, u32 size);
 VkDescriptorPool create_vk_descriptor_pool(VkDevice vk_device, int max_set_count, int counts[11]);
 VkResult reset_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool);
 void destroy_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool);
-Gpu_Descriptor_Pool_Type gpu_get_pool_type(VkDescriptorType type);
 
 struct Gpu_Allocate_Descriptor_Set_Info;
 struct Gpu_Descriptor_Allocator {
@@ -336,7 +335,6 @@ struct Gpu_Vertex_Input_State {
     int *attribute_description_locations;
     int *attribute_description_bindings;
     VkFormat *formats;
-    int *offsets;
 };
 
 // Pl_Stage_2

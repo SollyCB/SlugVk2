@@ -6,40 +6,21 @@
 #include "gltf.hpp"
 #include "string.hpp"
 
-//
-// This file calls the gpu resource creation functions defined in gpu.hpp
-//
-
-// ***Notes on file*** (sort of brief planning...)
-// 
-// Stuff to need:
-//     Arrays of resources that need transitioning.
-//     Linear allocator on the gpu for each frame.
-//     Pools of sync objects
-//     Handling out of memory etc type stuff?
-
-// @Todo @Note later I want these to exist in a pool of memory, and when I have enough
-// draw info buffered, we dispatch draw calls.
 struct Renderer_Draw_Info {
     int draw_count;
-    int offset_count;
-    int *offsets; // offsets per binding into buffer data
+    int offsets[4]; // @Note Will likely have to make this an array and set the size dynamically
+                    // per primitive...
 };
-enum Renderer_Resource {
-    RENDERER_RESOURCE_DEVICE_VERTEX_BUFFER  = 0,
-    RENDERER_RESOURCE_DEVICE_INDEX_BUFFER   = 1,
-    RENDERER_RESOURCE_DEVICE_UNIFORM_BUFFER = 2,
-    RENDERER_RESOURCE_DEVICE_SAMPLED_IMAGE  = 3,
-    RENDERER_RESOURCE_DEVICE_STORAGE_BUFFER = 4,
-    RENDERER_RESOURCE_DEVICE_STORAGE_IMAGE  = 5,
+
+struct Renderer_Mesh_Info {
+    int primitive_count;
+    Gpu_Vertex_Input_State* primitive_states;
+    Renderer_Draw_Info *draw_infos;
 };
-enum Renderer_Resource_View {};
-// Counts corresponds to the counts of the above resource types required to draw the model
+
 struct Renderer_Resource_List {
-    int counts[6]; 
-};
-struct Renderer_Resource_View_List {
-    int counts[6]; 
+    int mesh_info_count;
+    Renderer_Mesh_Info *mesh_infos;
 };
 // Get list of required resources from gltf model
 Renderer_Resource_List renderer_get_model_resource_list(Gltf *model);

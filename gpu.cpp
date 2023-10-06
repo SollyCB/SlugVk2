@@ -912,28 +912,6 @@ void gpu_allocate_descriptor_sets(VkDevice vk_device, Gpu_Descriptor_Allocator *
     allocator->sets_allocated = allocator->sets_queued;
 }
 
-// @Todo I dont know what is the best allocation/pool pattern for these descriptors yet...
-Gpu_Descriptor_Pool_Type gpu_get_pool_type(VkDescriptorType type) {
-    switch(type) {
-    case VK_DESCRIPTOR_TYPE_SAMPLER:
-    case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-        return GPU_DESCRIPTOR_POOL_TYPE_SAMPLER;
-
-    case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-    case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-    case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
-    case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-    case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
-        return GPU_DESCRIPTOR_POOL_TYPE_BUFFER;
-
-    default:
-        ASSERT(false, "Invalid VkDescriptorType");
-        break;
-    }
-    return GPU_DESCRIPTOR_POOL_TYPE_BUFFER;
-}
 //
 // @Goal For descriptor allocation, I would like all descriptors (for a thread) to allocated in one go:
 //     When smtg wants to get a descriptor set, it gets put in a buffer, and then this buffer is at
@@ -1289,7 +1267,6 @@ void create_vk_graphics_pipelines(VkDevice vk_device, VkPipelineCache cache, int
         attribute_info = {
             (u32)info->vertex_input_state->attribute_description_locations[i],
             (u32)info->vertex_input_state->attribute_description_bindings[i],
-            (u32)info->vertex_input_state->offsets[i], // gltf accessor offset
             info->vertex_input_state->formats[i],
         };
         vertex_attribute_descriptions[i] = create_vk_vertex_attribute_description(&attribute_info);

@@ -1,5 +1,6 @@
 #ifndef SOL_TYPEDEF_H_INCLUDE_GUARD_
 #define SOL_TYPEDEF_H_INCLUDE_GUARD_
+
 #include <cstring>
 #include <cstdint>
 
