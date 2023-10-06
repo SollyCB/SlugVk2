@@ -322,6 +322,8 @@ Gltf parse_gltf(const char *filename) {
         skin = (Gltf_Skin*)((u8*)skin + skin->stride);
     }
 
+    total_stride = 0;
+
     gltf.texture_count = (int*)memory_allocate_temp(sizeof(int) * texture_count + 1, 4);
     gltf.texture_count[0] = texture_count;
     gltf.texture_count++;
@@ -330,6 +332,20 @@ Gltf parse_gltf(const char *filename) {
         gltf.texture_count[i] = total_stride;
         total_stride += texture->stride;
         texture = (Gltf_Texture*)((u8*)texture + texture->stride);
+    }
+
+    // Doing this ugly loop here means that when we define the vertex input state in the renderer,
+    // we dont have to random access for the byte stride from the buffer view. I would rather spend
+    // more time making the gltf struct, as it does not have to happen at run time, but can just be
+    // baked...
+    accessor = gltf.accessors;
+    for(int i = 0; i < gltf.accessor_count[-1]; ++i) {
+        buffer_view = 
+            (Gltf_Buffer_View*)((u8*)gltf.buffer_views + 
+                gltf.buffer_view_count[accessor->buffer_view]);
+
+        accessor->byte_stride = buffer_view->byte_stride;
+        accessor = (Gltf_Accessor*)((u8*)accessor + accessor->stride);
     }
 
     return gltf;
@@ -1800,6 +1816,46 @@ Gltf_Texture* gltf_parse_textures(const char *data, u64 *offset, int *texture_co
     return textures;
 }
 
+Gltf_Accessor* gltf_accessor_by_index(Gltf *gltf, int i) {
+    return (Gltf_Accessor*)((u8*)gltf->accessors + gltf->accessor_count[i]);
+}
+Gltf_Animation* gltf_animation_by_index(Gltf *gltf, int i) {
+    return (Gltf_Animation*)((u8*)gltf->animations + gltf->animation_count[i]);
+}
+Gltf_Buffer* gltf_buffer_by_index(Gltf *gltf, int i) {
+    return (Gltf_Buffer*)((u8*)gltf->buffers + gltf->buffer_count[i]);
+}
+Gltf_Buffer_View* gltf_buffer_view_by_index(Gltf *gltf, int i) {
+    return (Gltf_Buffer_View*)((u8*)gltf->buffer_views + gltf->buffer_view_count[i]);
+}
+Gltf_Camera* gltf_camera_by_index(Gltf *gltf, int i) {
+    return (Gltf_Camera*)((u8*)gltf->cameras + gltf->camera_count[i]);
+}
+Gltf_Image* gltf_image_by_index(Gltf *gltf, int i) {
+    return (Gltf_Image*)((u8*)gltf->images + gltf->image_count[i]);
+}
+Gltf_Material* gltf_material_by_index(Gltf *gltf, int i) {
+    return (Gltf_Material*)((u8*)gltf->materials + gltf->material_count[i]);
+}
+Gltf_Mesh* gltf_mesh_by_index(Gltf *gltf, int i) {
+    return (Gltf_Mesh*)((u8*)gltf->meshes + gltf->mesh_count[i]);
+}
+Gltf_Node* gltf_node_by_index(Gltf *gltf, int i) {
+    return (Gltf_Node*)((u8*)gltf->nodes + gltf->node_count[i]);
+}
+Gltf_Sampler* gltf_sampler_by_index(Gltf *gltf, int i) {
+    return (Gltf_Sampler*)((u8*)gltf->samplers + gltf->sampler_count[i]);
+}
+Gltf_Scene* gltf_scene_by_index(Gltf *gltf, int i) {
+    return (Gltf_Scene*)((u8*)gltf->scenes + gltf->scene_count[i]);
+}
+Gltf_Skin* gltf_skin_by_index(Gltf *gltf, int i) {
+    return (Gltf_Skin*)((u8*)gltf->skins + gltf->skin_count[i]);
+}
+Gltf_Texture* gltf_texture_by_index(Gltf *gltf, int i) {
+    return (Gltf_Texture*)((u8*)gltf->textures + gltf->texture_count[i]);
+}
+
 #if TEST
 static void test_accessors(Gltf_Accessor *accessor);
 static void test_animations(Gltf_Animation *animation);
@@ -1817,7 +1873,6 @@ static void test_textures(Gltf_Texture *textures);
 
 void test_gltf() {
     Gltf gltf = parse_gltf("test_gltf.gltf");
-    Gltf_Accessor *accessor = gltf.accessors;
 
     test_accessors(gltf.accessors);
     ASSERT(gltf.accessor_count[-1] == 3, "Incorrect Accessor Count");
@@ -1845,6 +1900,75 @@ void test_gltf() {
     ASSERT(gltf.skin_count[-1] == 4, "Incorrect Skin Count");
     test_textures(gltf.textures);
     ASSERT(gltf.texture_count[-1] == 4, "Incorrect Texture Count");
+
+    BEGIN_TEST_MODULE("Gltf_Indexing", true, false);
+
+    Gltf_Accessor *accessor = gltf_accessor_by_index(&gltf, 2);
+    TEST_EQ("accessor[2].format", accessor->format, GLTF_ACCESSOR_FORMAT_VEC3_U32, false);
+    TEST_EQ("accessor[2].buffer_view", accessor->buffer_view, 3, false);
+    TEST_EQ("accessor[2].byte_offset", accessor->byte_offset, 300, false);
+    TEST_EQ("accessor[2].count", accessor->count, 12001, false);
+
+    TEST_EQ("accessor[2].sparse_count", accessor->sparse_count, 10, false);
+    TEST_EQ("accessor[2].indices_comp_type", (int)accessor->indices_component_type, 5123, false);
+    TEST_EQ("accessor[2].indices_buffer_view", accessor->indices_buffer_view, 7, false);
+    TEST_EQ("accessor[2].values_buffer_view", accessor->values_buffer_view, 4, false);
+    TEST_EQ("accessor[2].indices_byte_offset", accessor->indices_byte_offset, 8888, false);
+    TEST_EQ("accessor[2].values_byte_offset", accessor->values_byte_offset, 9999, false);
+
+    Gltf_Animation *animation = gltf_animation_by_index(&gltf, 3);
+    TEST_EQ("animation[3].channels[0].sampler", animation->channels    [0].sampler,     24, false);
+    TEST_EQ("animation[3].channels[0].target_node", animation->channels[0].target_node, 27, false);
+    TEST_EQ("animation[3].channels[0].path", animation->channels       [0].path, GLTF_ANIMATION_PATH_ROTATION, false);
+    TEST_EQ("animation[3].channels[1].sampler", animation->channels    [1].sampler,     31, false);
+    TEST_EQ("animation[3].channels[1].target_node", animation->channels[1].target_node, 36, false);
+    TEST_EQ("animation[3].channels[1].path", animation->channels       [1].path, GLTF_ANIMATION_PATH_WEIGHTS, false);
+    TEST_EQ("animation[3].samplers[0].input",  animation->samplers[0].input,  999, false);
+    TEST_EQ("animation[3].samplers[0].output", animation->samplers[0].output, 753, false);
+    TEST_EQ("animation[3].samplers[0].interp", animation->samplers[0].interp, GLTF_ANIMATION_INTERP_LINEAR, false);
+    TEST_EQ("animation[3].samplers[1].input",  animation->samplers[1].input,  4, false);
+    TEST_EQ("animation[3].samplers[1].output", animation->samplers[1].output, 6, false);
+    TEST_EQ("animation[3].samplers[1].interp", animation->samplers[1].interp, GLTF_ANIMATION_INTERP_LINEAR, false);
+
+    Gltf_Material *material = gltf_material_by_index(&gltf, 1);
+    TEST_FEQ("materials[1].metallic_factor",      material->metallic_factor    , 5.0   , false);
+    TEST_FEQ("materials[1].roughness_factor",     material->roughness_factor   , 6.0   , false);
+    TEST_FEQ("materials[1].normal_scale",         material->normal_scale       , 1.0   , false);
+    TEST_FEQ("materials[1].occlusion_strength",   material->occlusion_strength , 0.679 , false);
+
+    TEST_FEQ("materials[1].base_color_factor[0]", material->base_color_factor[0] ,  2.5, false);
+    TEST_FEQ("materials[1].base_color_factor[1]", material->base_color_factor[1] ,  4.5, false);
+    TEST_FEQ("materials[1].base_color_factor[2]", material->base_color_factor[2] ,  2.5, false);
+    TEST_FEQ("materials[1].base_color_factor[3]", material->base_color_factor[3] ,  1.0, false);
+
+    TEST_FEQ("materials[1].emissive_factor[0]", material->emissive_factor[0] , 11.2, false);
+    TEST_FEQ("materials[1].emissive_factor[1]", material->emissive_factor[1] ,  0.1, false);
+    TEST_FEQ("materials[1].emissive_factor[2]", material->emissive_factor[2] ,  0.0, false);
+
+    Gltf_Node *node = gltf_node_by_index(&gltf, 0);
+    TEST_FEQ("nodes[0].matrix[0]",  node->matrix.row0.x, -0.99975   , false);
+    TEST_FEQ("nodes[0].matrix[1]",  node->matrix.row0.y, -0.00679829, false);
+    TEST_FEQ("nodes[0].matrix[2]",  node->matrix.row0.z, 0.0213218  , false);
+    TEST_FEQ("nodes[0].matrix[3]",  node->matrix.row0.w, 0          , false);
+    TEST_FEQ("nodes[0].matrix[4]",  node->matrix.row1.x, 0.00167596 , false);
+    TEST_FEQ("nodes[0].matrix[5]",  node->matrix.row1.y, 0.927325   , false);
+    TEST_FEQ("nodes[0].matrix[6]",  node->matrix.row1.z, 0.374254   , false);
+    TEST_FEQ("nodes[0].matrix[7]",  node->matrix.row1.w, 0          , false);
+    TEST_FEQ("nodes[0].matrix[8]",  node->matrix.row2.x, -0.0223165 , false);
+    TEST_FEQ("nodes[0].matrix[9]",  node->matrix.row2.y, 0.374196   , false);
+    TEST_FEQ("nodes[0].matrix[10]", node->matrix.row2.z, -0.927081  , false);
+    TEST_FEQ("nodes[0].matrix[11]", node->matrix.row2.w, 0          , false);
+    TEST_FEQ("nodes[0].matrix[12]", node->matrix.row3.x, -0.0115543 , false);
+    TEST_FEQ("nodes[0].matrix[13]", node->matrix.row3.y, 0.194711   , false);
+    TEST_FEQ("nodes[0].matrix[14]", node->matrix.row3.z, -0.478297  , false);
+    TEST_FEQ("nodes[0].matrix[15]", node->matrix.row3.w, 1          , false);
+
+    TEST_FEQ("nodes[0].weights[0]", node->weights[0], 0.5, false);
+    TEST_FEQ("nodes[0].weights[1]", node->weights[1], 0.6, false);
+    TEST_FEQ("nodes[0].weights[2]", node->weights[2], 0.7, false);
+    TEST_FEQ("nodes[0].weights[3]", node->weights[3], 0.8, false);
+
+    END_TEST_MODULE();
 }
 
 static void test_accessors(Gltf_Accessor *accessor) {

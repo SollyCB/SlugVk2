@@ -116,6 +116,7 @@ struct Gltf_Accessor {
 
     int buffer_view;
     int byte_offset;
+    int byte_stride;
     int normalized;
     int count;
 
@@ -181,11 +182,12 @@ enum Gltf_Buffer_Type {
 };
 struct Gltf_Buffer_View {
     int stride;
+
     int buffer;
     int byte_offset;
     int byte_length;
     int byte_stride;
-    Gltf_Buffer_Type buffer_type;
+    Gltf_Buffer_Type buffer_type; // I think I dont need this for vulkan, it seems OpenGL specific...
 };
 
 struct Gltf_Camera {
@@ -280,6 +282,8 @@ struct Gltf_Mesh_Primitive {
     int material;
     int topology = GLTF_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
+    // @Todo add tex_coord_0 (spec says support at least two texture coords)
+    // @Todo add joints_0, weights_0
     int position = -1;
     int tangent = -1;
     int normal = -1;
@@ -396,6 +400,20 @@ struct Gltf {
     Gltf_Texture *textures;
 };
 Gltf parse_gltf(const char *file_name);
+
+Gltf_Accessor* gltf_accessor_by_index(Gltf *gltf, int i);
+Gltf_Animation* gltf_animation_by_index(Gltf *gltf, int i);
+Gltf_Buffer* gltf_buffer_by_index(Gltf *gltf, int i);
+Gltf_Buffer_View* gltf_buffer_view_by_index(Gltf *gltf, int i);
+Gltf_Camera* gltf_camera_by_index(Gltf *gltf, int i);
+Gltf_Image* gltf_image_by_index(Gltf *gltf, int i);
+Gltf_Material* gltf_material_by_index(Gltf *gltf, int i);
+Gltf_Mesh* gltf_mesh_by_index(Gltf *gltf, int i);
+Gltf_Node* gltf_node_by_index(Gltf *gltf, int i);
+Gltf_Sampler* gltf_sampler_by_index(Gltf *gltf, int i);
+Gltf_Scene* gltf_scene_by_index(Gltf *gltf, int i);
+Gltf_Skin* gltf_skin_by_index(Gltf *gltf, int i);
+Gltf_Texture* gltf_texture_by_index(Gltf *gltf, int i);
 
 #if TEST
     void test_gltf();
