@@ -115,7 +115,6 @@ struct Gltf_Accessor {
     int stride;
 
     int buffer_view;
-    int byte_offset;
     int byte_stride;
     int normalized;
     int count;
@@ -124,9 +123,11 @@ struct Gltf_Accessor {
     int sparse_count;
     int indices_buffer_view;
     int values_buffer_view;
-    int indices_byte_offset;
-    int values_byte_offset;
+    u64 indices_byte_offset;
+    u64 values_byte_offset;
+    // end sparse
 
+    u64 byte_offset;
     float *max;
     float *min;
 };
@@ -172,7 +173,7 @@ struct Gltf_Animation {
 
 struct Gltf_Buffer {
     int stride; // accounts for the length of the uri string
-    int byte_length;
+    u64 byte_length;
     char *uri;
 };
 
@@ -184,10 +185,10 @@ struct Gltf_Buffer_View {
     int stride;
 
     int buffer;
-    int byte_offset;
-    int byte_length;
     int byte_stride;
     Gltf_Buffer_Type buffer_type; // I think I dont need this for vulkan, it seems OpenGL specific...
+    u64 byte_offset;
+    u64 byte_length;
 };
 
 struct Gltf_Camera {

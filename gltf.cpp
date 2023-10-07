@@ -89,6 +89,20 @@ inline int gltf_ascii_to_int(const char *data, u64 *offset) {
     *offset += inc;
     return accum;
 }
+inline u64 gltf_ascii_to_u64(const char *data, u64 *offset) {
+    u64 inc = 0;
+    if (!simd_skip_to_int(data, &inc, 128))
+        ASSERT(false, "Failed to find an integer in search range");
+
+    u64 accum = 0;
+    while(data[inc] >= '0' && data[inc] <= '9') {
+        accum *= 10;
+        accum += gltf_match_int(data[inc]);
+        inc++;
+    }
+    *offset += inc;
+    return accum;
+}
 
 Gltf parse_gltf(const char *filename) {
     //
@@ -334,10 +348,11 @@ Gltf parse_gltf(const char *filename) {
         texture = (Gltf_Texture*)((u8*)texture + texture->stride);
     }
 
-    // Doing this ugly loop here means that when we define the vertex input state in the renderer,
-    // we dont have to random access for the byte stride from the buffer view. I would rather spend
-    // more time making the gltf struct, as it does not have to happen at run time, but can just be
-    // baked...
+    //
+    // @ERROR @Stride
+    // @Note Idk what to do about stride here. I will wait and see if the validation
+    // layers complain about stride being 0 later...
+    //
     accessor = gltf.accessors;
     for(int i = 0; i < gltf.accessor_count[-1]; ++i) {
         buffer_view = 
@@ -500,7 +515,7 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
                 accessor->buffer_view = gltf_ascii_to_int(data + inc, &inc);
                 continue; // go to next key
             } else if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx",  6) == 0) {
-                accessor->byte_offset = gltf_ascii_to_int(data + inc, &inc);
+                accessor->byte_offset = gltf_ascii_to_u64(data + inc, &inc);
                 continue; // go to next key
             } else if (simd_strcmp_short(data + inc, "countxxxxxxxxxxx", 11) == 0) {
                 accessor->count = gltf_ascii_to_int(data + inc, &inc);
@@ -849,6 +864,8 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT4_FLOAT32;
                 break;
             }
+            default:
+                    ASSERT(false, "Invalid Accessor Type");
             } // switch component_type
 
             break;
@@ -880,7 +897,7 @@ void gltf_parse_accessor_sparse(const char *data, u64 *offset, Gltf_Accessor *ac
                     continue;
                 }
                 if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx", 6) == 0) {
-                    accessor->indices_byte_offset = gltf_ascii_to_int(data + inc, &inc);
+                    accessor->indices_byte_offset = gltf_ascii_to_u64(data + inc, &inc);
                     continue;
                 }
                 if (simd_strcmp_short(data + inc, "componentTypexxx", 3) == 0) {
@@ -900,7 +917,7 @@ void gltf_parse_accessor_sparse(const char *data, u64 *offset, Gltf_Accessor *ac
                     continue;
                 }
                 if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx", 6) == 0) {
-                    accessor->values_byte_offset = gltf_ascii_to_int(data + inc, &inc);
+                    accessor->values_byte_offset = gltf_ascii_to_u64(data + inc, &inc);
                     continue;
                 }
             }
@@ -1085,7 +1102,7 @@ Gltf_Buffer* gltf_parse_buffers(const char *data, u64 *offset, int *buffer_count
         while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
             inc++; // go beyond opening '"'
             if (simd_strcmp_short(data + inc, "byteLengthxxxxxx", 6) == 0) {
-                buffer->byte_length = gltf_ascii_to_int(data + inc, &inc);
+                buffer->byte_length = gltf_ascii_to_u64(data + inc, &inc);
                 continue;
             } else if (simd_strcmp_short(data + inc, "urixxxxxxxxxxxxx", 13) == 0) {
                 simd_skip_passed_char_count(data + inc, '"', 2, &inc); // step inside value string
@@ -1122,10 +1139,10 @@ Gltf_Buffer_View* gltf_parse_buffer_views(const char *data, u64 *offset, int *bu
                 buffer_view->buffer = gltf_ascii_to_int(data + inc, &inc);
                 continue;
             } else if (simd_strcmp_short(data + inc, "byteOffsetxxxxxx",  6) == 0) {
-                buffer_view->byte_offset = gltf_ascii_to_int(data + inc, &inc);
+                buffer_view->byte_offset = gltf_ascii_to_u64(data + inc, &inc);
                 continue;
             } else if (simd_strcmp_short(data + inc, "byteLengthxxxxxx",  6) == 0) {
-                buffer_view->byte_length = gltf_ascii_to_int(data + inc, &inc);
+                buffer_view->byte_length = gltf_ascii_to_u64(data + inc, &inc);
                 continue;
             } else if (simd_strcmp_short(data + inc, "byteStridexxxxxx",  6) == 0) {
                 buffer_view->byte_stride = gltf_ascii_to_int(data + inc, &inc);
@@ -1946,15 +1963,15 @@ void test_gltf() {
     Gltf_Accessor *accessor = gltf_accessor_by_index(&gltf, 2);
     TEST_EQ("accessor[2].format", accessor->format, GLTF_ACCESSOR_FORMAT_VEC3_U32, false);
     TEST_EQ("accessor[2].buffer_view", accessor->buffer_view, 3, false);
-    TEST_EQ("accessor[2].byte_offset", accessor->byte_offset, 300, false);
+    TEST_EQ("accessor[2].byte_offset", accessor->byte_offset, (u64)300, false);
     TEST_EQ("accessor[2].count", accessor->count, 12001, false);
 
     TEST_EQ("accessor[2].sparse_count", accessor->sparse_count, 10, false);
     TEST_EQ("accessor[2].indices_comp_type", (int)accessor->indices_component_type, 5123, false);
     TEST_EQ("accessor[2].indices_buffer_view", accessor->indices_buffer_view, 7, false);
     TEST_EQ("accessor[2].values_buffer_view", accessor->values_buffer_view, 4, false);
-    TEST_EQ("accessor[2].indices_byte_offset", accessor->indices_byte_offset, 8888, false);
-    TEST_EQ("accessor[2].values_byte_offset", accessor->values_byte_offset, 9999, false);
+    TEST_EQ("accessor[2].indices_byte_offset", accessor->indices_byte_offset, (u64)8888, false);
+    TEST_EQ("accessor[2].values_byte_offset", accessor->values_byte_offset, (u64)9999, false);
 
     Gltf_Animation *animation = gltf_animation_by_index(&gltf, 3);
     TEST_EQ("animation[3].channels[0].sampler", animation->channels    [0].sampler,     24, false);
@@ -2016,7 +2033,7 @@ static void test_accessors(Gltf_Accessor *accessor) {
 
     TEST_EQ("accessor[0].format", accessor->format, GLTF_ACCESSOR_FORMAT_SCALAR_U16, false);
     TEST_EQ("accessor[0].buffer_view", accessor->buffer_view, 1, false);
-    TEST_EQ("accessor[0].byte_offset", accessor->byte_offset, 100, false);
+    TEST_EQ("accessor[0].byte_offset", accessor->byte_offset, (u64)100, false);
     TEST_EQ("accessor[0].count", accessor->count, 12636, false);
     TEST_EQ("accessor[0].max[0]", accessor->max[0], 4212, false);
     TEST_EQ("accessor[0].min[0]", accessor->min[0], 0, false);
@@ -2024,7 +2041,7 @@ static void test_accessors(Gltf_Accessor *accessor) {
     accessor = (Gltf_Accessor*)((u8*)accessor + accessor->stride);
     TEST_EQ("accessor[1].format", accessor->format, GLTF_ACCESSOR_FORMAT_VEC2_FLOAT32, false);
     TEST_EQ("accessor[1].buffer_view", accessor->buffer_view, 2, false);
-    TEST_EQ("accessor[1].byte_offset", accessor->byte_offset, 200, false);
+    TEST_EQ("accessor[1].byte_offset", accessor->byte_offset, (u64)200, false);
     TEST_EQ("accessor[1].count", accessor->count, 2399, false);
 
     TEST_FEQ("accessor[1].max[0]", accessor->max[0], 0.961799 , false);
@@ -2037,15 +2054,15 @@ static void test_accessors(Gltf_Accessor *accessor) {
     accessor = (Gltf_Accessor*)((u8*)accessor + accessor->stride);
     TEST_EQ("accessor[2].format", accessor->format, GLTF_ACCESSOR_FORMAT_VEC3_U32, false);
     TEST_EQ("accessor[2].buffer_view", accessor->buffer_view, 3, false);
-    TEST_EQ("accessor[2].byte_offset", accessor->byte_offset, 300, false);
+    TEST_EQ("accessor[2].byte_offset", accessor->byte_offset, (u64)300, false);
     TEST_EQ("accessor[2].count", accessor->count, 12001, false);
 
     TEST_EQ("accessor[2].sparse_count", accessor->sparse_count, 10, false);
     TEST_EQ("accessor[2].indices_comp_type", (int)accessor->indices_component_type, 5123, false);
     TEST_EQ("accessor[2].indices_buffer_view", accessor->indices_buffer_view, 7, false);
     TEST_EQ("accessor[2].values_buffer_view", accessor->values_buffer_view, 4, false);
-    TEST_EQ("accessor[2].indices_byte_offset", accessor->indices_byte_offset, 8888, false);
-    TEST_EQ("accessor[2].values_byte_offset", accessor->values_byte_offset, 9999, false);
+    TEST_EQ("accessor[2].indices_byte_offset", accessor->indices_byte_offset, (u64)8888, false);
+    TEST_EQ("accessor[2].values_byte_offset", accessor->values_byte_offset, (u64)9999, false);
 
     END_TEST_MODULE();   
 }
@@ -2117,23 +2134,23 @@ static void test_buffers(Gltf_Buffer *buffers) {
     BEGIN_TEST_MODULE("Gltf_Buffer", true, false);
 
     Gltf_Buffer *buffer = buffers;
-       TEST_EQ("buffers[0].byteLength", buffer->byte_length, 10001, false);
+       TEST_EQ("buffers[0].byteLength", buffer->byte_length, (u64)10001, false);
     TEST_STREQ("buffers[0].uri", buffer->uri, "duck1.bin", false);
 
     buffer = (Gltf_Buffer*)((u8*)buffer + buffer->stride);
-       TEST_EQ("buffers[1].byteLength", buffer->byte_length, 10002, false);
+       TEST_EQ("buffers[1].byteLength", buffer->byte_length, (u64)10002, false);
     TEST_STREQ("buffers[1].uri", buffer->uri, "duck2.bin", false);
 
     buffer = (Gltf_Buffer*)((u8*)buffer + buffer->stride);
-       TEST_EQ("buffers[2].byteLength", buffer->byte_length, 10003, false);
+       TEST_EQ("buffers[2].byteLength", buffer->byte_length, (u64)10003, false);
     TEST_STREQ("buffers[2].uri", buffer->uri,   "duck3.bin", false);
 
     buffer = (Gltf_Buffer*)((u8*)buffer + buffer->stride);
-       TEST_EQ("buffers[3].byteLength", buffer->byte_length, 10004, false);
+       TEST_EQ("buffers[3].byteLength", buffer->byte_length, (u64)10004, false);
     TEST_STREQ("buffers[3].uri", buffer->uri, "duck4.bin", false);
 
     buffer = (Gltf_Buffer*)((u8*)buffer + buffer->stride);
-       TEST_EQ("buffers[4].byteLength", buffer->byte_length, 10005, false);
+       TEST_EQ("buffers[4].byteLength", buffer->byte_length, (u64)10005, false);
     TEST_STREQ("buffers[4].uri", buffer->uri, "duck5.bin", false);
 
     END_TEST_MODULE();
@@ -2143,29 +2160,29 @@ static void test_buffer_views(Gltf_Buffer_View *buffer_views) {
 
     Gltf_Buffer_View *view = buffer_views;
     TEST_EQ("buffer_views[0].buffer",           view->buffer, 1, false);
-    TEST_EQ("buffer_views[0].byte_offset", view->byte_offset, 2, false);
-    TEST_EQ("buffer_views[0].byte_length", view->byte_length, 25272, false);
+    TEST_EQ("buffer_views[0].byte_offset", view->byte_offset, (u64)2, false);
+    TEST_EQ("buffer_views[0].byte_length", view->byte_length, (u64)25272, false);
     TEST_EQ("buffer_views[0].byte_stride", view->byte_stride, 0, false);
     TEST_EQ("buffer_views[0].buffer_type", view->buffer_type, 34963, false);
 
     view = (Gltf_Buffer_View*)((u8*)view + view->stride);
     TEST_EQ("buffer_views[1].buffer",           view->buffer, 6, false);
-    TEST_EQ("buffer_views[1].byte_offset", view->byte_offset, 25272, false);
-    TEST_EQ("buffer_views[1].byte_length", view->byte_length, 76768, false);
+    TEST_EQ("buffer_views[1].byte_offset", view->byte_offset, (u64)25272, false);
+    TEST_EQ("buffer_views[1].byte_length", view->byte_length, (u64)76768, false);
     TEST_EQ("buffer_views[1].byte_stride", view->byte_stride, 32, false);
     TEST_EQ("buffer_views[1].buffer_type", view->buffer_type, 34962, false);
 
     view = (Gltf_Buffer_View*)((u8*)view + view->stride);
     TEST_EQ("buffer_views[2].buffer",           view->buffer,  9999, false);
-    TEST_EQ("buffer_views[2].byte_offset", view->byte_offset,  6969, false);
-    TEST_EQ("buffer_views[2].byte_length", view->byte_length,  99907654, false);
+    TEST_EQ("buffer_views[2].byte_offset", view->byte_offset,  (u64)6969, false);
+    TEST_EQ("buffer_views[2].byte_length", view->byte_length,  (u64)99907654, false);
     TEST_EQ("buffer_views[2].byte_stride", view->byte_stride,  0, false);
     TEST_EQ("buffer_views[2].buffer_type", view->buffer_type,  34962, false);
 
     view = (Gltf_Buffer_View*)((u8*)view + view->stride);
     TEST_EQ("buffer_views[3].buffer",           view->buffer, 9, false);
-    TEST_EQ("buffer_views[3].byte_offset", view->byte_offset, 25272, false);
-    TEST_EQ("buffer_views[3].byte_length", view->byte_length, 76768, false);
+    TEST_EQ("buffer_views[3].byte_offset", view->byte_offset, (u64)25272, false);
+    TEST_EQ("buffer_views[3].byte_length", view->byte_length, (u64)76768, false);
     TEST_EQ("buffer_views[3].byte_stride", view->byte_stride, 32, false);
     TEST_EQ("buffer_views[3].buffer_type", view->buffer_type, 34963, false);
 

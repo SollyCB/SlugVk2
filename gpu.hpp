@@ -765,6 +765,7 @@ struct Gpu_Linear_Allocator {
     u64 cap;
     VkBuffer buffer;
     VmaAllocation vma_allocation;
+    void *mapped_ptr;
 };
 enum Gpu_Allocator_Type {
     GPU_ALLOCATOR_TYPE_BUFFER_GENERAL_SRC = 
@@ -809,8 +810,8 @@ Gpu_Linear_Allocator gpu_create_linear_allocator_host(
 // Memory is close to the device
 Gpu_Linear_Allocator gpu_create_linear_allocator_device(
     VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type);
-// Returns offset to beginning of new allocation
-u64 gpu_make_linear_allocation(Gpu_Linear_Allocator *allocator, u64 size);
+// Return mapped ptr + offset into allocation; returns actual offset in 'offset'
+void* gpu_make_linear_allocation(Gpu_Linear_Allocator *allocator, u64 size, u64 *offset);
 // Reduce used by size
 void gpu_cut_tail_linear_allocator(Gpu_Linear_Allocator *allocator, u64 size);
 // Set used to zero

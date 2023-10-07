@@ -34,10 +34,21 @@ int main() {
 
     /* Begin Code That Actually Does Stuff */
     Gltf model = parse_gltf("models/cube-static/Cube.gltf");
-    Renderer_Draw_Info draw_info = {};
 
-    Gpu_Vertex_Input_State pl_stage_1 =
-        renderer_define_vertex_input_state(model.meshes->primitives, &model, &draw_info);
+    Gpu_Linear_Allocator gpu_index_allocator =
+        gpu_create_linear_allocator_host(
+            gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_SRC);
+    Gpu_Linear_Allocator gpu_vertex_allocator =
+        gpu_create_linear_allocator_host(
+            gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_SRC);
+
+    Renderer_Gpu_Allocator_Group gpu_allocator_group = {
+        .index_allocator  = &gpu_index_allocator,
+        .vertex_allocator = &gpu_vertex_allocator,
+    };
+    Renderer_Resource_List resource_list = 
+        renderer_create_model_resources(&model, &gpu_allocator_group);
+    Gpu_Vertex_Input_State pl_stage_1 = resource_list.vertex_state_infos[0][0];
 
     Gpu_Rasterization_State pl_stage_2 =
         renderer_define_rasterization_state(GPU_POLYGON_MODE_FILL_BIT, VK_CULL_MODE_NONE);

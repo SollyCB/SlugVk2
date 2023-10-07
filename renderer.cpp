@@ -37,30 +37,6 @@ VkPipeline renderer_create_pipeline(VkDevice vk_device, Renderer_Create_Pipeline
     return pl;
 }
 
-/*
-    ********* PLAN FOR 'get_model_resource_list()' FUNCTION *******
-        1. Vertex Attribute and Index Data:
-            Loop Primitives to find which accessors correspond to 1. data type;
-            Use this info to mark corresponding buffer views;
-            Copy data described into the views into the corresponding allocator type.
-
-        NOTE: Draw_Info structures now contain a 'buffer_view' field, and 'offsets' array:
-              when a bufferview is copied into an allocator, we will match (somehow)
-              a bufferview index to its allocation. The fields in the Draw_Info struct
-              will therefore correspond to these allocations (ez drawing...).
-
-              These fields ('offsets', 'buffer_view') are set in 'define_vertex_input_state()'.
-              Each 'offsets' element will, as they do in 'Gltf_Accessor', be an offset into the
-              bufferview data copied into the allocator. e.g.:
-
-              Allocator:
-                start buffer view allocation
-                         v
-                xxxxxxxxxbbbbbbbbbbbbxxxxxxx
-                            ^
-                       offsets[i]
-*/
-
 enum Buffer_Type {
     BT_UNKNOWN = 0,
     BT_VERTEX  = 1,
@@ -68,13 +44,12 @@ enum Buffer_Type {
     BT_UNIFORM = 3,
     BT_IMAGE   = 4,
 };
-struct Buffer_View {
-    Buffer_Type type;
-    int byte_offset;
-    int byte_length;
-    int buffer;
-};
-Renderer_Resource_List renderer_get_model_resource_list(Gltf *model) {
+// @Todo Rename this function to show it is for static models, which can be assumed to have these
+// attributes, and make other equivalent functions to deal with animated models.
+Renderer_Resource_List renderer_create_model_resources(Gltf *model, Renderer_Gpu_Allocator_Group *allocators) {
+
+    /*WARNING THIS FUNCTION IS NOT COMPLETE SEE FOLLOWING TODOS*/
+
     // @Todo Animation buffer ranges filtered into uniform buffer allocators.
     // @Todo Images filtered into image allocators.
     // @Todo Node transforms filtered into uniform buffers.
@@ -83,83 +58,164 @@ Renderer_Resource_List renderer_get_model_resource_list(Gltf *model) {
     // @Todo add sampler and image resource list elements.
     // @Todo add inverse bind matrices resource list elements.
 
-    //From the gltf 2.0 spec:
-    /* Buffer views used for images, vertex indices, vertex attributes, or inverse bind matrices MUST contain only one kind of data */
+    // @Todo make one persistent allocation per mesh for a list of draw_infos,
+    // and make one temp allocation per mesh for a list of pipeline vertex input states.
 
-    int accessor_count = gltf_accessor_get_count(model);
-    Buffer_Type *buffer_types = // ranges for vertex indices and vertex attributes
-        (Buffer_Type*)memory_allocate_temp(sizeof(Buffer_Type) * accessor_count, 8);
-    memset(buffer_types, 0, sizeof(Buffer_Type) * accessor_count);
+    // Method:
+    // 1. Loop meshes/mesh_primitives to find vertex attribute and index data and mark corresponding
+    //    accessors.
+    // 2. Loop marked accessors, queue buffer allocation in gpu allocator, set pointer in resource list;
+    //    Also mark buffer view as having been queued for allocation.
+    //
+
+    int accessor_count    = gltf_accessor_get_count(model);
+    int buffer_view_count = gltf_buffer_view_get_count(model);
+    int mesh_count        = gltf_mesh_get_count(model);
 
     Renderer_Resource_List ret = {};
-    ret.mesh_info_count = gltf_mesh_get_count(model);
-    ret.mesh_infos = (Renderer_Mesh_Info*)memory_allocate_temp(sizeof(Renderer_Mesh_Info) * ret.mesh_info_count, 8);
+    ret.buffer_view_count = buffer_view_count;
+    ret.buffer_views = (Renderer_Buffer_View*)memory_allocate_heap(sizeof(Renderer_))
+    
+    ret.mesh_count = mesh_count;
+    ret.primitive_counts = (int*)memory_allocate_heap(sizeof(int) * mesh_count, 4);
+    ret.draw_infos = (Renderer_Draw_Info**)memory_allocate_heap(sizeof(u8*) * mesh_count, 8);
+    ret.vertex_state_infos = (Gpu_Vertex_Input_State**)memory_allocate_temp(sizeof(u8*) * mesh_count, 8);
 
-    //
-    // @Todo I will come back here when I have a better way of (and want to work on) loading model data at run time. 
-    // Really I need to bake the data better before this point. Soooo much less work can be done at run time than this I am sure...
-    //
-    // Here we find vertex and index buffer data (only looping accessors is not enough to know this detail,
-    // really all vertex attribute accessors and all index accessors you would want to be 
-    // contiguous in the beginning of the buffer, but idk if I can always trust that to be the case...)
-    //
-    Gltf_Mesh *mesh;
+    // @Speed @Cache There is A LOT of random access pattern going on here (in the next loop) 
+    // (depending on the layout of the gltf model file...). This will all be happening at load 
+    // time, so it is better that I take the hit organising the data now rather than later,
+    // but at the same time I do want to come back here at some point to work on a better way 
+    // of loading these models.
+
+    Gltf_Mesh *mesh = model->meshes;
     Gltf_Mesh_Primitive *primitive;
-    Gpu_Vertex_Input_State *vertex_input_states;
-    for(int i = 0; i < gltf_mesh_get_count(model); ++i) {
-        mesh = gltf_mesh_by_index(model, i);
+
+    int buffer_indices[5];
+    Gltf_Accessor *accessors[5];
+    Gltf_Buffer_View *buffer_view;
+
+    ASSERT(buffer_view_count <= 64, "Buffer View Mask Too Small");
+    u64 buffer_view_mask = 0x0; // @Note Assumes fewer than 64 buffer views;
+
+    // I dont like calling heap allocate in a loop at all, but this is not a tight loop anyway,
+    // and the data per mesh will still be contiguous in memory... I could make a big allocation
+    // and then have each mesh index in. But Idk how much this would help. I am using a fast
+    // allocator anyway, there are never THAT many meshes, but normally lots of primitives,
+    // and to use it it would only be a cache miss everytime you begin a new mesh which is not big
+    // as you are spending most of the time in the primitives...
+    //
+    // (The above is all surrounded in a big "I think??" :D)
+    //
+    for(int i = 0; i < mesh_count; ++i) {
         primitive = mesh->primitives;
-
-        ret.mesh_infos[i].primitive_count = mesh->primitive_count;
-        ret.mesh_infos[i].primitive_states =  
-            (Gpu_Vertex_Input_State*)memory_allocate_temp(
-                 (sizeof(Gpu_Vertex_Input_State) * mesh->primitive_count) +
-                 (    sizeof(Renderer_Draw_Info) * mesh->primitive_count), 8);
-
+        ret.draw_infos[i] = 
+            (Renderer_Draw_Info*)memory_allocate_heap( 
+                sizeof(Renderer_Draw_Info) * mesh->primitive_count, 8); 
+        ret.vertex_state_infos[i] =                                     
+                (Gpu_Vertex_Input_State*)memory_allocate_temp(
+                    sizeof(Gpu_Vertex_Input_State) * mesh->primitive_count, 8);
         for(int j = 0; j < mesh->primitive_count; ++j) {
-            _mm_prefetch((const char*)primitive + primitive->stride, 3); // prefetch next primitive (3 == cache T0)
+            accessors[0] = gltf_accessor_by_index(model, primitive->indices);
+            accessors[1] = gltf_accessor_by_index(model, primitive->position);
+            accessors[2] = gltf_accessor_by_index(model, primitive->normal);
+            accessors[3] = gltf_accessor_by_index(model, primitive->tangent);
+            accessors[4] = gltf_accessor_by_index(model, primitive->tex_coord_0);
 
-            buffer_types[primitive->indices]     = BT_INDEX;
-            buffer_types[primitive->normal]      = BT_VERTEX;
-            buffer_types[primitive->tangent]     = BT_VERTEX;
-            buffer_types[primitive->position]    = BT_VERTEX;
-            buffer_types[primitive->tex_coord_0] = BT_VERTEX;
+            ret.draw_infos[i][j].draw_count = accessors[0]->count;
+            ret.draw_infos[i][j].index_buffer_view = accessors[0]->buffer_view;
+            ret.draw_infos[i][j].index_buffer_offset = accessors[0]->byte_offset;
 
-            ret.mesh_infos[i].primitive_states[j] = renderer_define_vertex_input_state(primitive, model, ret.mesh_infos[j].draw_infos);
+            ret.draw_infos[i][j].vertex_buffer_views[0] = accessors[1].buffer_view;
+            ret.draw_infos[i][j].vertex_buffer_views[1] = accessors[2].buffer_view;
+            ret.draw_infos[i][j].vertex_buffer_views[2] = accessors[3].buffer_view;
+            ret.draw_infos[i][j].vertex_buffer_views[3] = accessors[4].buffer_view;
+
+            ret.draw_infos[i][j].vertex_buffer_offsets[0] = accessors[1].count;
+            ret.draw_infos[i][j].vertex_buffer_offsets[1] = accessors[2].count;
+            ret.draw_infos[i][j].vertex_buffer_offsets[2] = accessors[3].count;
+            ret.draw_infos[i][j].vertex_buffer_offsets[3] = accessors[4].count;
+
+            buffer_indices[0] = accessors[0]->buffer_view;
+            buffer_indices[1] = accessors[1]->buffer_view;
+            buffer_indices[2] = accessors[2]->buffer_view;
+            buffer_indices[3] = accessors[3]->buffer_view;
+            buffer_indices[4] = accessors[4]->buffer_view;
+
+            ret.vertex_state_infos[i][j] = 
+                renderer_define_vertex_input_state(primitive, model);
+
+            // Check if buffer view has already been queued, if not, get its details and add to queue
+            if ((buffer_view_mask & (1 << buffer_indices[0])) == 0) {
+                buffer_view = gltf_buffer_view_by_index(model, buffer_indices[0]);
+
+                ret.buffer_views[buffer_indices[0]].byte_length = buffer_view->byte_length;
+                ret.buffer_views[buffer_indices[0]].data =
+                    gpu_make_linear_allocation(
+                        allocators->index_allocator, 
+                        ret.buffer_views [buffer_indices[0]].byte_length,
+                        &ret.buffer_views[buffer_indices[0]].byte_offset);
+                                                         // ^^^^^^^^^^^^^^^ Byte offset here is wrong!!!
+            }
+            if ((buffer_view_mask & (1 << buffer_indices[1])) == 0) {
+                buffer_view = gltf_buffer_view_by_index(model, buffer_indices[1]);
+
+                ret.buffer_views[buffer_indices[1]].byte_length = buffer_view->byte_length;
+                ret.buffer_views[buffer_indices[1]].data =
+                    gpu_make_linear_allocation(
+                        allocators->vertex_allocator, 
+                        ret.buffer_views [buffer_indices[1]].byte_length,
+                        &ret.buffer_views[buffer_indices[1]].byte_offset);
+            }
+            if ((buffer_view_mask & (1 << buffer_indices[2])) == 0) {
+                buffer_view = gltf_buffer_view_by_index(model, buffer_indices[2]);
+
+                ret.buffer_views[buffer_indices[2]].byte_length = buffer_view->byte_length;
+                ret.buffer_views[buffer_indices[2]].data =
+                    gpu_make_linear_allocation(
+                        allocators->vertex_allocator, 
+                        ret.buffer_views [buffer_indices[2]].byte_length,
+                        &ret.buffer_views[buffer_indices[2]].byte_offset);
+            }
+            if ((buffer_view_mask & (1 << buffer_indices[3])) == 0) {
+                buffer_view = gltf_buffer_view_by_index(model, buffer_indices[3]);
+
+                ret.buffer_views[buffer_indices[3]].byte_length = buffer_view->byte_length;
+                ret.buffer_views[buffer_indices[3]].data =
+                    gpu_make_linear_allocation(
+                        allocators->vertex_allocator, 
+                        ret.buffer_views [buffer_indices[3]].byte_length,
+                        &ret.buffer_views[buffer_indices[3]].byte_offset);
+            }
+            if ((buffer_view_mask & (1 << buffer_indices[4])) == 0) {
+                buffer_view = gltf_buffer_view_by_index(model, buffer_indices[4]);
+
+                ret.buffer_views[buffer_indices[4]].byte_length = buffer_view->byte_length;
+                ret.buffer_views[buffer_indices[4]].data =
+                    gpu_make_linear_allocation(
+                        allocators->vertex_allocator, 
+                        ret.buffer_views [buffer_indices[4]].byte_length,
+                        &ret.buffer_views[buffer_indices[4]].byte_offset);
+            }
+
+            // Mark buffer as having been queued for allocation
+            buffer_view_mask |= 1 << buffer_indices[0];
+            buffer_view_mask |= 1 << buffer_indices[1];
+            buffer_view_mask |= 1 << buffer_indices[2];
+            buffer_view_mask |= 1 << buffer_indices[3];
+            buffer_view_mask |= 1 << buffer_indices[4];
 
             primitive = (Gltf_Mesh_Primitive*)((u8*)primitive + primitive->stride);
         }
+        mesh = (Gltf_Mesh*)((u8*)mesh + mesh->stride);
     }
 
-    int buffer_view_count = gltf_buffer_view_get_count(model);
-    Buffer_View *buffer_views = 
-        (Buffer_View*)memory_allocate_temp(sizeof(Buffer_View) * buffer_view_count, 8);
-    memset(buffer_views, 0, sizeof(Buffer_View) * buffer_view_count);
-
-    // @MemoryAccess @Speed @Todo I dont like the random access pattern of these loops... 
-    // As I said I will // be coming back to this function after working on laying out model data in 
-    // a better way. (Tbf all this stuff would still only happen at load time. I wont be parsing
-    // gltf structs anywhere near draw time...)
-    Gltf_Accessor *accessor = model->accessors;
-    Gltf_Buffer_View *gltf_view;
-    Buffer_View *view;
-    for(int i = 0; i < accessor_count; ++i) {
-        view = &buffer_views[accessor->buffer_view];
-        gltf_view = gltf_buffer_view_by_index(model, accessor->buffer_view);
-
-        view->type        = buffer_types[i];
-        view->buffer      = gltf_view->buffer;
-        view->byte_offset = gltf_view->byte_offset;
-        view->byte_length = gltf_view->byte_length;
-    }
+    /*WARNING THIS FUNCTION IS NOT COMPLETE SEE TODOS ABOVE*/
+    return ret;
 }
 Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info) {
-    
+   
     Gpu_Vertex_Input_State state = {};
-
-    //
-    // Enough memory for each array field in 'state' (6 int pointers for 4 bindings)
-    //
+    // Enough memory for each array field in 'state' (5 int pointers for 4 bindings)
     int *memory_block = (int*)memory_allocate_temp(sizeof(int) * 5 * 4, 4); // @Todo dont just use 4, set this dynamically with max == supported attribute count
     state.binding_description_bindings    = memory_block;
     state.binding_description_strides     = memory_block + 4;
@@ -167,7 +223,6 @@ Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *m
     state.attribute_description_bindings  = memory_block + 12;
     state.formats = (VkFormat*)(memory_block + 16);
 
-    // @Todo add normals etc.
     // @Todo account for varying attribute count
     // @Todo account for sparse accessors (replace the correct vertices at draw time)
     state.topology = (VkPrimitiveTopology)mesh_primitive->topology;
@@ -194,34 +249,27 @@ Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *m
     state.attribute_description_locations[2] = 2; // tang
     state.attribute_description_locations[3] = 3; // tex_coord_0
 
-    int position    = mesh_primitive->position;
-    int normal      = mesh_primitive->normal;
-    int tangent     = mesh_primitive->tangent;
-    int tex_coord_0 = mesh_primitive->tex_coord_0;
+    Gltf_Accessor *accessors[4];
+    accessors[0] = gltf_accessor_by_index(model, mesh_primitive->position);
+    accessors[1] = gltf_accessor_by_index(model, mesh_primitive->normal);
+    accessors[2] = gltf_accessor_by_index(model, mesh_primitive->tangent);
+    accessors[3] = gltf_accessor_by_index(model, mesh_primitive->tex_coord_0);
 
     // position
-    Gltf_Accessor *accessor = (Gltf_Accessor*)((u8*)model->accessors + model->accessor_count[position]);
-    state.formats[0] = (VkFormat)accessor->format;
-    state.binding_description_strides[0] = accessor->byte_stride;
-    draw_info->offsets[0] = accessor->byte_offset;
+    state.formats[0] = (VkFormat)accessors[0]->format;
+    state.binding_description_strides     [0] = accessors[0]->byte_stride;
 
     // normal
-    accessor = (Gltf_Accessor*)((u8*)model->accessors + model->accessor_count[normal]);
-    state.formats[1] = (VkFormat)accessor->format;
-    state.binding_description_strides[1] = accessor->byte_stride;
-    draw_info->offsets[1] = accessor->byte_offset;
+    state.formats[1] = (VkFormat)accessors[1]->format;
+    state.binding_description_strides     [1] = accessors[1]->byte_stride;
 
     // tangent
-    accessor = (Gltf_Accessor*)((u8*)model->accessors + model->accessor_count[tangent]);
-    state.formats[2] = (VkFormat)accessor->format;
-    state.binding_description_strides[2] = accessor->byte_stride;
-    draw_info->offsets[2] = accessor->byte_offset;
+    state.formats[2] = (VkFormat)accessors[2]->format;
+    state.binding_description_strides     [2] = accessors[2]->byte_stride;
 
     // tex_coord_0
-    accessor = (Gltf_Accessor*)((u8*)model->accessors + model->accessor_count[tex_coord_0]);
-    state.formats[3] = (VkFormat)accessor->format;
-    state.binding_description_strides[3] = accessor->byte_stride;
-    draw_info->offsets[3] = accessor->byte_offset;
+    state.formats[3] = (VkFormat)accessors[3]->format;
+    state.binding_description_strides     [3] = accessors[3]->byte_stride;
 
     return state;
 }

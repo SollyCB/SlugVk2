@@ -8,22 +8,32 @@
 
 struct Renderer_Draw_Info {
     int draw_count;
-    int offsets[4]; // @Note Will likely have to make this an array and set the size dynamically
-                    // per primitive...
+    int index_buffer_view;
+    u64 index_buffer_offset;
+    int vertex_buffer_views[4]; // 0: position, 1: normal, 2: tangent, 3: tex_coord_0
+    u64 vertex_buffer_offsets[4];
 };
-
-struct Renderer_Mesh_Info {
-    int primitive_count;
-    Gpu_Vertex_Input_State* primitive_states;
-    Renderer_Draw_Info *draw_infos;
+struct Renderer_Buffer_View {
+    u64 byte_length;
+    u64 byte_offset;
+    void *data;
 };
-
 struct Renderer_Resource_List {
-    int mesh_info_count;
-    Renderer_Mesh_Info *mesh_infos;
+    int buffer_view_count;
+    int mesh_count; // The number of integers in 'primitive_counts'
+    Renderer_Buffer_View *buffer_views;
+
+    int *primitive_counts;
+    Renderer_Draw_Info     **draw_infos; // Heap allocated
+    Gpu_Vertex_Input_State **vertex_state_infos; // Temp allocated
+};
+struct Renderer_Gpu_Allocator_Group {
+    Gpu_Linear_Allocator *index_allocator;
+    Gpu_Linear_Allocator *vertex_allocator;
+    Gpu_Linear_Allocator *uniform_allocator;
 };
 // Get list of required resources from gltf model
-Renderer_Resource_List renderer_get_model_resource_list(Gltf *model);
+Renderer_Resource_List renderer_create_model_resources(Gltf *model, Renderer_Gpu_Allocator_Group *allocators);
 
 // Pl_Stage_1
 Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info);
