@@ -239,8 +239,8 @@ enum Vec_Type {
 struct Create_Vk_Vertex_Input_Attribute_Description_Info {
     u32 location;
     u32 binding;
-    u32 offset;
     VkFormat format;
+    u32 offset;
 };
 VkVertexInputAttributeDescription create_vk_vertex_attribute_description(Create_Vk_Vertex_Input_Attribute_Description_Info *info);
 
@@ -810,6 +810,9 @@ Gpu_Linear_Allocator gpu_create_linear_allocator_host(
 // Memory is close to the device
 Gpu_Linear_Allocator gpu_create_linear_allocator_device(
     VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type);
+// Shutdown an allocator
+void gpu_destroy_linear_allocator(
+    VmaAllocator vma_allocator, Gpu_Linear_Allocator *linear_allocator);
 // Return mapped ptr + offset into allocation; returns actual offset in 'offset'
 void* gpu_make_linear_allocation(Gpu_Linear_Allocator *allocator, u64 size, u64 *offset);
 // Reduce used by size

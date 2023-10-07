@@ -1265,9 +1265,10 @@ void create_vk_graphics_pipelines(VkDevice vk_device, VkPipelineCache cache, int
     Create_Vk_Vertex_Input_Attribute_Description_Info attribute_info;
     for(int i = 0; i < info->vertex_input_state->input_attribute_description_count; ++i) {
         attribute_info = {
-            (u32)info->vertex_input_state->attribute_description_locations[i],
-            (u32)info->vertex_input_state->attribute_description_bindings[i],
-            info->vertex_input_state->formats[i],
+            .location = (u32)info->vertex_input_state->attribute_description_locations[i],
+            .binding = (u32)info->vertex_input_state->attribute_description_bindings[i],
+            .format = info->vertex_input_state->formats[i],
+            .offset = 0,
         };
         vertex_attribute_descriptions[i] = create_vk_vertex_attribute_description(&attribute_info);
     }

@@ -46,7 +46,7 @@ int main() {
         .index_allocator  = &gpu_index_allocator,
         .vertex_allocator = &gpu_vertex_allocator,
     };
-    Renderer_Resource_List resource_list = 
+    Renderer_Model_Resources resource_list = 
         renderer_create_model_resources(&model, &gpu_allocator_group);
     Gpu_Vertex_Input_State pl_stage_1 = resource_list.vertex_state_infos[0][0];
 
@@ -93,6 +93,9 @@ int main() {
     Gpu_Descriptor_List descriptor_list =
         gpu_make_descriptor_list(2, descriptor_set_info);
 
+    // @Warn These layouts are created in a temp allocation with the expectation that after shaders
+    // are loaded and all the corresponding pl_layouts and descriptor sets have been allocated, the
+    // layouts are destroyed...
     VkDescriptorSetLayout *descriptor_set_layouts =
         create_vk_descriptor_set_layouts(gpu->vk_device, 2, descriptor_set_info);
 
@@ -161,13 +164,17 @@ int main() {
     pl_info.fragment_output_state = &pl_stage_4;
     VkPipeline pipeline = renderer_create_pipeline(gpu->vk_device, &pl_info);
 
+
     /* ShutDown Code */
     gpu_destroy_pipeline(gpu->vk_device, pipeline);
     destroy_vk_renderpass(gpu->vk_device, renderpass);
     destroy_vk_pipeline_layout(gpu->vk_device, pl_layout);
     renderer_destroy_shader_stages(gpu->vk_device, 2, pl_shader_stages);
+    renderer_free_resource_list(&resource_list);
     gpu_destroy_descriptor_allocator(gpu->vk_device, &descriptor_allocator);
     gpu_destroy_descriptor_set_layouts(gpu->vk_device, 2, descriptor_set_layouts);
+    gpu_destroy_linear_allocator(gpu->vma_allocator, &gpu_index_allocator);
+    gpu_destroy_linear_allocator(gpu->vma_allocator, &gpu_vertex_allocator);
     kill_window(gpu, window);
     kill_gpu(gpu);
     kill_glfw(glfw);

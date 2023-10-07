@@ -46,6 +46,11 @@ inline void memory_free_heap(void *ptr) {
 static inline void reset_temp() {
     get_instance_temp()->used = 0;
 }
+static inline void zero_temp() {
+    Linear_Allocator *temp = get_instance_temp();
+    memset(temp->memory, 0, temp->used);
+    temp->used = 0;
+}
 static inline void cut_tail_temp(u64 size) {
     get_instance_temp()->used -= size;
 }

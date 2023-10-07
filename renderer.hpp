@@ -8,17 +8,15 @@
 
 struct Renderer_Draw_Info {
     int draw_count;
-    int index_buffer_view;
     u64 index_buffer_offset;
-    int vertex_buffer_views[4]; // 0: position, 1: normal, 2: tangent, 3: tex_coord_0
-    u64 vertex_buffer_offsets[4];
+    u64 vertex_buffer_offsets[4]; // position, normal, tangent, tex_coord_0
 };
 struct Renderer_Buffer_View {
     u64 byte_length;
     u64 byte_offset;
     void *data;
 };
-struct Renderer_Resource_List {
+struct Renderer_Model_Resources {
     int buffer_view_count;
     int mesh_count; // The number of integers in 'primitive_counts'
     Renderer_Buffer_View *buffer_views;
@@ -33,10 +31,11 @@ struct Renderer_Gpu_Allocator_Group {
     Gpu_Linear_Allocator *uniform_allocator;
 };
 // Get list of required resources from gltf model
-Renderer_Resource_List renderer_create_model_resources(Gltf *model, Renderer_Gpu_Allocator_Group *allocators);
+Renderer_Model_Resources renderer_create_model_resources(Gltf *model, Renderer_Gpu_Allocator_Group *allocators);
+void renderer_free_resource_list(Renderer_Model_Resources *list);
 
 // Pl_Stage_1
-Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info);
+Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model);
 
 // Pl_Stage_2
 Gpu_Rasterization_State renderer_define_rasterization_state(Gpu_Polygon_Mode_Flags polygon_mode_flags = GPU_POLYGON_MODE_FILL_BIT, VkCullModeFlags cull_mode_flags = VK_CULL_MODE_NONE); // top bit of cull mode flags indicates clockwise front face or not; a pipeline is compiled for each polygon mode set

@@ -46,7 +46,7 @@ enum Buffer_Type {
 };
 // @Todo Rename this function to show it is for static models, which can be assumed to have these
 // attributes, and make other equivalent functions to deal with animated models.
-Renderer_Resource_List renderer_create_model_resources(Gltf *model, Renderer_Gpu_Allocator_Group *allocators) {
+Renderer_Model_Resources renderer_create_model_resources(Gltf *model, Renderer_Gpu_Allocator_Group *allocators) {
 
     /*WARNING THIS FUNCTION IS NOT COMPLETE SEE FOLLOWING TODOS*/
 
@@ -72,9 +72,11 @@ Renderer_Resource_List renderer_create_model_resources(Gltf *model, Renderer_Gpu
     int buffer_view_count = gltf_buffer_view_get_count(model);
     int mesh_count        = gltf_mesh_get_count(model);
 
-    Renderer_Resource_List ret = {};
+    Renderer_Model_Resources ret = {};
     ret.buffer_view_count = buffer_view_count;
-    ret.buffer_views = (Renderer_Buffer_View*)memory_allocate_heap(sizeof(Renderer_))
+    ret.buffer_views =
+        (Renderer_Buffer_View*)memory_allocate_temp(
+            sizeof(Renderer_Buffer_View) * buffer_view_count, 8);
     
     ret.mesh_count = mesh_count;
     ret.primitive_counts = (int*)memory_allocate_heap(sizeof(int) * mesh_count, 4);
@@ -96,6 +98,7 @@ Renderer_Resource_List renderer_create_model_resources(Gltf *model, Renderer_Gpu
 
     ASSERT(buffer_view_count <= 64, "Buffer View Mask Too Small");
     u64 buffer_view_mask = 0x0; // @Note Assumes fewer than 64 buffer views;
+    u64 *allocation_offsets = (u64*)memory_allocate_temp(sizeof(u64) * buffer_view_count, 8);
 
     // I dont like calling heap allocate in a loop at all, but this is not a tight loop anyway,
     // and the data per mesh will still be contiguous in memory... I could make a big allocation
@@ -108,33 +111,33 @@ Renderer_Resource_List renderer_create_model_resources(Gltf *model, Renderer_Gpu
     //
     for(int i = 0; i < mesh_count; ++i) {
         primitive = mesh->primitives;
+
         ret.draw_infos[i] = 
             (Renderer_Draw_Info*)memory_allocate_heap( 
                 sizeof(Renderer_Draw_Info) * mesh->primitive_count, 8); 
+
         ret.vertex_state_infos[i] =                                     
                 (Gpu_Vertex_Input_State*)memory_allocate_temp(
                     sizeof(Gpu_Vertex_Input_State) * mesh->primitive_count, 8);
+
         for(int j = 0; j < mesh->primitive_count; ++j) {
+
             accessors[0] = gltf_accessor_by_index(model, primitive->indices);
             accessors[1] = gltf_accessor_by_index(model, primitive->position);
             accessors[2] = gltf_accessor_by_index(model, primitive->normal);
             accessors[3] = gltf_accessor_by_index(model, primitive->tangent);
             accessors[4] = gltf_accessor_by_index(model, primitive->tex_coord_0);
 
-            ret.draw_infos[i][j].draw_count = accessors[0]->count;
-            ret.draw_infos[i][j].index_buffer_view = accessors[0]->buffer_view;
+            // Fill in draw info
+            ret.draw_infos[i][j].draw_count          = accessors[0]->count;
             ret.draw_infos[i][j].index_buffer_offset = accessors[0]->byte_offset;
 
-            ret.draw_infos[i][j].vertex_buffer_views[0] = accessors[1].buffer_view;
-            ret.draw_infos[i][j].vertex_buffer_views[1] = accessors[2].buffer_view;
-            ret.draw_infos[i][j].vertex_buffer_views[2] = accessors[3].buffer_view;
-            ret.draw_infos[i][j].vertex_buffer_views[3] = accessors[4].buffer_view;
+            ret.draw_infos[i][j].vertex_buffer_offsets[0] = accessors[1]->byte_offset;
+            ret.draw_infos[i][j].vertex_buffer_offsets[1] = accessors[2]->byte_offset;
+            ret.draw_infos[i][j].vertex_buffer_offsets[2] = accessors[3]->byte_offset;
+            ret.draw_infos[i][j].vertex_buffer_offsets[3] = accessors[4]->byte_offset;
 
-            ret.draw_infos[i][j].vertex_buffer_offsets[0] = accessors[1].count;
-            ret.draw_infos[i][j].vertex_buffer_offsets[1] = accessors[2].count;
-            ret.draw_infos[i][j].vertex_buffer_offsets[2] = accessors[3].count;
-            ret.draw_infos[i][j].vertex_buffer_offsets[3] = accessors[4].count;
-
+            // Less typing
             buffer_indices[0] = accessors[0]->buffer_view;
             buffer_indices[1] = accessors[1]->buffer_view;
             buffer_indices[2] = accessors[2]->buffer_view;
@@ -149,22 +152,35 @@ Renderer_Resource_List renderer_create_model_resources(Gltf *model, Renderer_Gpu
                 buffer_view = gltf_buffer_view_by_index(model, buffer_indices[0]);
 
                 ret.buffer_views[buffer_indices[0]].byte_length = buffer_view->byte_length;
+
                 ret.buffer_views[buffer_indices[0]].data =
                     gpu_make_linear_allocation(
                         allocators->index_allocator, 
-                        ret.buffer_views [buffer_indices[0]].byte_length,
-                        &ret.buffer_views[buffer_indices[0]].byte_offset);
-                                                         // ^^^^^^^^^^^^^^^ Byte offset here is wrong!!!
+                        ret.buffer_views[buffer_indices[0]].byte_length,
+                        &allocation_offsets[buffer_indices[0]]);
+
+                // Point draw infos at the queued allocation
+                ret.draw_infos[i][j].index_buffer_offset += allocation_offsets[buffer_indices[0]];
+            } else {
+                // Point draw infos at the queued allocation
+                ret.draw_infos[i][j].index_buffer_offset += allocation_offsets[buffer_indices[0]];
             }
             if ((buffer_view_mask & (1 << buffer_indices[1])) == 0) {
                 buffer_view = gltf_buffer_view_by_index(model, buffer_indices[1]);
 
                 ret.buffer_views[buffer_indices[1]].byte_length = buffer_view->byte_length;
+
                 ret.buffer_views[buffer_indices[1]].data =
                     gpu_make_linear_allocation(
                         allocators->vertex_allocator, 
                         ret.buffer_views [buffer_indices[1]].byte_length,
-                        &ret.buffer_views[buffer_indices[1]].byte_offset);
+                        &allocation_offsets[buffer_indices[1]]);
+
+                // Point draw infos at the queued 'position' vertex allocation
+                ret.draw_infos[i][j].vertex_buffer_offsets[0] += allocation_offsets[buffer_indices[1]];
+            } else {
+                // Point draw infos at the queued 'position' vertex allocation
+                ret.draw_infos[i][j].vertex_buffer_offsets[0] += allocation_offsets[buffer_indices[1]];
             }
             if ((buffer_view_mask & (1 << buffer_indices[2])) == 0) {
                 buffer_view = gltf_buffer_view_by_index(model, buffer_indices[2]);
@@ -174,7 +190,13 @@ Renderer_Resource_List renderer_create_model_resources(Gltf *model, Renderer_Gpu
                     gpu_make_linear_allocation(
                         allocators->vertex_allocator, 
                         ret.buffer_views [buffer_indices[2]].byte_length,
-                        &ret.buffer_views[buffer_indices[2]].byte_offset);
+                        &allocation_offsets[buffer_indices[2]]);
+
+                // Point draw infos at the queued 'normal' vertex allocation
+                ret.draw_infos[i][j].vertex_buffer_offsets[1] += allocation_offsets[buffer_indices[2]];
+            } else {
+                // Point draw infos at the queued 'normal' vertex allocation
+                ret.draw_infos[i][j].vertex_buffer_offsets[1] += allocation_offsets[buffer_indices[2]];
             }
             if ((buffer_view_mask & (1 << buffer_indices[3])) == 0) {
                 buffer_view = gltf_buffer_view_by_index(model, buffer_indices[3]);
@@ -184,7 +206,13 @@ Renderer_Resource_List renderer_create_model_resources(Gltf *model, Renderer_Gpu
                     gpu_make_linear_allocation(
                         allocators->vertex_allocator, 
                         ret.buffer_views [buffer_indices[3]].byte_length,
-                        &ret.buffer_views[buffer_indices[3]].byte_offset);
+                        &allocation_offsets[buffer_indices[3]]);
+
+                // Point draw infos at the queued 'position' vertex allocation
+                ret.draw_infos[i][j].vertex_buffer_offsets[2] += allocation_offsets[buffer_indices[3]];
+            } else {
+                // Point draw infos at the queued 'position' vertex allocation
+                ret.draw_infos[i][j].vertex_buffer_offsets[2] += allocation_offsets[buffer_indices[3]];
             }
             if ((buffer_view_mask & (1 << buffer_indices[4])) == 0) {
                 buffer_view = gltf_buffer_view_by_index(model, buffer_indices[4]);
@@ -194,7 +222,13 @@ Renderer_Resource_List renderer_create_model_resources(Gltf *model, Renderer_Gpu
                     gpu_make_linear_allocation(
                         allocators->vertex_allocator, 
                         ret.buffer_views [buffer_indices[4]].byte_length,
-                        &ret.buffer_views[buffer_indices[4]].byte_offset);
+                        &allocation_offsets[buffer_indices[4]]);
+
+                // Point draw infos at the queued 'position' vertex allocation
+                ret.draw_infos[i][j].vertex_buffer_offsets[3] += allocation_offsets[buffer_indices[4]];
+            } else {
+                // Point draw infos at the queued 'position' vertex allocation
+                ret.draw_infos[i][j].vertex_buffer_offsets[3] += allocation_offsets[buffer_indices[4]];
             }
 
             // Mark buffer as having been queued for allocation
@@ -212,7 +246,14 @@ Renderer_Resource_List renderer_create_model_resources(Gltf *model, Renderer_Gpu
     /*WARNING THIS FUNCTION IS NOT COMPLETE SEE TODOS ABOVE*/
     return ret;
 }
-Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model, Renderer_Draw_Info *draw_info) {
+void renderer_free_resource_list(Renderer_Model_Resources *list) {
+    for(int i = 0; i < list->mesh_count; ++i) {
+        memory_free_heap(list->draw_infos[i]);
+    }
+    memory_free_heap(list->draw_infos);
+    memory_free_heap(list->primitive_counts);
+}
+Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model) {
    
     Gpu_Vertex_Input_State state = {};
     // Enough memory for each array field in 'state' (5 int pointers for 4 bindings)
