@@ -379,7 +379,7 @@ void init_window(Gpu *gpu, Glfw *glfw) {
 }
 void kill_window(Gpu *gpu, Window *window) {
     destroy_vk_swapchain(gpu->vk_device, window);
-    destroy_vk_surface(gpu->vk_instance, window->swapchain_info.surface);
+    destroy_vk_surface(gpu->vk_instance, window->info.surface);
     memory_free_heap(window);
 }
 
@@ -399,19 +399,19 @@ VkSwapchainKHR recreate_vk_swapchain(Gpu *gpu, Window *window) {
     vkDestroyImageView(gpu->vk_device, window->vk_image_views[1], ALLOCATION_CALLBACKS);
 
     VkSurfaceCapabilitiesKHR surface_capabilities;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu->vk_physical_device, window->swapchain_info.surface, &surface_capabilities);
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu->vk_physical_device, window->info.surface, &surface_capabilities);
 
-    window->swapchain_info.imageExtent = surface_capabilities.currentExtent;
-    window->swapchain_info.preTransform = surface_capabilities.currentTransform;
+    window->info.imageExtent = surface_capabilities.currentExtent;
+    window->info.preTransform = surface_capabilities.currentTransform;
 
     // 
     // This might error with some stuff in the createinfo not properly define, 
     // I made the refactor while sleepy!
     //
-    auto check = vkCreateSwapchainKHR(gpu->vk_device, &window->swapchain_info, ALLOCATION_CALLBACKS, &window->vk_swapchain);
+    auto check = vkCreateSwapchainKHR(gpu->vk_device, &window->info, ALLOCATION_CALLBACKS, &window->vk_swapchain);
 
     DEBUG_OBJ_CREATION(vkCreateSwapchainKHR, check);
-    window->swapchain_info.oldSwapchain = window->vk_swapchain;
+    window->info.oldSwapchain = window->vk_swapchain;
 
     // Image setup
     auto img_check = vkGetSwapchainImagesKHR(gpu->vk_device, window->vk_swapchain, &window->image_count, window->vk_images);
@@ -419,7 +419,7 @@ VkSwapchainKHR recreate_vk_swapchain(Gpu *gpu, Window *window) {
 
     VkImageViewCreateInfo view_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO}; 
     view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    view_info.format   = window->swapchain_info.imageFormat;
+    view_info.format   = window->info.imageFormat;
 
     view_info.components = { 
         VK_COMPONENT_SWIZZLE_IDENTITY,
@@ -508,8 +508,8 @@ VkSwapchainKHR create_vk_swapchain(Gpu *gpu, VkSurfaceKHR vk_surface) {
     // Is this better than just continuing to use s_Window? who cares...
     Window *window = get_window_instance();
     window->vk_swapchain = swapchain;
-    window->swapchain_info = swapchain_info;
-    window->swapchain_info.oldSwapchain = swapchain;
+    window->info = swapchain_info;
+    window->info.oldSwapchain = swapchain;
 
     window->image_count = image_count;
     window->vk_images = (VkImage*)(window + 1);
@@ -714,91 +714,74 @@ void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Sub
 // block of free objects in the middle of the pool, they can be used instead of appending. I have no idea if this 
 // will be useful, as my intendedm use case for this system is to have a persistent pool and a temp pool. This 
 // would eliminate the requirement for space saving. 
-Fence_Pool create_fence_pool(VkDevice vk_device, u32 size) {
-    Fence_Pool pool;
+Gpu_Fence_Pool gpu_create_fence_pool(VkDevice vk_device, u32 size) {
+    Gpu_Fence_Pool pool;
     pool.len = size;
     pool.in_use = 0;
-    pool.fences = (VkFence*)memory_allocate_heap(sizeof(VkFence) * size, 8);
+    pool.vk_fences = (VkFence*)memory_allocate_heap(sizeof(VkFence) * size, 8);
 
     VkFenceCreateInfo info = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     VkResult check;
     for(int i = 0; i < size; ++i) {
-        check = vkCreateFence(vk_device, &info, ALLOCATION_CALLBACKS, &pool.fences[i]);
+        check = vkCreateFence(vk_device, &info, ALLOCATION_CALLBACKS, &pool.vk_fences[i]);
         DEBUG_OBJ_CREATION(vkCreateFence, check);
     }
 
     return pool;
 }
-void destroy_fence_pool(VkDevice vk_device, Fence_Pool *pool) {
-    ASSERT(pool->in_use, "Fences cannot be in use when pool is destroyed");
+void gpu_destroy_fence_pool(VkDevice vk_device, Gpu_Fence_Pool *pool) {
+    ASSERT(pool->in_use == 0, "Fences cannot be in use when pool is destroyed");
     for(int i = 0; i < pool->len; ++i) {
-        vkDestroyFence(vk_device, pool->fences[i], ALLOCATION_CALLBACKS);
+        vkDestroyFence(vk_device, pool->vk_fences[i], ALLOCATION_CALLBACKS);
     }
-    memory_free_heap((void*)pool->fences);
+    memory_free_heap((void*)pool->vk_fences);
 }
-VkFence* get_fences(Fence_Pool *pool, u32 count) {
-    if (pool->in_use + count == pool->len) {
-        VkFence *old_fences = pool->fences;
-        u32 old_len = pool->len;
-
-        pool->len *= 2;
-        pool->fences = (VkFence*)memory_allocate_heap(sizeof(VkFence) * pool->len, 8);
-
-        memcpy(pool->fences, old_fences, old_len * sizeof(VkFence));
-        memory_free_heap((void*)old_fences);
-    }
+VkFence* gpu_get_fences(Gpu_Fence_Pool *pool, u32 count) {
+    ASSERT(pool->in_use + count <= pool-> len, "Fence Pool Overflow");
     pool->in_use += count;
-    return pool->fences + (pool->in_use - count);
+    return pool->vk_fences + (pool->in_use - count);
 }
-void reset_fence_pool(Fence_Pool *pool) {
+void gpu_reset_fence_pool(VkDevice vk_device, Gpu_Fence_Pool *pool) {
+    vkResetFences(vk_device, pool->in_use, pool->vk_fences);
     pool->in_use = 0;
 }
-void cut_tail_fences(Fence_Pool *pool, u32 size) {
+void gpu_cut_tail_fences(Gpu_Fence_Pool *pool, u32 size) {
     pool->in_use -= size;
 }
 
 // Semaphores
-Binary_Semaphore_Pool create_binary_semaphore_pool(VkDevice vk_device, u32 size) {
-    Binary_Semaphore_Pool pool;
+Gpu_Binary_Semaphore_Pool gpu_create_binary_semaphore_pool(VkDevice vk_device, u32 size) {
+    Gpu_Binary_Semaphore_Pool pool;
     pool.len = size;
     pool.in_use = 0;
-    pool.semaphores = (VkSemaphore*)memory_allocate_heap(sizeof(VkSemaphore) * size, 8);
+    pool.vk_semaphores = (VkSemaphore*)memory_allocate_heap(sizeof(VkSemaphore) * size, 8);
 
     VkSemaphoreCreateInfo info = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     VkResult check;
     for(int i = 0; i < size; ++i) {
-        check = vkCreateSemaphore(vk_device, &info, ALLOCATION_CALLBACKS, &pool.semaphores[i]);
+        check = vkCreateSemaphore(vk_device, &info, ALLOCATION_CALLBACKS, &pool.vk_semaphores[i]);
         DEBUG_OBJ_CREATION(vkCreateSemaphore, check);
     }
 
     return pool;
 }
-void destroy_binary_semaphore_pool(VkDevice vk_device, Binary_Semaphore_Pool *pool) {
-    ASSERT(pool->in_use, "Semaphores cannot be in use when pool is destroyed");
+void gpu_destroy_binary_semaphore_pool(VkDevice vk_device, Gpu_Binary_Semaphore_Pool *pool) {
+    ASSERT(pool->in_use == 0, "Semaphores cannot be in use when pool is destroyed");
     for(int i = 0; i < pool->len; ++i) {
-        vkDestroySemaphore(vk_device, pool->semaphores[i], ALLOCATION_CALLBACKS);
+        vkDestroySemaphore(vk_device, pool->vk_semaphores[i], ALLOCATION_CALLBACKS);
     }
-    memory_free_heap((void*)pool->semaphores);
+    memory_free_heap((void*)pool->vk_semaphores);
 }
-VkSemaphore* get_binary_semaphores(Binary_Semaphore_Pool *pool, u32 count) {
-    if (pool->in_use + count == pool->len) {
-        VkSemaphore *old_semaphores = pool->semaphores;
-        u32 old_len = pool->len;
-
-        pool->len *= 2;
-        pool->semaphores = (VkSemaphore*)memory_allocate_heap(sizeof(VkSemaphore) * pool->len, 8);
-
-        memcpy(pool->semaphores, old_semaphores, old_len * sizeof(VkSemaphore));
-        memory_free_heap((void*)old_semaphores);
-    }
+VkSemaphore* gpu_get_binary_semaphores(Gpu_Binary_Semaphore_Pool *pool, u32 count) {
+    ASSERT(pool->in_use + count <= pool->len, "Semaphore Pool Overflow");
     pool->in_use += count;
-    return pool->semaphores + (pool->in_use - count);
+    return pool->vk_semaphores + (pool->in_use - count);
 }
 // poopoo <- do not delete this comment - Sol & Jenny, Sept 16 2023
-void reset_binary_semaphore_pool(Binary_Semaphore_Pool *pool) {
+void gpu_reset_binary_semaphore_pool(Gpu_Binary_Semaphore_Pool *pool) {
     pool->in_use = 0;
 }
-void cut_tail_binary_semaphores(Binary_Semaphore_Pool *pool, u32 size) {
+void gpu_cut_tail_binary_semaphores(Gpu_Binary_Semaphore_Pool *pool, u32 size) {
     pool->in_use -= size;
 }
 
@@ -1059,15 +1042,15 @@ VkPipelineInputAssemblyStateCreateInfo create_vk_pipeline_input_assembly_state(V
 VkPipelineViewportStateCreateInfo create_vk_pipeline_viewport_state(Window *window) {
     VkViewport viewport = {
         0.0f, 0.0f, // x, y
-        (float)window->swapchain_info.imageExtent.width,
-        (float)window->swapchain_info.imageExtent.height,
+        (float)window->info.imageExtent.width,
+        (float)window->info.imageExtent.height,
         0.0f, 1.0f, // mindepth, maxdepth
     };
     VkRect2D scissor = {
         {0, 0}, // offsets
         {
-            window->swapchain_info.imageExtent.width,
-            window->swapchain_info.imageExtent.height,
+            window->info.imageExtent.width,
+            window->info.imageExtent.height,
         },
     };
     VkPipelineViewportStateCreateInfo viewport_info = {VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
@@ -1376,50 +1359,50 @@ void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipeli
 }
 
 // `Static Rendering (passes, subpassed, framebuffer)
-VkAttachmentDescription create_vk_attachment_description(Create_Vk_Attachment_Description_Info * info) {
+VkAttachmentDescription gpu_get_attachment_description(Gpu_Attachment_Description_Info *info) {
     VkAttachmentDescription description = {};
-    description.format  = info->image_format;
-    description.samples = info->sample_count;
-
-    switch(info->color_depth_setting) {
-        case GPU_ATTACHMENT_DESCRIPTION_SETTING_DONT_CARE_DONT_CARE:
-            description.loadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-            description.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-            break;
-        case GPU_ATTACHMENT_DESCRIPTION_SETTING_CLEAR_AND_STORE:
-            description.loadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            description.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-            break;
-        default:
-            ASSERT(false, "Invalid setting");
+    switch(info->setting) {
+    case GPU_ATTACHMENT_DESCRIPTION_SETTING_DEPTH_LOAD_UNDEFINED_STORE:
+        description.format         = info->format;
+        description.samples        = VK_SAMPLE_COUNT_1_BIT;
+        description.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        description.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+        description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        description.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+        description.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        break;
+    case GPU_ATTACHMENT_DESCRIPTION_SETTING_DEPTH_LOAD_OPTIMAL_STORE:
+        description.format         = info->format;
+        description.samples        = VK_SAMPLE_COUNT_1_BIT;
+        description.loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;
+        description.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+        description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        description.initialLayout  = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        description.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        break;
+    case GPU_ATTACHMENT_DESCRIPTION_SETTING_COLOR_LOAD_UNDEFINED_STORE:
+        description.format         = info->format;
+        description.samples        = VK_SAMPLE_COUNT_1_BIT;
+        description.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        description.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+        description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        description.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+        description.finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        break;
+    case GPU_ATTACHMENT_DESCRIPTION_SETTING_COLOR_LOAD_OPTIMAL_STORE:
+        description.format         = info->format;
+        description.samples        = VK_SAMPLE_COUNT_1_BIT;
+        description.loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;
+        description.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+        description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        description.initialLayout  = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        description.finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        break;
     }
-
-    switch(info->stencil_setting) {
-        case GPU_ATTACHMENT_DESCRIPTION_SETTING_DONT_CARE_DONT_CARE:
-            description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-            description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-            break;
-        case GPU_ATTACHMENT_DESCRIPTION_SETTING_CLEAR_AND_STORE:
-            description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
-            break;
-        default:
-            ASSERT(false, "Invalid setting");
-    }
-
-    switch(info->layout_transition) {
-        case GPU_ATTACHMENT_DESCRIPTION_SETTING_UNDEFINED_TO_COLOR:
-            description.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            description.finalLayout   = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            break;
-        case GPU_ATTACHMENT_DESCRIPTION_SETTING_UNDEFINED_TO_PRESENT:
-            description.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            description.finalLayout   = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            break;
-        default:
-            ASSERT(false, "Invalid setting");
-    }
-
     return description;
 }
 
@@ -1452,6 +1435,20 @@ VkSubpassDependency create_vk_subpass_dependency(Create_Vk_Subpass_Dependency_In
         dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
         break;
+    case GPU_SUBPASS_DEPENDENCY_SETTING_COLOR_DEPTH_BASIC_DRAW:
+        dependency.srcStageMask  = 
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependency.dstStageMask  = 
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependency.srcAccessMask = 0;
+        dependency.dstAccessMask = 
+            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+        dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        break;
     case GPU_SUBPASS_DEPENDENCY_SETTING_WRITE_READ_COLOR_FRAGMENT:
         dependency.srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         dependency.dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
@@ -1460,7 +1457,9 @@ VkSubpassDependency create_vk_subpass_dependency(Create_Vk_Subpass_Dependency_In
         dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
         break;
     case GPU_SUBPASS_DEPENDENCY_SETTING_WRITE_READ_DEPTH_FRAGMENT:
-        dependency.srcStageMask  = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT_KHR | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT_KHR;
+        dependency.srcStageMask  = 
+            VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT_KHR |
+            VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT_KHR;
         dependency.dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
         dependency.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         dependency.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -1485,6 +1484,23 @@ VkRenderPass create_vk_renderpass(VkDevice vk_device, Create_Vk_Renderpass_Info 
 }
 void destroy_vk_renderpass(VkDevice vk_device, VkRenderPass renderpass) {
     vkDestroyRenderPass(vk_device, renderpass, ALLOCATION_CALLBACKS);
+}
+
+VkFramebuffer gpu_create_framebuffer(VkDevice vk_device, Gpu_Framebuffer_Info *info) {
+    VkFramebufferCreateInfo create_info = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+    create_info.renderPass      = info->renderpass;
+    create_info.attachmentCount = info->attachment_count;
+    create_info.pAttachments    = info->attachments;
+    create_info.width           = info->width;
+    create_info.height          = info->height;
+    create_info.layers          = 1;
+    VkFramebuffer framebuffer;
+    auto check = vkCreateFramebuffer(vk_device, &create_info, ALLOCATION_CALLBACKS, &framebuffer);
+    DEBUG_OBJ_CREATION(vkCreateFramebuffer, check);
+    return framebuffer;
+}
+void gpu_destroy_framebuffer(VkDevice vk_device, VkFramebuffer framebuffer) {
+    vkDestroyFramebuffer(vk_device, framebuffer, ALLOCATION_CALLBACKS);
 }
 
 // `Drawing and `Rendering
@@ -1786,65 +1802,59 @@ Gpu_Buffer create_src_buffer(VmaAllocator vma_allocator, u64 size) {
 }
 
 // `Images
-Gpu_Image create_vma_color_image(VmaAllocator vma_allocator, u32 width, u32 height) {
-    VkImageCreateInfo image_create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
-    image_create_info.imageType         = VK_IMAGE_TYPE_2D;
-    image_create_info.extent.width      = width;
-    image_create_info.extent.height     = height;
-    image_create_info.extent.depth      = 1;
-    image_create_info.mipLevels         = 1;
-    image_create_info.arrayLayers       = 1;
-
-    // Idk what format I should use?
-    image_create_info.format            = VK_FORMAT_R8G8B8A8_UNORM;
-    image_create_info.tiling            = VK_IMAGE_TILING_OPTIMAL;
-    image_create_info.initialLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
-    image_create_info.samples           = VK_SAMPLE_COUNT_1_BIT;
-    image_create_info.usage             = VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-                                          VK_IMAGE_USAGE_SAMPLED_BIT;
-     
-    VmaAllocationCreateInfo allocation_create_info = {};
-    allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
-    allocation_create_info.flags = 0x0;
-    allocation_create_info.priority = 1.0f;
-     
-    Gpu_Image gpu_image;
-    auto check = vmaCreateImage(vma_allocator, &image_create_info, &allocation_create_info, 
-                                &gpu_image.vk_image, &gpu_image.vma_allocation, nullptr);
-    DEBUG_OBJ_CREATION(vmaCreateImage, check);
-
+Gpu_Image gpu_create_depth_attachment(VmaAllocator vma_allocator, int width, int height) {
+    VkImageCreateInfo imgCreateInfo = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    imgCreateInfo.imageType     = VK_IMAGE_TYPE_2D;
+    imgCreateInfo.extent.width  = width;
+    imgCreateInfo.extent.height = height;
+    imgCreateInfo.extent.depth  = 1;
+    imgCreateInfo.mipLevels     = 1;
+    imgCreateInfo.arrayLayers   = 1;
+    imgCreateInfo.format        = VK_FORMAT_D16_UNORM; // 32bit depth accuracy
+    imgCreateInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
+    imgCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imgCreateInfo.usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    imgCreateInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
+ 
+    VmaAllocationCreateInfo allocCreateInfo = {};
+    allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
+    allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+    allocCreateInfo.priority = 1.0f;
+ 
+    VkImage img;
+    VmaAllocation alloc;
+    vmaCreateImage(vma_allocator, &imgCreateInfo, &allocCreateInfo, &img, &alloc, nullptr);
+    Gpu_Image gpu_image = {.vk_image = img, .vma_allocation = alloc};
     return gpu_image;
 }
-Gpu_Image create_vma_color_attachment(VmaAllocator vma_allocator, u32 width, u32 height) {
-    VkImageCreateInfo image_create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
-    image_create_info.imageType         = VK_IMAGE_TYPE_2D;
-    image_create_info.extent.width      = width;
-    image_create_info.extent.height     = height;
-    image_create_info.extent.depth      = 1;
-    image_create_info.mipLevels         = 1;
-    image_create_info.arrayLayers       = 1;
-
-    // Idk what format I should use?
-    image_create_info.format            = COLOR_ATTACHMENT_FORMAT;
-    image_create_info.tiling            = VK_IMAGE_TILING_OPTIMAL;
-    image_create_info.initialLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
-    image_create_info.samples           = VK_SAMPLE_COUNT_1_BIT;
-    image_create_info.usage             = VK_IMAGE_USAGE_SAMPLED_BIT |
-                                          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-     
-    VmaAllocationCreateInfo allocation_create_info = {};
-    allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
-    allocation_create_info.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-    allocation_create_info.priority = 1.0f;
-     
-    Gpu_Image gpu_image;
-    auto check = vmaCreateImage(vma_allocator, &image_create_info, &allocation_create_info, 
-                                &gpu_image.vk_image, &gpu_image.vma_allocation, nullptr);
-    DEBUG_OBJ_CREATION(vmaCreateImage, check);
-
-    return gpu_image;
+void gpu_destroy_image(VmaAllocator vma_allocator, Gpu_Image *image) {
+    vmaDestroyImage(vma_allocator, image->vk_image, image->vma_allocation);
 }
 
+// `ImageView
+VkImageView gpu_create_depth_attachment_view(VkDevice vk_device, VkImage vk_image) {
+    VkImageViewCreateInfo create_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    create_info.image            = vk_image;
+    create_info.viewType         = VK_IMAGE_VIEW_TYPE_2D;
+    create_info.format           = VK_FORMAT_D16_UNORM;
+    create_info.components       = {};
+    create_info.subresourceRange = {
+        .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
+        .baseMipLevel   = 0,
+        .levelCount     = 1,
+        .baseArrayLayer = 0,
+        .layerCount     = 1,
+    };
+    VkImageView view;
+    auto check = vkCreateImageView(vk_device, &create_info, ALLOCATION_CALLBACKS, &view);
+    DEBUG_OBJ_CREATION(vkCreateImageView, check);
+    return view;
+}
+void gpu_destroy_image_view(VkDevice vk_device, VkImageView view) {
+    vkDestroyImageView(vk_device, view, ALLOCATION_CALLBACKS);
+}
+
+// Old Resources
 VkSampler create_vk_sampler(VkDevice vk_device, Create_Vk_Sampler_Info *info) {
     VkSamplerCreateInfo create_info = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
     create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;

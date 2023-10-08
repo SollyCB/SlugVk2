@@ -124,34 +124,75 @@ int main() {
 
     VkPipelineLayout pl_layout = create_vk_pipeline_layout(gpu->vk_device, &pl_layout_info);
 
-    Create_Vk_Attachment_Description_Info attachment_description_info = {}; 
-    attachment_description_info.image_format = window->swapchain_info.imageFormat;
-    attachment_description_info.sample_count = VK_SAMPLE_COUNT_1_BIT;
-    attachment_description_info.color_depth_setting = GPU_ATTACHMENT_DESCRIPTION_SETTING_CLEAR_AND_STORE;
-    attachment_description_info.layout_transition = GPU_ATTACHMENT_DESCRIPTION_SETTING_UNDEFINED_TO_PRESENT;
-    VkAttachmentDescription attachment_description = create_vk_attachment_description(&attachment_description_info);
+    Gpu_Attachment_Description_Info attachment_description_info = {}; 
+    attachment_description_info.format = window->info.imageFormat;
+    attachment_description_info.setting = GPU_ATTACHMENT_DESCRIPTION_SETTING_COLOR_LOAD_UNDEFINED_STORE;
+    VkAttachmentDescription color_attachment_description = 
+        gpu_get_attachment_description(&attachment_description_info);
 
-    VkAttachmentReference color_attachment_reference = {0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+    Gpu_Image depth_attachment = 
+        gpu_create_depth_attachment(gpu->vma_allocator, window->info.imageExtent.width, window->info.imageExtent.height);
+    VkImageView depth_attachment_view =
+        gpu_create_depth_attachment_view(gpu->vk_device, depth_attachment.vk_image);
+
+    attachment_description_info.format = VK_FORMAT_D16_UNORM;
+    attachment_description_info.setting = GPU_ATTACHMENT_DESCRIPTION_SETTING_DEPTH_LOAD_UNDEFINED_STORE;
+    VkAttachmentDescription depth_attachment_description =
+        gpu_get_attachment_description(&attachment_description_info);
+
+    VkAttachmentReference color_attachment_reference = {
+        0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    };
+    VkAttachmentReference depth_attachment_reference = {
+        1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+    };
     Create_Vk_Subpass_Description_Info subpass_description_info = {};
-    subpass_description_info.color_attachment_count = 1;
-    subpass_description_info.color_attachments = &color_attachment_reference;
-    VkSubpassDescription subpass_description = create_vk_graphics_subpass_description(&subpass_description_info);
+    subpass_description_info.color_attachment_count   = 1;
+    subpass_description_info.color_attachments        = &color_attachment_reference;
+    subpass_description_info.depth_stencil_attachment = &depth_attachment_reference;
+    VkSubpassDescription subpass_description = 
+        create_vk_graphics_subpass_description(&subpass_description_info);
 
     Create_Vk_Subpass_Dependency_Info subpass_dependency_info = {};
-    subpass_dependency_info.access_rules = GPU_SUBPASS_DEPENDENCY_SETTING_ACQUIRE_TO_RENDER_TARGET_BASIC;
-    subpass_dependency_info.src_subpass = VK_SUBPASS_EXTERNAL;
-    subpass_dependency_info.dst_subpass = 0;
+    subpass_dependency_info.access_rules = GPU_SUBPASS_DEPENDENCY_SETTING_COLOR_DEPTH_BASIC_DRAW;
+    subpass_dependency_info.src_subpass  = VK_SUBPASS_EXTERNAL;
+    subpass_dependency_info.dst_subpass  = 0;
     VkSubpassDependency subpass_dependency = create_vk_subpass_dependency(&subpass_dependency_info);
 
+    VkAttachmentDescription attachment_descriptions[] = {
+        color_attachment_description,
+        depth_attachment_description
+    };
+
     Create_Vk_Renderpass_Info renderpass_info = {};
-    renderpass_info.attachment_count = 1;
+    renderpass_info.attachment_count = 2;
     renderpass_info.subpass_count    = 1;
     renderpass_info.dependency_count = 1;
-    renderpass_info.attachments      = &attachment_description;
+    renderpass_info.attachments      = attachment_descriptions;
     renderpass_info.subpasses        = &subpass_description;
     renderpass_info.dependencies     = &subpass_dependency;
     VkRenderPass renderpass = create_vk_renderpass(gpu->vk_device, &renderpass_info);
 
+    Gpu_Fence_Pool fence_pool = gpu_create_fence_pool(gpu->vk_device, 1);
+    VkFence *fence = gpu_get_fences(&fence_pool, 1);
+    u32 image_index;
+    vkAcquireNextImageKHR(
+        gpu->vk_device, window->vk_swapchain, 10e9, VK_NULL_HANDLE, *fence, &image_index);
+    vkWaitForFences(gpu->vk_device, 1, fence, VK_TRUE, 10e9);
+
+    VkImageView framebuffer_attachments[] = {
+        window->vk_image_views[image_index], 
+        depth_attachment_view,
+    };
+    Gpu_Framebuffer_Info framebuffer_info = {};
+    framebuffer_info.renderpass = renderpass;
+    framebuffer_info.attachment_count = 2;
+    framebuffer_info.attachments = framebuffer_attachments;
+    framebuffer_info.width = window->info.imageExtent.width;
+    framebuffer_info.height = window->info.imageExtent.height;
+    VkFramebuffer framebuffer = gpu_create_framebuffer(gpu->vk_device, &framebuffer_info);
+
+    // @TODO add depth write test etc stuff to the pl stage (whichever it is)
     Renderer_Create_Pipeline_Info pl_info = {};
     pl_info.layout                = pl_layout;
     pl_info.renderpass            = renderpass;
@@ -166,6 +207,13 @@ int main() {
 
 
     /* ShutDown Code */
+    gpu_destroy_image(gpu->vma_allocator, &depth_attachment); // depth attachment
+    gpu_destroy_image_view(gpu->vk_device, depth_attachment_view);
+    gpu_destroy_framebuffer(gpu->vk_device, framebuffer);
+
+    gpu_reset_fence_pool(gpu->vk_device, &fence_pool);
+    gpu_destroy_fence_pool(gpu->vk_device, &fence_pool);
+
     gpu_destroy_pipeline(gpu->vk_device, pipeline);
     destroy_vk_renderpass(gpu->vk_device, renderpass);
     destroy_vk_pipeline_layout(gpu->vk_device, pl_layout);
@@ -175,6 +223,7 @@ int main() {
     gpu_destroy_descriptor_set_layouts(gpu->vk_device, 2, descriptor_set_layouts);
     gpu_destroy_linear_allocator(gpu->vma_allocator, &gpu_index_allocator);
     gpu_destroy_linear_allocator(gpu->vma_allocator, &gpu_vertex_allocator);
+
     kill_window(gpu, window);
     kill_gpu(gpu);
     kill_glfw(glfw);

@@ -78,7 +78,7 @@ VmaAllocator create_vma_allocator(Gpu *gpu);
 // Surface and Swapchain
 struct Window {
     VkSwapchainKHR vk_swapchain;
-    VkSwapchainCreateInfoKHR swapchain_info;
+    VkSwapchainCreateInfoKHR info;
     u32 image_count;
     VkImage *vk_images;
     VkImageView *vk_image_views;
@@ -125,30 +125,30 @@ struct Submit_Vk_Command_Buffer_Info {
 void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Submit_Vk_Command_Buffer_Info *infos);
 
 // Sync
-struct Fence_Pool {
+struct Gpu_Fence_Pool {
     u32 len;
     u32 in_use;
-    VkFence *fences;
+    VkFence *vk_fences;
 };
-Fence_Pool create_fence_pool(VkDevice vk_device, u32 size);
-void destroy_fence_pool(VkDevice vk_device, Fence_Pool *pool);
+Gpu_Fence_Pool gpu_create_fence_pool(VkDevice vk_device, u32 size);
+void gpu_destroy_fence_pool(VkDevice vk_device, Gpu_Fence_Pool *pool);
 
-VkFence* get_fences(Fence_Pool *pool, u32 count);
-void reset_fence_pool(Fence_Pool *pool);
-void cut_tail_fences(Fence_Pool *pool, u32 size);
+VkFence* gpu_get_fences(Gpu_Fence_Pool *pool, u32 count);
+void gpu_reset_fence_pool(VkDevice vk_device, Gpu_Fence_Pool *pool);
+void gpu_cut_tail_fences(Gpu_Fence_Pool *pool, u32 size);
 
 // Semaphores
-struct Binary_Semaphore_Pool {
+struct Gpu_Binary_Semaphore_Pool {
     u32 len;
     u32 in_use;
-    VkSemaphore *semaphores;
+    VkSemaphore *vk_semaphores;
 };
-Binary_Semaphore_Pool create_binary_semaphore_pool(VkDevice vk_device, u32 size); 
-void destroy_binary_semaphore_pool(VkDevice vk_device, Binary_Semaphore_Pool *pool);
+Gpu_Binary_Semaphore_Pool gpu_create_binary_semaphore_pool(VkDevice vk_device, u32 size); 
+void gpu_destroy_binary_semaphore_pool(VkDevice vk_device, Gpu_Binary_Semaphore_Pool *pool);
 
-VkSemaphore* get_binary_semaphores(Binary_Semaphore_Pool *pool, u32 count);
-void reset_binary_semaphore_pool(Binary_Semaphore_Pool *pool);
-void cut_tail_binary_semaphores(Binary_Semaphore_Pool *pool, u32 size);
+VkSemaphore* gpu_get_binary_semaphores(Gpu_Binary_Semaphore_Pool *pool, u32 count);
+void gpu_reset_binary_semaphore_pool(Gpu_Binary_Semaphore_Pool *pool);
+void gpu_cut_tail_binary_semaphores(Gpu_Binary_Semaphore_Pool *pool, u32 size);
 
 // Descriptors - static, pool allocated
 VkDescriptorPool create_vk_descriptor_pool(VkDevice vk_device, int max_set_count, int counts[11]);
@@ -400,19 +400,16 @@ void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipeli
 
 // `Static Rendering (framebuffers, renderpass, subpasses)
 enum Gpu_Attachment_Description_Setting {
-    GPU_ATTACHMENT_DESCRIPTION_SETTING_DONT_CARE_DONT_CARE = 0,
-    GPU_ATTACHMENT_DESCRIPTION_SETTING_UNDEFINED_TO_COLOR,
-    GPU_ATTACHMENT_DESCRIPTION_SETTING_UNDEFINED_TO_PRESENT,
-    GPU_ATTACHMENT_DESCRIPTION_SETTING_CLEAR_AND_STORE,
+    GPU_ATTACHMENT_DESCRIPTION_SETTING_COLOR_LOAD_UNDEFINED_STORE,
+    GPU_ATTACHMENT_DESCRIPTION_SETTING_COLOR_LOAD_OPTIMAL_STORE,
+    GPU_ATTACHMENT_DESCRIPTION_SETTING_DEPTH_LOAD_UNDEFINED_STORE,
+    GPU_ATTACHMENT_DESCRIPTION_SETTING_DEPTH_LOAD_OPTIMAL_STORE,
 };
-struct Create_Vk_Attachment_Description_Info {
-    VkFormat image_format;
-    VkSampleCountFlagBits sample_count;
-    Gpu_Attachment_Description_Setting color_depth_setting;
-    Gpu_Attachment_Description_Setting stencil_setting;
-    Gpu_Attachment_Description_Setting layout_transition;
+struct Gpu_Attachment_Description_Info {
+    VkFormat format;
+    Gpu_Attachment_Description_Setting setting;
 };
-VkAttachmentDescription create_vk_attachment_description(Create_Vk_Attachment_Description_Info * info);
+VkAttachmentDescription gpu_get_attachment_description(Gpu_Attachment_Description_Info *info);
 
 struct Create_Vk_Subpass_Description_Info {
     u32 input_attachment_count;
@@ -428,6 +425,7 @@ VkSubpassDescription create_vk_graphics_subpass_description(Create_Vk_Subpass_De
 
 enum Gpu_Subpass_Dependency_Setting {
     GPU_SUBPASS_DEPENDENCY_SETTING_ACQUIRE_TO_RENDER_TARGET_BASIC,
+    GPU_SUBPASS_DEPENDENCY_SETTING_COLOR_DEPTH_BASIC_DRAW,
     GPU_SUBPASS_DEPENDENCY_SETTING_WRITE_READ_COLOR_FRAGMENT,
     GPU_SUBPASS_DEPENDENCY_SETTING_WRITE_READ_DEPTH_FRAGMENT,
 };
@@ -449,7 +447,15 @@ struct Create_Vk_Renderpass_Info {
 VkRenderPass create_vk_renderpass(VkDevice vk_device, Create_Vk_Renderpass_Info *info);
 void destroy_vk_renderpass(VkDevice vk_device, VkRenderPass renderpass);
 
-VkFramebuffer create_vk_framebuffer();
+struct Gpu_Framebuffer_Info {
+    VkRenderPass renderpass;
+    int attachment_count;
+    VkImageView *attachments;
+    int width;
+    int height;
+};
+VkFramebuffer gpu_create_framebuffer(VkDevice vk_device, Gpu_Framebuffer_Info *info);
+void gpu_destroy_framebuffer(VkDevice vk_device, VkFramebuffer framebuffer);
 
 // `Rendering Dyn
 struct Create_Vk_Rendering_Attachment_Info_Info {
@@ -547,7 +553,7 @@ VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info);
 
 // Inline Cmds
 static inline void cmd_vk_set_scissor(VkCommandBuffer vk_command_buffer) {
-    VkSwapchainCreateInfoKHR info = get_window_instance()->swapchain_info;
+    VkSwapchainCreateInfoKHR info = get_window_instance()->info;
     VkRect2D scissor = {
         0, 0, // x, y
         info.imageExtent.width,
@@ -556,7 +562,7 @@ static inline void cmd_vk_set_scissor(VkCommandBuffer vk_command_buffer) {
     vkCmdSetScissorWithCount(vk_command_buffer, 1, &scissor);
 }
 static inline void cmd_vk_set_viewport(VkCommandBuffer vk_command_buffer) {
-    VkSwapchainCreateInfoKHR info = get_window_instance()->swapchain_info;
+    VkSwapchainCreateInfoKHR info = get_window_instance()->info;
     VkViewport viewport = {
         0.0f, 0.0f, // x, y
         (float)info.imageExtent.width,
@@ -838,7 +844,8 @@ Gpu_Buffer gpu_create_image(VmaAllocator vma_allocator, Gpu_Resource_Setting set
 
 /* End new buffer */
 
-void create_src_dst_vertex_buffer_pair(VmaAllocator vma_allocator, u64 size, Gpu_Buffer *src, Gpu_Buffer *dst);
+void create_src_dst_vertex_buffer_pair(
+    VmaAllocator vma_allocator, u64 size, Gpu_Buffer *src, Gpu_Buffer *dst);
 Gpu_Buffer create_src_buffer(VmaAllocator vma_allocator, u64 size);
 Gpu_Buffer create_dst_vertex_buffer(VmaAllocator vma_allocator, u64 size);
 
@@ -847,9 +854,18 @@ struct Gpu_Image {
     VkImage vk_image;
     VmaAllocation vma_allocation;
 };
-void destroy_vma_image(VmaAllocator vma_allocator, Gpu_Image *gpu_image);
-Gpu_Image create_vma_image(VmaAllocator vma_allocator, u32 width, u32 height);
-Gpu_Image create_vma_color_attachment(VmaAllocator vma_allocator, u32 width, u32 height);
+enum Gpu_Image_Type {
+    GPU_IMAGE_TYPE_COLOR_ATTACHMENT,
+    GPU_IMAGE_TYPE_DEPTH_ATTACHMENT,
+    GPU_IMAGE_TYPE_TEXTURE,
+};
+Gpu_Image gpu_create_depth_attachment(VmaAllocator vma_allocator, int width, int height);
+// For textures
+Gpu_Image gpu_create_image(VmaAllocator vma_allocator, int width, int height, Gpu_Image_Type type);
+void gpu_destroy_image(VmaAllocator vma_allocator, Gpu_Image *image);
+
+VkImageView gpu_create_depth_attachment_view(VkDevice vk_device, VkImage vk_image);
+void gpu_destroy_image_view(VkDevice vk_device, VkImageView view);
 
 // Samplers
 struct Create_Vk_Sampler_Info {
