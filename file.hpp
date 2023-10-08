@@ -3,6 +3,8 @@
 
 #include "basic.h"
 
+
+const u8* file_read_bin_temp_large(const char *file_name, u64 size);
 const u8* file_read_bin_temp(const char *file_name, u64 *size);
 const u8* file_read_bin_heap(const char *file_name, u64 *size);
 const u8* file_read_char_temp(const char *file_name, u64 *size);

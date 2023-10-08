@@ -1,5 +1,18 @@
 #include "file.hpp"
 
+const u8* file_read_bin_temp_large(const char *file_name, u64 size) {
+    FILE *file = fopen(file_name, "rb");
+    ASSERT(file, "Could Not Open File");
+    if (!file) {
+        println("Failed to read file %c", file_name);
+        return NULL;
+    }
+    u8 *ret = memory_allocate_temp(size, 8);
+    size = fread(ret, 1, size, file);
+    fclose(file);
+    return ret;
+}
+
 const u8* file_read_bin_temp(const char *file_name, u64 *size) {
     FILE *file = fopen(file_name, "rb");
 
