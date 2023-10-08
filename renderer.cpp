@@ -75,14 +75,15 @@ Renderer_Model_Resources renderer_setup_model_resources(Gltf *model, Renderer_Gp
 
     Renderer_Model_Resources ret = {};
     ret.buffer_view_count = buffer_view_count;
-    ret.buffer_views =
-        (Renderer_Buffer_View*)memory_allocate_temp(
-            sizeof(Renderer_Buffer_View) * buffer_view_count, 8);
+    ret.buffer_views = (Renderer_Buffer_View*)memory_allocate_temp(
+                            sizeof(Renderer_Buffer_View) * buffer_view_count, 8);
     
     ret.mesh_count = mesh_count;
     ret.primitive_counts = (int*)memory_allocate_heap(sizeof(int) * mesh_count, 4);
-    ret.draw_infos = (Renderer_Draw_Info**)memory_allocate_heap(sizeof(u8*) * mesh_count, 8);
-    ret.vertex_state_infos = (Gpu_Vertex_Input_State**)memory_allocate_temp(sizeof(u8*) * mesh_count, 8);
+    ret.draw_infos = 
+        (Renderer_Draw_Info**)memory_allocate_heap(sizeof(u8*) * mesh_count, 8);
+    ret.vertex_state_infos = 
+        (Gpu_Vertex_Input_State**)memory_allocate_temp(sizeof(u8*) * mesh_count, 8);
 
     // @Speed @Cache There is A LOT of random access pattern going on here (in the next loop) 
     // (depending on the layout of the gltf model file...). This will all be happening at load 
@@ -98,8 +99,12 @@ Renderer_Model_Resources renderer_setup_model_resources(Gltf *model, Renderer_Gp
     Gltf_Buffer_View *buffer_view;
 
     ASSERT(buffer_view_count <= 64, "Buffer View Mask Too Small");
-    u64 buffer_view_mask = 0x0; // @Note Assumes fewer than 64 buffer views;
-    u64 *allocation_offsets = (u64*)memory_allocate_temp(sizeof(u64) * buffer_view_count, 8);
+    u64 buffer_view_mask      = 0x0; // @Note Assumes fewer than 64 buffer views;
+    u64 *allocation_offsets   = (u64*)memory_allocate_temp(sizeof(u64) * buffer_view_count, 8);
+
+    // To know which area of the buffer to synchronize
+    gpu_make_linear_allocation(allocators->index_allocator,  0, &ret.index_allocation_start);
+    gpu_make_linear_allocation(allocators->vertex_allocator, 0, &ret.vertex_allocation_start);
 
     // I dont like calling heap allocate in a loop at all, but this is not a tight loop anyway,
     // and the data per mesh will still be contiguous in memory... I could make a big allocation
@@ -252,6 +257,9 @@ Renderer_Model_Resources renderer_setup_model_resources(Gltf *model, Renderer_Gp
         mesh = (Gltf_Mesh*)((u8*)mesh + mesh->stride);
     }
 
+    ret.index_allocation_end  = allocators->index_allocator->used;
+    ret.vertex_allocation_end = allocators->vertex_allocator->used;
+
     /*WARNING THIS FUNCTION IS NOT COMPLETE SEE TODOS ABOVE*/
     return ret;
 }
@@ -296,6 +304,9 @@ Renderer_Draws renderer_download_model_data(
         memcpy(buffer_view->data, gltf_buffer + buffer_view->byte_offset, buffer_view->byte_length);
     }
 
+    // @Note I could flush the memory range here, to make sure that these memcpys are all visible,
+    // but for now I am just assuming that there is no need, because Nvidia, Intel and AMD drivers
+    // have for a while had coherent memory for device local.
     reset_to_mark_temp(mark);
     return ret;
 }

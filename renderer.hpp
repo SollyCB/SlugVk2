@@ -26,6 +26,12 @@ struct Renderer_Model_Resources {
     int mesh_count; // The number of integers in 'primitive_counts'
     Renderer_Buffer_View *buffer_views;
 
+    // Buffer areas to sync for transfer
+    u64 index_allocation_start;
+    u64 index_allocation_end;
+    u64 vertex_allocation_start;
+    u64 vertex_allocation_end;
+
     int *primitive_counts;
     Renderer_Draw_Info     **draw_infos; // Heap allocated
     Gpu_Vertex_Input_State **vertex_state_infos; // Temp allocated
