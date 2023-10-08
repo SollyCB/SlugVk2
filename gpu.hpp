@@ -95,6 +95,7 @@ VkSwapchainKHR create_vk_swapchain(Gpu *gpu, VkSurfaceKHR vk_surface); // This f
 void destroy_vk_swapchain(VkDevice vk_device, Window *window); // also destroys image views
 VkSwapchainKHR recreate_vk_swapchain(Gpu *gpu, Window *window);
 
+/* Begin Old Cmd */
 // CommandPools and CommandBuffers
 struct Command_Group_Vk {
     VkCommandPool pool;
@@ -123,8 +124,81 @@ struct Submit_Vk_Command_Buffer_Info {
     VkCommandBuffer *command_buffers;
 };
 void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Submit_Vk_Command_Buffer_Info *infos);
+/* End Old Cmd */
 
-// Sync
+struct Gpu_Command_Allocator {
+    VkCommandPool pool;
+    int buffer_count; // Implicit cap of 64 (in_use_mask bit count)
+    int cap;
+    VkCommandBuffer *buffers;
+};
+Gpu_Command_Allocator gpu_create_command_allocator(
+    VkDevice vk_device, int queue_family_index, bool transient, int size);
+// Free allocator.buffers memory; Call 'vk destroy pool'
+void gpu_destroy_command_allocator(VkDevice vk_device, Gpu_Command_Allocator *allocator);
+// Sets in use to zero; Calls 'vk reset pool'
+void gpu_reset_command_allocator(VkDevice vk_device, Gpu_Command_Allocator *allocator);
+// Allocate into allocator.buffers + allocators.in_use (offset pointer); Increment in_use by count;
+// Return pointer to beginning of new allocation
+VkCommandBuffer* gpu_allocate_command_buffers(
+    VkDevice vk_device, Gpu_Command_Allocator *allocator, int count, bool secondary);
+
+inline static void gpu_begin_primary_command_buffer(VkCommandBuffer cmd, bool one_time) {
+    VkCommandBufferBeginInfo info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    info.flags = (VkCommandBufferUsageFlags)one_time; // one time flag == 0x01
+    vkBeginCommandBuffer(cmd, &info);
+}
+inline static void gpu_end_command_buffer(VkCommandBuffer cmd) {
+    vkEndCommandBuffer(cmd);
+}
+
+// Begin @Unimplemented
+enum Gpu_Semaphore_Setting {
+    GPU_SEMAPHORE_SETTING_BASIC_DRAW_PRESENT,
+    GPU_SEMAPHORE_SETTING_VERTEX_ATTRIBUTE_QUEUE_TRANSFER,
+};
+struct Gpu_Semaphore_Submission_Pair {
+    VkSemaphoreSubmitInfo wait_semaphore;
+    VkSemaphoreSubmitInfo signal_semaphore;
+};
+Gpu_Semaphore_Submission_Pair gpu_get_semaphore_submission_pair(
+    VkSemaphore wait_semaphore, VkSemaphore signal_semaphore, 
+    Gpu_Semaphore_Setting setting);
+// End @Unimplemented
+
+struct Gpu_Queue_Submit_Info {
+    
+};
+void gpu_queue_submit(VkQueue vk_queue);
+
+/* Sync */
+
+// Pipeline Barriers
+enum Gpu_Memory_Barrier_Setting {
+    GPU_MEMORY_BARRIER_SETTING_VERTEX_BUFFER_TRANSFER_SRC,
+    GPU_MEMORY_BARRIER_SETTING_VERTEX_BUFFER_TRANSFER_DST,
+};
+struct Gpu_Buffer_Transfer_Info {
+    Gpu_Memory_Barrier_Setting setting;
+    int src_queue;
+    int dst_queue;
+    VkBuffer buffer;
+    u64 offset;
+    u64 size;
+};
+VkBufferMemoryBarrier2 gpu_get_buffer_barrier(Gpu_Buffer_Transfer_Info *info);
+
+struct Gpu_Pl_Barrier_Info {
+    int memory_count;
+    int buffer_count;
+    int image_count;
+    VkMemoryBarrier2       *memory_barriers;
+    VkBufferMemoryBarrier2 *buffer_barriers;
+    VkImageMemoryBarrier2  *image_barriers;
+};
+VkDependencyInfo gpu_get_pipeline_barrier(int buffer_barrier_count, Gpu_Pl_Barrier_Info *info);
+
+// Fences
 struct Gpu_Fence_Pool {
     u32 len;
     u32 in_use;
@@ -457,6 +531,7 @@ struct Gpu_Framebuffer_Info {
 VkFramebuffer gpu_create_framebuffer(VkDevice vk_device, Gpu_Framebuffer_Info *info);
 void gpu_destroy_framebuffer(VkDevice vk_device, VkFramebuffer framebuffer);
 
+
 // `Rendering Dyn
 struct Create_Vk_Rendering_Attachment_Info_Info {
     VkImageView image_view;
@@ -484,74 +559,7 @@ struct Create_Vk_Rendering_Info_Info {
 // @Note the names on these sorts of functions might be misleading, as create implies the need to destroy...
 VkRenderingInfo create_vk_rendering_info(Create_Vk_Rendering_Info_Info *info);
 
-// `Resources
-// `Images
-
-
-// `Memory Dependencies
-// @Todo add helper functions for:
-//    memory barrier
-//    buffer barrier
-
-// Here I want different functions to create typical types of memory barriers, like ownership 
-// transfers and image layout transitions. But as I do not have much experience with them yet 
-// this a complete WIP and will likely change greatly
-/*
- *Plan:*
- I want functions for each kind of common transfer, for instance:
- COLOR_ATTACHMENT_OPTIMAL -> PRESENT
- TRANSFER_SRC_OPTIMAL     -> TRANSFER_DST_OPTIMAL
- TRANSFER_DST_OPTIMAL     -> COLOR_ATTACHMENT_OPTIMAL
-
- In future I will want others such as for height maps, as the read sync would be different
- (vertex access rather than fragment...)
- */
-
-// @Todo add similar functions for buffer barriers
-// cao = color attachment optimal
-struct MemDep_Queue_Transfer_Info_Image {
-    u16 release_queue_index; 
-    u16 acquire_queue_index; 
-    VkImage image;
-    VkImageSubresourceRange view;
-};
-VkImageMemoryBarrier2 fill_image_barrier_transfer_cao_to_present(MemDep_Queue_Transfer_Info_Image *info);
-
-struct MemDep_Queue_Transition_Info_Image {
-    VkImage image;
-    VkImageSubresourceRange view;
-};
-VkImageMemoryBarrier2 fill_image_barrier_transition_undefined_to_cao(MemDep_Queue_Transition_Info_Image *info);
-//VkImageMemoryBarrier2 memdep_src_to_dst(MemDep_Queue_Transfer_Info_Image *info);
-//VkImageMemoryBarrier2 memdep_dst_to_cao();
-
-struct MemDep_Queue_Transfer_Info_Buffer {
-    u16 release_queue_index; 
-    u16 acquire_queue_index; 
-    VkBuffer vk_buffer;
-    u64 size;
-    u64 offset;
-};
-// @Todo query gpu instance inside the struct to get queues
-// create second function in place of the commented one to transfer gpu to cpu
-// rename other one to the reverse
-// VkBufferMemoryBarrier2 fill_buffer_barrier_transfer(MemDep_Queue_Transfer_Info_Buffer *info); 
-VkBufferMemoryBarrier2 fill_buffer_barrier_transfer(MemDep_Queue_Transfer_Info_Buffer *info); 
-VkDependencyInfo fill_vk_dependency_buffer(VkBufferMemoryBarrier2 *buffer_barrier);
-
-struct Fill_Vk_Dependency_Info {
-    // @Todo support dependency flags
-    u32 memory_barrier_count;
-    u32 buffer_barrier_count;
-    u32 image_barrier_count;
-    VkMemoryBarrier2       *memory_barriers;
-    VkBufferMemoryBarrier2 *buffer_barriers;
-    VkImageMemoryBarrier2  *image_barriers;
-};
-VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info);
-
-
-// Inline Cmds
+// Inline Cmds - (Going to be heavily culled / edited in near future... - sol 8 oct, 2023)
 static inline void cmd_vk_set_scissor(VkCommandBuffer vk_command_buffer) {
     VkSwapchainCreateInfoKHR info = get_window_instance()->info;
     VkRect2D scissor = {
@@ -751,8 +759,6 @@ static inline void cmd_vk_bind_vertex_buffers2(VkCommandBuffer vk_command_buffer
 }
 
 // Resources
-
-// Buffers
 struct Gpu_Buffer {
     VkBuffer vk_buffer;
     VmaAllocation vma_allocation;
@@ -867,17 +873,6 @@ void gpu_destroy_image(VmaAllocator vma_allocator, Gpu_Image *image);
 VkImageView gpu_create_depth_attachment_view(VkDevice vk_device, VkImage vk_image);
 void gpu_destroy_image_view(VkDevice vk_device, VkImageView view);
 
-// Samplers
-struct Create_Vk_Sampler_Info {
-    // @Todo support more options that just a default sampler
-    float max_anisotropy;
-};
-VkSampler create_vk_sampler(VkDevice vk_device, Create_Vk_Sampler_Info *info);
-void destroy_vk_sampler(VkDevice vk_device, VkSampler sampler);
-
-// Resource commands
-void cmd_vk_copy_buffer(VkCommandBuffer vk_command_buffer, VkBuffer from, VkBuffer to, u64 size);
-void cmd_vk_copy_buffer_with_offset(VkCommandBuffer vk_command_buffer, Gpu_Buffer from, Gpu_Buffer to, u64 src_offset, u64 dst_offset, u64 size); // @Unimplemented
 
 #if DEBUG
 static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_messenger_callback(

@@ -708,8 +708,94 @@ void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Sub
     DEBUG_OBJ_CREATION(vkQueueSubmit2, check);
     reset_to_mark_temp(mark);
 }
+/* End old cmd */
 
-// `Sync
+// Command Buffers
+Gpu_Command_Allocator gpu_create_command_allocator(
+    VkDevice vk_device, int queue_family_index, bool transient, int size) {
+    VkCommandPoolCreateInfo create_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+    create_info.flags |= transient; // transient flag == 0x01, other flags are unsupported
+    create_info.queueFamilyIndex = queue_family_index;
+
+    VkCommandPool pool;
+    auto check = vkCreateCommandPool(vk_device, &create_info, ALLOCATION_CALLBACKS, &pool);
+    DEBUG_OBJ_CREATION(vkCreateCommandPool, check);
+
+    Gpu_Command_Allocator allocator = {};
+    allocator.pool         = pool; 
+    allocator.buffer_count = 0; 
+    allocator.cap          = size;
+    allocator.buffers      = (VkCommandBuffer*)memory_allocate_heap(sizeof(VkCommandBuffer) * size, 8);
+    return allocator;
+}
+void gpu_destroy_command_allocator(VkDevice vk_device, Gpu_Command_Allocator *allocator) {
+    vkResetCommandPool(vk_device, allocator->pool, 0x0);
+    vkDestroyCommandPool(vk_device, allocator->pool, ALLOCATION_CALLBACKS);
+}
+void gpu_reset_command_allocator(VkDevice vk_device, Gpu_Command_Allocator *allocator) {
+    vkResetCommandPool(vk_device, allocator->pool, 0x0);
+    allocator->buffer_count = 0;
+}
+VkCommandBuffer* gpu_allocate_command_buffers(
+    VkDevice vk_device, Gpu_Command_Allocator *allocator, int count, bool secondary) {
+    VkCommandBufferAllocateInfo info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO}; 
+    info.commandPool = allocator->pool;
+    info.level = (VkCommandBufferLevel)secondary;
+    info.commandBufferCount = count;
+
+    // @Todo handle overflow better? Do I want the allocator to be able to grow? Or should the
+    // client know how many are necessary (I expect and prefer the second one...)
+    ASSERT(allocator->buffer_count + count <= allocator->cap, "Command Allocator Overflow");
+    auto check = 
+        vkAllocateCommandBuffers(vk_device, &info, allocator->buffers + allocator->buffer_count);
+    DEBUG_OBJ_CREATION(vkAllocateCommandBuffers, check);
+
+    allocator->buffer_count += count;
+    return allocator->buffers + (allocator->buffer_count -  count);
+}
+
+/* `Sync */
+
+// MemoryBarriers
+VkBufferMemoryBarrier2 gpu_get_buffer_barrier(Gpu_Buffer_Transfer_Info *info) {
+    VkBufferMemoryBarrier2 ret = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+    ret.srcQueueFamilyIndex = info->src_queue;
+    ret.dstQueueFamilyIndex = info->dst_queue;
+    ret.buffer              = info->buffer;
+    ret.offset              = info->offset;
+    ret.size                = info->size;
+ 
+    switch(info->setting) {
+    // I am pretty sure that the access masks are irrelevant for the next two cases, as they define
+    // queue family transfers, for which the spec says memory is automatically made available.
+    case GPU_MEMORY_BARRIER_SETTING_VERTEX_BUFFER_TRANSFER_SRC:
+        ret.srcStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        ret.srcAccessMask = 0x0;
+        ret.dstStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        ret.dstAccessMask = 0x0;
+        break;
+    case GPU_MEMORY_BARRIER_SETTING_VERTEX_BUFFER_TRANSFER_DST:
+        ret.srcStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        ret.srcAccessMask = 0x0;
+        ret.dstStageMask  = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+        ret.dstAccessMask = 0x0;
+        break;
+    }
+
+    return ret;
+}
+VkDependencyInfo gpu_get_pipeline_barrier(int buffer_barrier_count, Gpu_Pl_Barrier_Info *info) {
+    VkDependencyInfo ret = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    ret.flags                    = VK_DEPENDENCY_BY_REGION_BIT;
+    ret.memoryBarrierCount       = info->memory_count;
+    ret.pMemoryBarriers          = info->memory_barriers;
+    ret.bufferMemoryBarrierCount = info->buffer_count;
+    ret.pBufferMemoryBarriers    = info->buffer_barriers;
+    ret.imageMemoryBarrierCount  = info->image_count;
+    ret.pImageMemoryBarriers     = info->image_barriers;
+    return ret;
+}
+
 // @Todo for these sync pools, maybe implement a free mask and simd checking, so if there is a large enough 
 // block of free objects in the middle of the pool, they can be used instead of appending. I have no idea if this 
 // will be useful, as my intendedm use case for this system is to have a persistent pool and a temp pool. This 
@@ -1546,138 +1632,9 @@ void set_default_draw_state(VkCommandBuffer vk_command_buffer) {
     cmd_vk_set_primitive_restart_disabled(vk_command_buffer);
 }
 
-// `Memory Dependencies
-VkImageMemoryBarrier2 fill_image_barrier_transfer_cao_to_present(MemDep_Queue_Transfer_Info_Image *info) {
-    VkImageSubresourceRange view  = {};
-    view.aspectMask               = VK_IMAGE_ASPECT_COLOR_BIT;
-    view.baseMipLevel             = 0;
-    view.levelCount               = 1;
-    view.baseArrayLayer           = 0;
-    view.layerCount               = 1;
-
-    VkImageMemoryBarrier2 barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-    barrier.srcStageMask          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    barrier.srcAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    barrier.dstStageMask          = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-    barrier.dstAccessMask         = 0x0;
-    barrier.oldLayout             = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    barrier.newLayout             = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    barrier.srcQueueFamilyIndex   = info->release_queue_index;
-    barrier.dstQueueFamilyIndex   = info->acquire_queue_index;
-    barrier.image                 = info->image;
-    barrier.subresourceRange      = view;
-
-    return barrier;
-}
-VkImageMemoryBarrier2 fill_image_barrier_transition_undefined_to_cao(MemDep_Queue_Transition_Info_Image *info) {
-    VkImageSubresourceRange view  = {};
-    view.aspectMask               = VK_IMAGE_ASPECT_COLOR_BIT;
-    view.baseMipLevel             = 0;
-    view.levelCount               = 1;
-    view.baseArrayLayer           = 0;
-    view.layerCount               = 1;
-
-    VkImageMemoryBarrier2 barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-    barrier.srcStageMask          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    barrier.srcAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    barrier.dstStageMask          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    barrier.dstAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    barrier.oldLayout             = VK_IMAGE_LAYOUT_UNDEFINED;
-    barrier.newLayout             = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-    barrier.srcQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image                 = info->image;
-    barrier.subresourceRange      = info->view;
-
-    return barrier;
-}
-VkImageMemoryBarrier2 fill_image_barrier_transition_dst_to_cao(MemDep_Queue_Transition_Info_Image *info) {
-    VkImageSubresourceRange view  = {};
-    view.aspectMask               = VK_IMAGE_ASPECT_COLOR_BIT;
-    view.baseMipLevel             = 0;
-    view.levelCount               = 1;
-    view.baseArrayLayer           = 0;
-    view.layerCount               = 1;
-
-    VkImageMemoryBarrier2 barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-    barrier.srcStageMask          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    barrier.srcAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    barrier.dstStageMask          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    barrier.dstAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    barrier.oldLayout             = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    barrier.newLayout             = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-    barrier.srcQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image                 = info->image;
-    barrier.subresourceRange      = info->view;
-
-    return barrier;
-}
-VkImageMemoryBarrier2 fill_image_barrier_transition_undefined_to_dst(MemDep_Queue_Transition_Info_Image *info) {
-    VkImageSubresourceRange view  = {};
-    view.aspectMask               = VK_IMAGE_ASPECT_COLOR_BIT;
-    view.baseMipLevel             = 0;
-    view.levelCount               = 1;
-    view.baseArrayLayer           = 0;
-    view.layerCount               = 1;
-
-    VkImageMemoryBarrier2 barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-    barrier.srcStageMask          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    barrier.srcAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    barrier.dstStageMask          = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    barrier.dstAccessMask         = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    barrier.oldLayout             = VK_IMAGE_LAYOUT_UNDEFINED;
-    barrier.newLayout             = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    barrier.srcQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image                 = info->image;
-    barrier.subresourceRange      = info->view;
-
-    return barrier;
-}
-
-VkBufferMemoryBarrier2 fill_buffer_barrier_transfer(MemDep_Queue_Transfer_Info_Buffer *info) {
-    VkBufferMemoryBarrier2 barrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2}; 
-    barrier.offset              = info->offset;
-    barrier.size                = info->size;
-    barrier.buffer              = info->vk_buffer;
-
-    barrier.srcStageMask        = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    barrier.dstStageMask        = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    barrier.srcAccessMask       = VK_ACCESS_TRANSFER_READ_BIT;
-    barrier.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-    barrier.srcQueueFamilyIndex = info->release_queue_index;
-    barrier.dstQueueFamilyIndex = info->acquire_queue_index;
-    
-    return barrier;
-}
-
-VkDependencyInfo fill_vk_dependency_buffer(VkBufferMemoryBarrier2 *buffer_barrier) {
-    VkDependencyInfo dependency         = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-    dependency.bufferMemoryBarrierCount = 1;
-    dependency.pBufferMemoryBarriers    = buffer_barrier;
-    return dependency;
-}
-
-VkDependencyInfo fill_vk_dependency(Fill_Vk_Dependency_Info *info) {
-    VkDependencyInfo dependency_info = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-
-    dependency_info.memoryBarrierCount       = info->memory_barrier_count;
-    dependency_info.bufferMemoryBarrierCount = info->buffer_barrier_count;
-    dependency_info.imageMemoryBarrierCount  = info->image_barrier_count;
-
-    dependency_info.pMemoryBarriers          = info->memory_barriers;
-    dependency_info.pBufferMemoryBarriers    = info->buffer_barriers;
-    dependency_info.pImageMemoryBarriers     = info->image_barriers;
-
-    return dependency_info;
-}
-
 // `Resources
 
 // `GpuLinearAllocator - Buffer optimisation
-// returns offset into the buffer;
 Gpu_Linear_Allocator gpu_create_linear_allocator_host(
     VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type) {
     VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
@@ -1852,56 +1809,6 @@ VkImageView gpu_create_depth_attachment_view(VkDevice vk_device, VkImage vk_imag
 }
 void gpu_destroy_image_view(VkDevice vk_device, VkImageView view) {
     vkDestroyImageView(vk_device, view, ALLOCATION_CALLBACKS);
-}
-
-// Old Resources
-VkSampler create_vk_sampler(VkDevice vk_device, Create_Vk_Sampler_Info *info) {
-    VkSamplerCreateInfo create_info = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-    create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-
-    create_info.magFilter = VK_FILTER_LINEAR;
-    create_info.minFilter = VK_FILTER_LINEAR;
-
-    create_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    create_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    create_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-
-    create_info.anisotropyEnable = VK_TRUE;
-    create_info.maxAnisotropy = info->max_anisotropy;
-
-    create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-    create_info.mipLodBias = 0.0f;
-    create_info.minLod = 0.0f;
-    create_info.maxLod = 0.0f;
-
-    // @Todo percentage closer filtering shadow maps
-    create_info.compareEnable = VK_FALSE;
-    //create_info.compareOp = 
-
-    VkSampler sampler;
-    auto check = vkCreateSampler(vk_device, &create_info, ALLOCATION_CALLBACKS, &sampler);
-    DEBUG_OBJ_CREATION(vkCreateSampler, check);
-
-    return sampler;
-}
-void destroy_vk_sampler(VkDevice vk_device, VkSampler sampler) {
-    vkDestroySampler(vk_device, sampler, ALLOCATION_CALLBACKS);
-}
-
-// `Resource Commands
-void cmd_vk_copy_buffer(VkCommandBuffer vk_command_buffer, VkBuffer from, VkBuffer to, u64 size) {
-    VkBufferCopy2 region = {VK_STRUCTURE_TYPE_BUFFER_COPY_2};
-    region.srcOffset     = 0;
-    region.dstOffset     = 0;
-    region.size          = size;
-
-    VkCopyBufferInfo2 copy_info = {VK_STRUCTURE_TYPE_COPY_BUFFER_INFO_2};
-    copy_info.srcBuffer         = from;
-    copy_info.dstBuffer         = to;
-    copy_info.regionCount       = 1;
-    copy_info.pRegions          = &region;
-
-    vkCmdCopyBuffer2(vk_command_buffer, &copy_info);
 }
 
 // @Note could be inlined cos so small? who cares...
