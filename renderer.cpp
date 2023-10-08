@@ -1,5 +1,6 @@
 #include "renderer.hpp"
 #include "gpu.hpp"
+#include "file.hpp"
 
 #include <immintrin.h> // for prefetching inconsistent strides (gltf)
 
@@ -46,7 +47,7 @@ enum Buffer_Type {
 };
 // @Todo Rename this function to show it is for static models, which can be assumed to have these
 // attributes, and make other equivalent functions to deal with animated models.
-Renderer_Model_Resources renderer_create_model_resources(Gltf *model, Renderer_Gpu_Allocator_Group *allocators) {
+Renderer_Model_Resources renderer_setup_model_resources(Gltf *model, Renderer_Gpu_Allocator_Group *allocators) {
 
     /*WARNING THIS FUNCTION IS NOT COMPLETE SEE FOLLOWING TODOS*/
 
@@ -246,12 +247,39 @@ Renderer_Model_Resources renderer_create_model_resources(Gltf *model, Renderer_G
     /*WARNING THIS FUNCTION IS NOT COMPLETE SEE TODOS ABOVE*/
     return ret;
 }
-void renderer_free_resource_list(Renderer_Model_Resources *list) {
-    for(int i = 0; i < list->mesh_count; ++i) {
+void renderer_free_model_data(Renderer_Model_Resources *list) {
+    for(int i = 0; i < list->mesh_count; ++i)
         memory_free_heap(list->draw_infos[i]);
-    }
+
     memory_free_heap(list->draw_infos);
     memory_free_heap(list->primitive_counts);
+}
+// @Todo @Speed @MemoryAccess. Idk if this function can benefit from rejigging data, because it
+// seems that the buffer views already exist is the correct grouping. As in I dont think that I can
+// order the data in some way that I can do fewer memcpys using larger contiguous blocks.
+Renderer_Draws renderer_download_model_data(Gltf *model, Renderer_Model_Resources *list) {
+    Renderer_Draws ret = {
+        .mesh_count = list->mesh_count,
+        .primitive_counts = list->primitive_counts,
+        .draw_infos = list->draw_infos,
+    };
+
+    // @Note this system assumes that the gltf file use one bin buffer file
+    ASSERT(gltf_buffer_get_count(model) == 1, "Too many gltf buffers");
+    u64 buffer_len = model->buffers->byte_length;
+    u64 mark = get_mark_temp();
+    const u8 *gltf_buffer = file_read_bin_temp_large((const char*)model->buffers->uri, buffer_len);
+    
+    // Allocations already made in gpu linear allocators by 'setup_model_resources()'; the pointers 
+    // ('list->data') being copied into point to the corresponding allocation for the buffer view.
+    Renderer_Buffer_View *buffer_view;
+    for(int i = 0; i < list->buffer_view_count; ++i) {
+        buffer_view = &list->buffer_views[i];
+        memcpy(buffer_view->data, gltf_buffer + buffer_view->byte_offset, buffer_view->byte_length);
+    }
+
+    reset_to_mark_temp(mark);
+    return ret;
 }
 Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model) {
    

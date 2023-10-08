@@ -11,6 +11,11 @@ struct Renderer_Draw_Info {
     u64 index_buffer_offset;
     u64 vertex_buffer_offsets[4]; // position, normal, tangent, tex_coord_0
 };
+struct Renderer_Draws {
+    int mesh_count;
+    int *primitive_counts;
+    Renderer_Draw_Info **draw_infos;
+};
 struct Renderer_Buffer_View {
     u64 byte_length;
     u64 byte_offset;
@@ -31,8 +36,10 @@ struct Renderer_Gpu_Allocator_Group {
     Gpu_Linear_Allocator *uniform_allocator;
 };
 // Get list of required resources from gltf model
-Renderer_Model_Resources renderer_create_model_resources(Gltf *model, Renderer_Gpu_Allocator_Group *allocators);
-void renderer_free_resource_list(Renderer_Model_Resources *list);
+Renderer_Model_Resources renderer_setup_model_resources(
+    Gltf *model, Renderer_Gpu_Allocator_Group *allocators);
+void renderer_free_model_data(Renderer_Model_Resources *list);
+Renderer_Draws renderer_download_model_data(Gltf *model, Renderer_Model_Resources *list);
 
 // Pl_Stage_1
 Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model);
