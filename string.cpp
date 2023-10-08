@@ -4,7 +4,7 @@
 Heap_String_Buffer build_heap_string_buffer(u32 cstr_count, const char **list_of_cstrs) {
 
     u32 total_len = 0;
-    u64 diff = get_mark_temp();
+    u64 mark = get_mark_temp();
     u32 *lens = (u32*)memory_allocate_temp(cstr_count * 4, 4);
 
     for(int i = 0; i < cstr_count; ++i) {
@@ -21,13 +21,13 @@ Heap_String_Buffer build_heap_string_buffer(u32 cstr_count, const char **list_of
         copy_to_heap_string_buffer(&ret, (char*)list_of_cstrs[i], lens[i]);
     }
 
-    cut_diff_temp(diff);
+    reset_to_mark_temp(mark);
     return ret;
 }
 
 Temp_String_Buffer build_temp_string_buffer(u32 cstr_count, const char **list_of_cstrs) {
     u32 total_len = 0;
-    u64 diff = get_mark_temp();
+    u64 mark = get_mark_temp();
     u32 *lens = (u32*)memory_allocate_temp(cstr_count * 4, 4);
 
     for(int i = 0; i < cstr_count; ++i) {
@@ -44,7 +44,7 @@ Temp_String_Buffer build_temp_string_buffer(u32 cstr_count, const char **list_of
         copy_to_temp_string_buffer(&ret, (char*)list_of_cstrs[i], lens[i]);
     }
 
-    cut_diff_temp(diff);
+    reset_to_mark_temp(mark);
     return ret;
 }
 

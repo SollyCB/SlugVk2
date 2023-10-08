@@ -35,19 +35,26 @@ int main() {
     /* Begin Code That Actually Does Stuff */
     Gltf model = parse_gltf("models/cube-static/Cube.gltf");
 
-    Gpu_Linear_Allocator gpu_index_allocator =
+    Gpu_Linear_Allocator host_index_allocator =
         gpu_create_linear_allocator_host(
             gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_SRC);
-    Gpu_Linear_Allocator gpu_vertex_allocator =
+    Gpu_Linear_Allocator host_vertex_allocator =
         gpu_create_linear_allocator_host(
             gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_SRC);
 
+    Gpu_Linear_Allocator device_index_allocator =
+        gpu_create_linear_allocator_host(
+            gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_DST);
+    Gpu_Linear_Allocator device_vertex_allocator =
+        gpu_create_linear_allocator_host(
+            gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_DST);
+
     Renderer_Gpu_Allocator_Group gpu_allocator_group = {
-        .index_allocator  = &gpu_index_allocator,
-        .vertex_allocator = &gpu_vertex_allocator,
+        .index_allocator  = &host_index_allocator,
+        .vertex_allocator = &host_vertex_allocator,
     };
     Renderer_Model_Resources resource_list = 
-        renderer_create_model_resources(&model, &gpu_allocator_group);
+        renderer_setup_model_resources(&model, &gpu_allocator_group);
     Gpu_Vertex_Input_State pl_stage_1 = resource_list.vertex_state_infos[0][0];
 
     Gpu_Rasterization_State pl_stage_2 =
@@ -193,7 +200,6 @@ int main() {
     framebuffer_info.height = window->info.imageExtent.height;
     VkFramebuffer framebuffer = gpu_create_framebuffer(gpu->vk_device, &framebuffer_info);
 
-    // @TODO add depth write test etc stuff to the pl stage (whichever it is)
     Renderer_Create_Pipeline_Info pl_info = {};
     pl_info.layout                = pl_layout;
     pl_info.renderpass            = renderpass;
@@ -219,11 +225,13 @@ int main() {
     destroy_vk_renderpass(gpu->vk_device, renderpass);
     destroy_vk_pipeline_layout(gpu->vk_device, pl_layout);
     renderer_destroy_shader_stages(gpu->vk_device, 2, pl_shader_stages);
-    renderer_free_resource_list(&resource_list);
+    renderer_free_model_data(&resource_list);
     gpu_destroy_descriptor_allocator(gpu->vk_device, &descriptor_allocator);
     gpu_destroy_descriptor_set_layouts(gpu->vk_device, 2, descriptor_set_layouts);
-    gpu_destroy_linear_allocator(gpu->vma_allocator, &gpu_index_allocator);
-    gpu_destroy_linear_allocator(gpu->vma_allocator, &gpu_vertex_allocator);
+    gpu_destroy_linear_allocator(gpu->vma_allocator, &host_index_allocator);
+    gpu_destroy_linear_allocator(gpu->vma_allocator, &host_vertex_allocator);
+    gpu_destroy_linear_allocator(gpu->vma_allocator, &device_index_allocator);
+    gpu_destroy_linear_allocator(gpu->vma_allocator, &device_vertex_allocator);
 
     kill_window(gpu, window);
     kill_gpu(gpu);

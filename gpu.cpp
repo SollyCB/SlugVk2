@@ -706,7 +706,7 @@ void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Sub
     }
     auto check = vkQueueSubmit2(vk_queue, count, submit_infos, vk_fence);
     DEBUG_OBJ_CREATION(vkQueueSubmit2, check);
-    cut_diff_temp(mark);
+    reset_to_mark_temp(mark);
 }
 
 // `Sync

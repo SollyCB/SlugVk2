@@ -54,7 +54,7 @@ static inline void zero_temp() {
 static inline void cut_tail_temp(u64 size) {
     get_instance_temp()->used -= size;
 }
-static inline void cut_diff_temp(u64 size) {
+static inline void reset_to_mark_temp(u64 size) {
     get_instance_temp()->used = size;
 }
 static inline u64 get_mark_temp() {
