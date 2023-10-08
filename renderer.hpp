@@ -39,7 +39,8 @@ struct Renderer_Gpu_Allocator_Group {
 Renderer_Model_Resources renderer_setup_model_resources(
     Gltf *model, Renderer_Gpu_Allocator_Group *allocators);
 void renderer_free_model_data(Renderer_Model_Resources *list);
-Renderer_Draws renderer_download_model_data(Gltf *model, Renderer_Model_Resources *list);
+Renderer_Draws renderer_download_model_data(
+    Gltf *model, Renderer_Model_Resources *list, const char *model_dir_path);
 
 // Pl_Stage_1
 Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model);

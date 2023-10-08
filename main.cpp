@@ -55,6 +55,9 @@ int main() {
     };
     Renderer_Model_Resources resource_list = 
         renderer_setup_model_resources(&model, &gpu_allocator_group);
+    Renderer_Draws model_draw_infos = 
+        renderer_download_model_data(&model, &resource_list, "models/cube-static/");
+
     Gpu_Vertex_Input_State pl_stage_1 = resource_list.vertex_state_infos[0][0];
 
     Gpu_Rasterization_State pl_stage_2 =
@@ -70,8 +73,8 @@ int main() {
     
     u64 code_sizes[2];
     const u32 *shader_blobs[2] = { 
-        (const u32*)file_read_bin_heap("shaders/vertex_4.vert.spv", &code_sizes[0]),
-        (const u32*)file_read_bin_heap("shaders/fragment_4.frag.spv", &code_sizes[1]),
+        (const u32*)file_read_bin_temp("shaders/vertex_4.vert.spv", &code_sizes[0]),
+        (const u32*)file_read_bin_temp("shaders/fragment_4.frag.spv", &code_sizes[1]),
     };
 
     int descriptor_set_counts[2];
@@ -90,10 +93,7 @@ int main() {
     };
     VkPipelineShaderStageCreateInfo* pl_shader_stages = 
         renderer_create_shader_stages(gpu->vk_device, 2, create_shader_stage_infos);
-
-    memory_free_heap((void*)shader_blobs[0]); // cast for constness
-    memory_free_heap((void*)shader_blobs[1]);
-
+        
     int set_info_count;
     Create_Vk_Descriptor_Set_Layout_Info *descriptor_set_info = 
         group_spirv(2, parsed_spirv, &set_info_count);

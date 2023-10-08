@@ -153,6 +153,7 @@ Renderer_Model_Resources renderer_setup_model_resources(Gltf *model, Renderer_Gp
                 buffer_view = gltf_buffer_view_by_index(model, buffer_indices[0]);
 
                 ret.buffer_views[buffer_indices[0]].byte_length = buffer_view->byte_length;
+                ret.buffer_views[buffer_indices[0]].byte_offset = buffer_view->byte_offset;
 
                 ret.buffer_views[buffer_indices[0]].data =
                     gpu_make_linear_allocation(
@@ -170,11 +171,12 @@ Renderer_Model_Resources renderer_setup_model_resources(Gltf *model, Renderer_Gp
                 buffer_view = gltf_buffer_view_by_index(model, buffer_indices[1]);
 
                 ret.buffer_views[buffer_indices[1]].byte_length = buffer_view->byte_length;
+                ret.buffer_views[buffer_indices[1]].byte_offset = buffer_view->byte_offset;
 
                 ret.buffer_views[buffer_indices[1]].data =
                     gpu_make_linear_allocation(
                         allocators->vertex_allocator, 
-                        ret.buffer_views [buffer_indices[1]].byte_length,
+                        ret.buffer_views[buffer_indices[1]].byte_length,
                         &allocation_offsets[buffer_indices[1]]);
 
                 // Point draw infos at the queued 'position' vertex allocation
@@ -187,10 +189,12 @@ Renderer_Model_Resources renderer_setup_model_resources(Gltf *model, Renderer_Gp
                 buffer_view = gltf_buffer_view_by_index(model, buffer_indices[2]);
 
                 ret.buffer_views[buffer_indices[2]].byte_length = buffer_view->byte_length;
+                ret.buffer_views[buffer_indices[2]].byte_offset = buffer_view->byte_offset;
+
                 ret.buffer_views[buffer_indices[2]].data =
                     gpu_make_linear_allocation(
                         allocators->vertex_allocator, 
-                        ret.buffer_views [buffer_indices[2]].byte_length,
+                        ret.buffer_views[buffer_indices[2]].byte_length,
                         &allocation_offsets[buffer_indices[2]]);
 
                 // Point draw infos at the queued 'normal' vertex allocation
@@ -203,6 +207,8 @@ Renderer_Model_Resources renderer_setup_model_resources(Gltf *model, Renderer_Gp
                 buffer_view = gltf_buffer_view_by_index(model, buffer_indices[3]);
 
                 ret.buffer_views[buffer_indices[3]].byte_length = buffer_view->byte_length;
+                ret.buffer_views[buffer_indices[3]].byte_offset = buffer_view->byte_offset;
+
                 ret.buffer_views[buffer_indices[3]].data =
                     gpu_make_linear_allocation(
                         allocators->vertex_allocator, 
@@ -219,6 +225,8 @@ Renderer_Model_Resources renderer_setup_model_resources(Gltf *model, Renderer_Gp
                 buffer_view = gltf_buffer_view_by_index(model, buffer_indices[4]);
 
                 ret.buffer_views[buffer_indices[4]].byte_length = buffer_view->byte_length;
+                ret.buffer_views[buffer_indices[4]].byte_offset = buffer_view->byte_offset;
+
                 ret.buffer_views[buffer_indices[4]].data =
                     gpu_make_linear_allocation(
                         allocators->vertex_allocator, 
@@ -257,7 +265,8 @@ void renderer_free_model_data(Renderer_Model_Resources *list) {
 // @Todo @Speed @MemoryAccess. Idk if this function can benefit from rejigging data, because it
 // seems that the buffer views already exist is the correct grouping. As in I dont think that I can
 // order the data in some way that I can do fewer memcpys using larger contiguous blocks.
-Renderer_Draws renderer_download_model_data(Gltf *model, Renderer_Model_Resources *list) {
+Renderer_Draws renderer_download_model_data(
+    Gltf *model, Renderer_Model_Resources *list, const char *model_dir_path) {
     Renderer_Draws ret = {
         .mesh_count = list->mesh_count,
         .primitive_counts = list->primitive_counts,
@@ -267,8 +276,17 @@ Renderer_Draws renderer_download_model_data(Gltf *model, Renderer_Model_Resource
     // @Note this system assumes that the gltf file use one bin buffer file
     ASSERT(gltf_buffer_get_count(model) == 1, "Too many gltf buffers");
     u64 buffer_len = model->buffers->byte_length;
+
+    char model_path[127];
+    int dir_path_len = strlen(model_dir_path);
+    memcpy(model_path, model_dir_path, dir_path_len);
+
+    int uri_len = strlen(model->buffers->uri);
+    memcpy(model_path + dir_path_len, model->buffers->uri, uri_len);
+    model_path[uri_len + dir_path_len] = '\0';
+
     u64 mark = get_mark_temp();
-    const u8 *gltf_buffer = file_read_bin_temp_large((const char*)model->buffers->uri, buffer_len);
+    const u8 *gltf_buffer = file_read_bin_temp_large(model_path, buffer_len);
     
     // Allocations already made in gpu linear allocators by 'setup_model_resources()'; the pointers 
     // ('list->data') being copied into point to the corresponding allocation for the buffer view.
