@@ -559,6 +559,7 @@ void destroy_vk_swapchain(VkDevice device, Window *window) {
     vkDestroySwapchainKHR(device, window->vk_swapchain, ALLOCATION_CALLBACKS);
 }
 
+/* Begin old cmd */
 // `Commands
 Command_Group_Vk create_command_group_vk(VkDevice vk_device, u32 queue_family_index) {
     VkCommandPoolCreateInfo create_info = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
@@ -1654,6 +1655,7 @@ Gpu_Linear_Allocator gpu_create_linear_allocator_host(
 
     gpu_linear_allocator.cap = size;
     gpu_linear_allocator.mapped_ptr = allocation_info.pMappedData;
+    gpu_linear_allocator.offset = allocation_info.offset;
     return gpu_linear_allocator;
 }
 Gpu_Linear_Allocator gpu_create_linear_allocator_device(
@@ -1698,11 +1700,11 @@ void gpu_reset_linear_allocator(Gpu_Linear_Allocator *allocator) {
 void gpu_cut_tail_linear_allocator(Gpu_Linear_Allocator *allocator, u64 size) {
     allocator->used -= size;
 }
-VkBufferCopy gpu_linear_allocator_get_copy_info(Gpu_Linear_Allocator *to_allocator, u64 offset_into_src_buffer, u64 size) {
+VkBufferCopy gpu_linear_allocator_setup_copy(
+    Gpu_Linear_Allocator *to_allocator, u64 offset_into_src_buffer, u64 size) {
     VkBufferCopy ret = {};
     ret.srcOffset    = offset_into_src_buffer;
     ret.dstOffset    = to_allocator->used;
-    size = align(size, 8);
     ret.size         = size;
     gpu_make_linear_allocation(to_allocator, size, NULL);
     return ret;

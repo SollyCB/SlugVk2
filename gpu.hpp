@@ -771,8 +771,9 @@ static inline void* get_vma_mapped_ptr(VmaAllocator vma_allocator, Gpu_Buffer *g
 }
 void destroy_vma_buffer(VmaAllocator vma_allocator, Gpu_Buffer *gpu_buffer);
 
-/* Beginning new buffer */
+// Buffer Allocators - @Todo create texture linear allocator.
 struct Gpu_Linear_Allocator {
+    u64 offset;
     u64 used;
     u64 cap;
     VkBuffer buffer;
@@ -831,8 +832,10 @@ void* gpu_make_linear_allocation(Gpu_Linear_Allocator *allocator, u64 size, u64 
 void gpu_cut_tail_linear_allocator(Gpu_Linear_Allocator *allocator, u64 size);
 // Set used to zero
 void gpu_reset_linear_allocator(Gpu_Linear_Allocator *allocator);
-// Get copy information for an allocation
-VkBufferCopy gpu_linear_allocator_get_copy_info(Gpu_Linear_Allocator *to_allocator, u64 offset_into_src_buffer, u64 size);
+// Make allocation in 'to' allocator; Return copy information
+VkBufferCopy gpu_linear_allocator_setup_copy(
+    Gpu_Linear_Allocator *to_allocator, u64 offset_into_src_buffer, u64 size);
+
 // Get mapped pointer to beginning of gpu linear allocator
 inline static void* gpu_linear_allocator_get_ptr(VmaAllocator vma_allocator, Gpu_Linear_Allocator *linear_allocator) {
     VmaAllocationInfo info;
@@ -847,13 +850,6 @@ enum Gpu_Resource_Setting {
 // @Unimplemented
 Gpu_Buffer gpu_create_buffer(VmaAllocator vma_allocator, Gpu_Resource_Setting setting, u64 size);
 Gpu_Buffer gpu_create_image(VmaAllocator vma_allocator, Gpu_Resource_Setting setting, u64 size);
-
-/* End new buffer */
-
-void create_src_dst_vertex_buffer_pair(
-    VmaAllocator vma_allocator, u64 size, Gpu_Buffer *src, Gpu_Buffer *dst);
-Gpu_Buffer create_src_buffer(VmaAllocator vma_allocator, u64 size);
-Gpu_Buffer create_dst_vertex_buffer(VmaAllocator vma_allocator, u64 size);
 
 // Images
 struct Gpu_Image {
