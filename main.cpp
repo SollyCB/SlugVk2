@@ -51,8 +51,9 @@ int main() {
     Gpu_Vertex_Input_State pl_stage_1 = resource_list.vertex_state_infos[0][0];
 
     Gpu_Rasterization_State pl_stage_2 =
-        renderer_define_rasterization_state(GPU_POLYGON_MODE_FILL_BIT, VK_CULL_MODE_NONE);
+        renderer_define_rasterization_state(GPU_POLYGON_MODE_FILL_BIT, VK_CULL_MODE_FRONT_BIT);
 
+    // Defaults to depth test + write enabled, stencil off, depth bounds off
     Renderer_Fragment_Shader_State_Info renderer_stage3_info = {};
     Gpu_Fragment_Shader_State pl_stage_3 =
         renderer_define_fragment_shader_state(&renderer_stage3_info);

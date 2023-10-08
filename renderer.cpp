@@ -377,7 +377,7 @@ Gpu_Fragment_Shader_State renderer_define_fragment_shader_state(Renderer_Fragmen
     Gpu_Fragment_Shader_State state = {};
     state.flags = info->flags;
     state.depth_compare_op = info->depth_compare_op;
-    state.sample_count = info->sample_count;
+    state.sample_count     = info->sample_count;
     state.min_depth_bounds = info->min_depth_bounds;
     state.max_depth_bounds = info->max_depth_bounds;
 

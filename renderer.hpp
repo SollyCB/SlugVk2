@@ -38,12 +38,14 @@ void renderer_free_resource_list(Renderer_Model_Resources *list);
 Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model);
 
 // Pl_Stage_2
-Gpu_Rasterization_State renderer_define_rasterization_state(Gpu_Polygon_Mode_Flags polygon_mode_flags = GPU_POLYGON_MODE_FILL_BIT, VkCullModeFlags cull_mode_flags = VK_CULL_MODE_NONE); // top bit of cull mode flags indicates clockwise front face or not; a pipeline is compiled for each polygon mode set
+Gpu_Rasterization_State renderer_define_rasterization_state(Gpu_Polygon_Mode_Flags polygon_mode_flags = GPU_POLYGON_MODE_FILL_BIT, VkCullModeFlags cull_mode_flags = VK_CULL_MODE_FRONT_BIT);
 
 // Pl_Stage_3
 struct Renderer_Fragment_Shader_State_Info {
-    Gpu_Fragment_Shader_Flags flags = 0x0;
-    VkCompareOp depth_compare_op = VK_COMPARE_OP_NEVER;
+    Gpu_Fragment_Shader_Flags flags = 
+        GPU_FRAGMENT_SHADER_DEPTH_TEST_ENABLE_BIT |
+        GPU_FRAGMENT_SHADER_DEPTH_WRITE_ENABLE_BIT;
+    VkCompareOp depth_compare_op = VK_COMPARE_OP_LESS;
     VkSampleCountFlagBits sample_count = VK_SAMPLE_COUNT_1_BIT;
     float min_depth_bounds = 0;
     float max_depth_bounds = 100;
