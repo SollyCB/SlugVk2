@@ -34,6 +34,7 @@ int main() {
     init_window(gpu, glfw);
     Window *window = get_window_instance();
 
+
     /* Begin Code That Actually Does Stuff */
     Gltf model = parse_gltf("models/cube-static/Cube.gltf");
 
@@ -236,38 +237,40 @@ int main() {
             resource_list.vertex_allocation_start,
             resource_list.vertex_allocation_end);
 
+    int transfer_queue_index = gpu->vk_queue_indices[2];
+    int graphics_queue_index = gpu->vk_queue_indices[0];
     Gpu_Buffer_Barrier_Info buffer_barrier_infos[] = {
         {
             .setting   = GPU_MEMORY_BARRIER_SETTING_TRANSFER_SRC,
-            .src_queue = gpu->vk_queue_indices[2],
-            .dst_queue = gpu->vk_queue_indices[0],
+            .src_queue = transfer_queue_index,
+            .dst_queue = graphics_queue_index,
             .buffer    = device_index_allocator.buffer,
-            .offset    = 0,//resource_list.index_allocation_start + device_index_allocator.offset,
-            .size      = VK_WHOLE_SIZE,//resource_list.index_allocation_end,
+            .offset    = resource_list.index_allocation_start + device_index_allocator.offset,
+            .size      = resource_list.index_allocation_end,
         },
         {
             .setting   = GPU_MEMORY_BARRIER_SETTING_TRANSFER_SRC,
-            .src_queue = gpu->vk_queue_indices[2],
-            .dst_queue = gpu->vk_queue_indices[0],
+            .src_queue = transfer_queue_index,
+            .dst_queue = graphics_queue_index,
             .buffer    = device_vertex_allocator.buffer,
-            .offset    = 0,//resource_list.index_allocation_start + device_index_allocator.offset,
-            .size      = VK_WHOLE_SIZE,//resource_list.index_allocation_end,
+            .offset    = resource_list.index_allocation_start + device_index_allocator.offset,
+            .size      = resource_list.index_allocation_end,
         },
         {
             .setting   = GPU_MEMORY_BARRIER_SETTING_INDEX_BUFFER_TRANSFER_DST,
-            .src_queue = gpu->vk_queue_indices[2],
-            .dst_queue = gpu->vk_queue_indices[0],
+            .src_queue = transfer_queue_index,
+            .dst_queue = graphics_queue_index,
             .buffer    = device_index_allocator.buffer,
-            .offset    = 0,//resource_list.index_allocation_start + device_index_allocator.offset,
-            .size      = VK_WHOLE_SIZE,//resource_list.index_allocation_end,
+            .offset    = resource_list.index_allocation_start + device_index_allocator.offset,
+            .size      = resource_list.index_allocation_end,
         },
         {
             .setting   = GPU_MEMORY_BARRIER_SETTING_VERTEX_BUFFER_TRANSFER_DST,
-            .src_queue = gpu->vk_queue_indices[2],
-            .dst_queue = gpu->vk_queue_indices[0],
+            .src_queue = transfer_queue_index,
+            .dst_queue = graphics_queue_index,
             .buffer    = device_vertex_allocator.buffer,
-            .offset    = 0,//resource_list.index_allocation_start + device_index_allocator.offset,
-            .size      = VK_WHOLE_SIZE,//resource_list.index_allocation_end,
+            .offset    = resource_list.index_allocation_start + device_index_allocator.offset,
+            .size      = resource_list.index_allocation_end,
         },
     };
 
@@ -403,9 +406,9 @@ int main() {
     VkSemaphore *graphics_semaphore = gpu_get_binary_semaphores(&semaphore_pool, 1);
 
     VkSemaphoreSubmitInfo graphics_semaphore_wait =
-        gpu_define_semaphore_submission(*transfer_semaphore, GPU_PIPELINE_STAGE_TOP_OF_PIPE);
+        gpu_define_semaphore_submission(*transfer_semaphore, GPU_PIPELINE_STAGE_VERTEX_INPUT);
     VkSemaphoreSubmitInfo graphics_semaphore_submit =
-        gpu_define_semaphore_submission(*graphics_semaphore, GPU_PIPELINE_STAGE_ALL_COMMANDS);
+        gpu_define_semaphore_submission(*graphics_semaphore, GPU_PIPELINE_STAGE_ALL_GRAPHICS);
 
     Gpu_Queue_Submit_Info graphics_submit_info = {
         .wait_count      = 1,
