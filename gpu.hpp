@@ -133,8 +133,6 @@ enum Gpu_Pipeline_Stage_Flags {
     GPU_PIPELINE_STAGE_ALL_COMMANDS     = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
     GPU_PIPELINE_STAGE_TOP_OF_PIPE      = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
     GPU_PIPELINE_STAGE_ALL_GRAPHICS     = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
-    GPU_PIPELINE_STAGE_PRESENT_TRANSFER = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT |
-                                          VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT
 };
 VkSemaphoreSubmitInfo gpu_define_semaphore_submission(
     VkSemaphore semaphore, Gpu_Pipeline_Stage_Flags stage);
@@ -198,7 +196,7 @@ struct Gpu_Binary_Semaphore_Pool {
     VkSemaphore *vk_semaphores;
 };
 Gpu_Binary_Semaphore_Pool gpu_create_binary_semaphore_pool(VkDevice vk_device, u32 size); 
-void gpu_destroy_binary_semaphore_pool(VkDevice vk_device, Gpu_Binary_Semaphore_Pool *pool);
+void gpu_destroy_semaphore_pool(VkDevice vk_device, Gpu_Binary_Semaphore_Pool *pool);
 
 VkSemaphore* gpu_get_binary_semaphores(Gpu_Binary_Semaphore_Pool *pool, u32 count);
 void gpu_reset_binary_semaphore_pool(Gpu_Binary_Semaphore_Pool *pool);

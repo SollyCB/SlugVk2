@@ -432,11 +432,12 @@ int main() {
     present_info.pResults = &present_result;
     vkQueuePresentKHR(gpu->vk_queues[1], &present_info);
 
-    while(true) {
-        glfwPollEvents();
+    while(!glfwWindowShouldClose(glfw->window)) {
+        window_poll_and_get_input(glfw);
     }
 
     /* ShutDown Code */
+    vkDeviceWaitIdle(gpu->vk_device);
     gpu_destroy_command_allocator(gpu->vk_device, &graphics_command_allocator);
     gpu_destroy_command_allocator(gpu->vk_device, &transfer_command_allocator);
 
@@ -446,14 +447,17 @@ int main() {
 
     gpu_reset_fence_pool(gpu->vk_device, &fence_pool);
     gpu_destroy_fence_pool(gpu->vk_device, &fence_pool);
+    gpu_destroy_semaphore_pool(gpu->vk_device, &semaphore_pool);
 
     gpu_destroy_pipeline(gpu->vk_device, pipeline);
     destroy_vk_renderpass(gpu->vk_device, renderpass);
     destroy_vk_pipeline_layout(gpu->vk_device, pl_layout);
     renderer_destroy_shader_stages(gpu->vk_device, 2, pl_shader_stages);
     renderer_free_model_data(&resource_list);
+
     gpu_destroy_descriptor_allocator(gpu->vk_device, &descriptor_allocator);
-    gpu_destroy_descriptor_set_layouts(gpu->vk_device, 2, descriptor_set_layouts);
+    gpu_destroy_descriptor_set_layouts(gpu->vk_device, set_info_count, descriptor_set_layouts);
+
     gpu_destroy_linear_allocator(gpu->vma_allocator, &host_index_allocator);
     gpu_destroy_linear_allocator(gpu->vma_allocator, &host_vertex_allocator);
     gpu_destroy_linear_allocator(gpu->vma_allocator, &device_index_allocator);

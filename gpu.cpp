@@ -732,6 +732,7 @@ Gpu_Command_Allocator gpu_create_command_allocator(
 void gpu_destroy_command_allocator(VkDevice vk_device, Gpu_Command_Allocator *allocator) {
     vkResetCommandPool(vk_device, allocator->pool, 0x0);
     vkDestroyCommandPool(vk_device, allocator->pool, ALLOCATION_CALLBACKS);
+    memory_free_heap(allocator->buffers);
 }
 void gpu_reset_command_allocator(VkDevice vk_device, Gpu_Command_Allocator *allocator) {
     vkResetCommandPool(vk_device, allocator->pool, 0x0);
@@ -885,8 +886,7 @@ Gpu_Binary_Semaphore_Pool gpu_create_binary_semaphore_pool(VkDevice vk_device, u
 
     return pool;
 }
-void gpu_destroy_binary_semaphore_pool(VkDevice vk_device, Gpu_Binary_Semaphore_Pool *pool) {
-    ASSERT(pool->in_use == 0, "Semaphores cannot be in use when pool is destroyed");
+void gpu_destroy_semaphore_pool(VkDevice vk_device, Gpu_Binary_Semaphore_Pool *pool) {
     for(int i = 0; i < pool->len; ++i) {
         vkDestroySemaphore(vk_device, pool->vk_semaphores[i], ALLOCATION_CALLBACKS);
     }

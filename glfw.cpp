@@ -35,7 +35,7 @@ enum InputValues {
     INPUT_JUMP          = GLFW_KEY_SPACE,
 };
 
-void poll_and_get_input_glfw(Glfw *glfw) {
+void window_poll_and_get_input(Glfw *glfw) {
     glfwPollEvents();
 
     int state = glfwGetKey(glfw->window, (int)INPUT_CLOSE_WINDOW);
