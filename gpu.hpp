@@ -18,14 +18,14 @@
 #include "glfw.hpp"
 
 /* @Note
-        I want to end up with separate code paths beginning right from device creation. For instance, I dont want to 
-        be deciding at draw time if I need to do a host device copy via a transfer queue because I am dealing 
-        with a discrete gpu (Mike Acton's, decide early). Even measuring PCIe bandwith if possible. This will 
-        likely be a long time down the road but I need to keep it in mind so that adapting the code base later 
+        I want to end up with separate code paths beginning right from device creation. For instance, I dont want to
+        be deciding at draw time if I need to do a host device copy via a transfer queue because I am dealing
+        with a discrete gpu (Mike Acton's, decide early). Even measuring PCIe bandwith if possible. This will
+        likely be a long time down the road but I need to keep it in mind so that adapting the code base later
         is not completely impossible...
 
-        Also regarding memory allocation. Is using VMA necessary? If I am using linear allocators per frame, 
-        plus persistent allocations for other stuff, not really as I will very rarely be calling allocate 
+        Also regarding memory allocation. Is using VMA necessary? If I am using linear allocators per frame,
+        plus persistent allocations for other stuff, not really as I will very rarely be calling allocate
         buffer, at the same time what can I gain by not using it? I can just use it to allocate a buffer once,
         and then offset that... We will see. Getting rid of it just for the sake of being self written is huge.
 */
@@ -64,7 +64,7 @@ struct Create_Vk_Instance_Info {
 
     u32 vulkan_api_version = VK_API_VERSION_1_3;
 };
-VkInstance create_vk_instance(Create_Vk_Instance_Info *info); 
+VkInstance create_vk_instance(Create_Vk_Instance_Info *info);
 
 // Device and Queues
 VkDevice create_vk_device(Gpu *gpu);
@@ -141,7 +141,7 @@ struct Gpu_Queue_Submit_Info {
     int wait_count;
     int signal_count;
     int cmd_count;
-    VkSemaphoreSubmitInfo *wait_infos;  
+    VkSemaphoreSubmitInfo *wait_infos;
     VkSemaphoreSubmitInfo *signal_infos;
     VkCommandBuffer *command_buffers;
 };
@@ -195,7 +195,7 @@ struct Gpu_Binary_Semaphore_Pool {
     u32 in_use;
     VkSemaphore *vk_semaphores;
 };
-Gpu_Binary_Semaphore_Pool gpu_create_binary_semaphore_pool(VkDevice vk_device, u32 size); 
+Gpu_Binary_Semaphore_Pool gpu_create_binary_semaphore_pool(VkDevice vk_device, u32 size);
 void gpu_destroy_semaphore_pool(VkDevice vk_device, Gpu_Binary_Semaphore_Pool *pool);
 
 VkSemaphore* gpu_get_binary_semaphores(Gpu_Binary_Semaphore_Pool *pool, u32 count);
@@ -222,13 +222,13 @@ struct Gpu_Descriptor_Allocator {
     // detailed so you can really see what is up with the pool. Probably better to enable this
     // functionality only in debug mode?? Or maybe this information can be useful even in release?
     // Tbf this struct isnt smtg which is an array that gets looped through all the time, for instance
-    // it will only ever be being loaded once per function so the size honestly wont matter 
+    // it will only ever be being loaded once per function so the size honestly wont matter
     // (I dont think...)
     u16 cap[11];
     u16 counts[11]; // tracks individual descriptor allocations
 };
 // 'count' arg corresponds to the number of descriptors for each of the first 11 descriptor types
-Gpu_Descriptor_Allocator 
+Gpu_Descriptor_Allocator
 gpu_create_descriptor_allocator(VkDevice vk_device, int max_sets, int counts[11]);
 void gpu_destroy_descriptor_allocator(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator);
 void gpu_reset_descriptor_allocator(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator);
@@ -336,9 +336,9 @@ VkPipelineDepthStencilStateCreateInfo create_vk_pipeline_depth_stencil_state(Cre
 void vkCmdSetLogicOpEnableEXT(VkCommandBuffer commandBuffer, VkBool32 logicOpEnable);
 void vkCmdSetColorBlendEnableEXT(VkCommandBuffer commandBuffer, u32 firstAttachment,
         u32 attachmentCount, VkBool32 *pColorBlendEnables);
-void vkCmdSetColorBlendEquationEXT(VkCommandBuffer commandBuffer, u32 firstAttachment, 
+void vkCmdSetColorBlendEquationEXT(VkCommandBuffer commandBuffer, u32 firstAttachment,
         u32 attachmentCount, const VkColorBlendEquationEXT* pColorBlendEquations);
-void vkCmdSetColorWriteMaskEXT(VkCommandBuffer commandBuffer, u32 firstAttachment, 
+void vkCmdSetColorWriteMaskEXT(VkCommandBuffer commandBuffer, u32 firstAttachment,
         u32 attachmentCount, const VkColorComponentFlags* pColorWriteMasks);
 
 // `BlendState
@@ -446,13 +446,13 @@ void create_vk_graphics_pipelines(VkDevice vk_device, VkPipelineCache, int count
 void gpu_destroy_pipeline(VkDevice vk_device, VkPipeline pipeline);
 
 // `Pipeline Final -- dynamic
-VkPipeline* create_vk_graphics_pipelines_heap(VkDevice vk_device, VkPipelineCache cache, 
+VkPipeline* create_vk_graphics_pipelines_heap(VkDevice vk_device, VkPipelineCache cache,
         u32 count, VkGraphicsPipelineCreateInfo *create_infos);
 void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipelines); // Also frees memory associated with the 'pipelines' pointer
 
 // `Static Rendering (framebuffers, renderpass, subpasses)
 
-/* Begin Better Automate Rendering */ 
+/* Begin Better Automate Rendering */
 
 enum Gpu_Image_Layout {
     GPU_IMAGE_LAYOUT_COLOR = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -519,7 +519,7 @@ struct Create_Vk_Subpass_Dependency_Info {
     u32 src_subpass;
     u32 dst_subpass;
 };
-VkSubpassDependency create_vk_subpass_dependency(Create_Vk_Subpass_Dependency_Info *info); 
+VkSubpassDependency create_vk_subpass_dependency(Create_Vk_Subpass_Dependency_Info *info);
 
 struct Create_Vk_Renderpass_Info {
     u32 attachment_count;
@@ -558,7 +558,7 @@ struct Create_Vk_Rendering_Info_Info {
     // @Todo support:
     //     flags for secondary command buffers,
     //     layered attachments (layer count and view mask)
-    VkRect2D render_area; 
+    VkRect2D render_area;
     u32 color_attachment_count;
     VkRenderingAttachmentInfo *color_attachment_infos;
     VkRenderingAttachmentInfo *depth_attachment_info;
@@ -703,9 +703,9 @@ static inline void cmd_vk_set_stencil_op(
         VkStencilOp fail_op = VK_STENCIL_OP_KEEP,
         VkStencilOp pass_op = VK_STENCIL_OP_KEEP,
         VkStencilOp depth_fail_op = VK_STENCIL_OP_KEEP,
-        VkCompareOp compare_op = VK_COMPARE_OP_NEVER) 
+        VkCompareOp compare_op = VK_COMPARE_OP_NEVER)
 {
-    vkCmdSetStencilOp(vk_command_buffer, face_mask, fail_op, pass_op, depth_fail_op, compare_op); 
+    vkCmdSetStencilOp(vk_command_buffer, face_mask, fail_op, pass_op, depth_fail_op, compare_op);
 }
 static inline void cmd_vk_depth_bounds(VkCommandBuffer vk_command_buffer, float min, float max) {
     vkCmdSetDepthBounds(vk_command_buffer, min, max);
@@ -719,15 +719,15 @@ static inline void cmd_vk_logic_op_disable(VkCommandBuffer vk_command_buffer) {
     // @Note this might fire a not found, even though dyn_state2 is in 1.3 core, to fix just define the PFN fetch
     vkCmdSetLogicOpEnableEXT(vk_command_buffer, VK_FALSE);
 }
-static inline void cmd_vk_color_blend_enable_or_disables(VkCommandBuffer vk_command_buffer, 
+static inline void cmd_vk_color_blend_enable_or_disables(VkCommandBuffer vk_command_buffer,
         u32 first_attachment, u32 attachment_count, VkBool32 *enable_or_disables) {
     vkCmdSetColorBlendEnableEXT(vk_command_buffer, first_attachment, attachment_count, enable_or_disables);
 }
-static inline void cmd_vk_color_blend_equations(VkCommandBuffer vk_command_buffer, 
+static inline void cmd_vk_color_blend_equations(VkCommandBuffer vk_command_buffer,
         u32 first_attachment, u32 attachment_count, VkColorBlendEquationEXT *color_blend_equations) {
     vkCmdSetColorBlendEquationEXT(vk_command_buffer, first_attachment, attachment_count, color_blend_equations);
 }
-static inline void cmd_vk_color_write_masks(VkCommandBuffer vk_command_buffer, 
+static inline void cmd_vk_color_write_masks(VkCommandBuffer vk_command_buffer,
         u32 first_attachment, u32 attachment_count, VkColorComponentFlags *color_write_masks) {
     vkCmdSetColorWriteMaskEXT(vk_command_buffer, first_attachment, attachment_count, color_write_masks);
 }
@@ -760,9 +760,9 @@ struct Dyn_Vertex_Bind_Info {
 };
 static inline void cmd_vk_bind_vertex_buffers2(VkCommandBuffer vk_command_buffer, Dyn_Vertex_Bind_Info *info) {
     vkCmdBindVertexBuffers2(
-            vk_command_buffer, 
+            vk_command_buffer,
             info->first_binding,
-            info->binding_count, 
+            info->binding_count,
             info->buffers,
             info->offsets,
             info->sizes,
@@ -792,12 +792,12 @@ struct Gpu_Linear_Allocator {
     void *mapped_ptr;
 };
 enum Gpu_Allocator_Type {
-    GPU_ALLOCATOR_TYPE_BUFFER_GENERAL_SRC = 
-                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | 
+    GPU_ALLOCATOR_TYPE_BUFFER_GENERAL_SRC =
+                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
                 VK_BUFFER_USAGE_INDEX_BUFFER_BIT  |
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-    GPU_ALLOCATOR_TYPE_BUFFER_GENERAL_DST = 
-                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | 
+    GPU_ALLOCATOR_TYPE_BUFFER_GENERAL_DST =
+                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
                 VK_BUFFER_USAGE_INDEX_BUFFER_BIT  |
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 
@@ -808,24 +808,24 @@ enum Gpu_Allocator_Type {
     GPU_ALLOCATOR_TYPE_TRANSFER_SRC = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
     GPU_ALLOCATOR_TYPE_TRANSFER_DST = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 
-    GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_SRC = 
+    GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_SRC =
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_DST = 
+    GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_DST =
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 
-    GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_DST = 
+    GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_DST =
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_SRC = 
+    GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_SRC =
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
 
-    GPU_ALLOCATOR_TYPE_UNIFORM_TRANSFER_DST = 
+    GPU_ALLOCATOR_TYPE_UNIFORM_TRANSFER_DST =
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_UNIFORM_TRANSFER_SRC = 
+    GPU_ALLOCATOR_TYPE_UNIFORM_TRANSFER_SRC =
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 
-    GPU_ALLOCATOR_TYPE_STORAGE_TRANSFER_DST = 
+    GPU_ALLOCATOR_TYPE_STORAGE_TRANSFER_DST =
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_STORAGE_TRANSFER_SRC = 
+    GPU_ALLOCATOR_TYPE_STORAGE_TRANSFER_SRC =
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
 };
 // Memory is close to the host
@@ -886,7 +886,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_messenger_callback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
         VkDebugUtilsMessageTypeFlagsEXT messageType,
         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-        void* pUserData) 
+        void* pUserData)
 {
     if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
         println("\nValidation Layer: %c", pCallbackData->pMessage);
@@ -898,13 +898,13 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_messenger_callback(
 struct Create_Vk_Debug_Messenger_Info {
     VkInstance vk_instance;
 
-    VkDebugUtilsMessageSeverityFlagsEXT severity = 
+    VkDebugUtilsMessageSeverityFlagsEXT severity =
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT    |
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
 
-    VkDebugUtilsMessageTypeFlagsEXT type = 
+    VkDebugUtilsMessageTypeFlagsEXT type =
         VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT     |
         VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT  |
         VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
@@ -913,20 +913,20 @@ struct Create_Vk_Debug_Messenger_Info {
     PFN_vkDebugUtilsMessengerCallbackEXT callback = vk_debug_messenger_callback;
 };
 
-VkDebugUtilsMessengerEXT create_debug_messenger(Create_Vk_Debug_Messenger_Info *info); 
+VkDebugUtilsMessengerEXT create_debug_messenger(Create_Vk_Debug_Messenger_Info *info);
 
 VkResult vkCreateDebugUtilsMessengerEXT(
         VkInstance instance,
         const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
         const VkAllocationCallbacks* pAllocator,
-        VkDebugUtilsMessengerEXT* pDebugMessenger); 
+        VkDebugUtilsMessengerEXT* pDebugMessenger);
 void vkDestroyDebugUtilsMessengerEXT(
         VkInstance instance,
         VkDebugUtilsMessengerEXT messenger,
-        const VkAllocationCallbacks *pAllocator); 
+        const VkAllocationCallbacks *pAllocator);
 
 inline VkDebugUtilsMessengerCreateInfoEXT fill_vk_debug_messenger_info(Create_Vk_Debug_Messenger_Info *info) {
-    VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info = 
+    VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info =
     {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
 
     debug_messenger_create_info.messageSeverity = info->severity;

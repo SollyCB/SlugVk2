@@ -10,7 +10,7 @@ VkDebugUtilsMessengerEXT* get_vk_debug_messenger_instance() { return &s_vk_debug
 
 //
 // @PipelineAllocation
-// Best idea really is to calculate how big all the unchanging state settings are upfront, then make one 
+// Best idea really is to calculate how big all the unchanging state settings are upfront, then make one
 // allocation at load time large enough to hold everything, and just allocate everything into that.
 // Just need to find a good way to count all this size...
 //
@@ -59,7 +59,7 @@ void kill_gpu(Gpu *gpu) {
 
 // `Instance
 VkInstance create_vk_instance(Create_Vk_Instance_Info *info) {
-    VkInstanceCreateInfo instance_create_info = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO}; 
+    VkInstanceCreateInfo instance_create_info = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
 #if DEBUG
     Create_Vk_Debug_Messenger_Info debug_messenger_info = {};
     VkDebugUtilsMessengerCreateInfoEXT debug_messenger_create_info = fill_vk_debug_messenger_info(&debug_messenger_info);
@@ -88,7 +88,7 @@ VkInstance create_vk_instance(Create_Vk_Instance_Info *info) {
         "VK_EXT_validation_features",
         "VK_EXT_debug_utils",
     };
-#else 
+#else
     u32 layer_count = 0;
     const char *layer_names[] = {};
     u32 ext_count = 0;
@@ -178,7 +178,7 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
 
     VkPhysicalDeviceFeatures2 features_full_unfilled = features_full;
     features_full_unfilled.pNext = &descriptor_buffer_features_unfilled;
- 
+
     features_full_unfilled.features = vk1_features_unfilled;
 
     // choose physical device
@@ -218,7 +218,7 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
         u32 queue_family_count;
         vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[i], &queue_family_count, NULL);
 
-        VkQueueFamilyProperties *queue_family_props = 
+        VkQueueFamilyProperties *queue_family_props =
             (VkQueueFamilyProperties*)memory_allocate_temp(sizeof(VkQueueFamilyProperties) * queue_family_count, 8);;
         vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[i], &queue_family_count, queue_family_props);
 
@@ -229,7 +229,7 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
         bool break_outer = false;
         for(int j = 0; j < queue_family_count;++j) {
             if (glfwGetPhysicalDevicePresentationSupport(gpu->vk_instance, physical_devices[i], j) &&
-                presentation_queue_index == -1) 
+                presentation_queue_index == -1)
             {
                 presentation_queue_index = j;
             }
@@ -277,13 +277,13 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
     // @Todo query and store the important information for the device in a GpuInfo struct
     // Do this later when the info is actually required
     VkPhysicalDeviceProperties props;
-    vkGetPhysicalDeviceProperties(physical_devices[physical_device_index], &props); 
+    vkGetPhysicalDeviceProperties(physical_devices[physical_device_index], &props);
 
     VkDeviceQueueCreateInfo graphics_queue_create_info = {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
     graphics_queue_create_info.queueFamilyIndex = graphics_queue_index;
 
     // AMD article about multiple queues. Seems that one graphics queue and one async compute is a fine idea.
-    // Using too many queues apparently sucks resources... This is smtg to come back to maybe. This article 
+    // Using too many queues apparently sucks resources... This is smtg to come back to maybe. This article
     // is 2016...
     // https://gpuopen.com/learn/concurrent-execution-asynchronous-queues/
     graphics_queue_create_info.queueCount = 1;
@@ -298,8 +298,8 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
         std::cout << "Selected Device (Primary Choice) " << props.deviceName << '\n';
 
         queue_info_count++;
-        transfer_queue_create_info = graphics_queue_create_info; 
-        transfer_queue_create_info.queueFamilyIndex = transfer_queue_index; 
+        transfer_queue_create_info = graphics_queue_create_info;
+        transfer_queue_create_info.queueFamilyIndex = transfer_queue_index;
     } else {
         std::cout << "Selected Device (Backup) " << props.deviceName << '\n';
     }
@@ -351,14 +351,14 @@ VmaAllocator create_vma_allocator(Gpu *gpu) {
     VmaVulkanFunctions vulkanFunctions = {};
     vulkanFunctions.vkGetInstanceProcAddr = &vkGetInstanceProcAddr;
     vulkanFunctions.vkGetDeviceProcAddr = &vkGetDeviceProcAddr;
-     
+
     VmaAllocatorCreateInfo allocatorCreateInfo = {};
     allocatorCreateInfo.vulkanApiVersion = VK_API_VERSION_1_3;
     allocatorCreateInfo.physicalDevice = gpu->vk_physical_device;
     allocatorCreateInfo.device = gpu->vk_device;
     allocatorCreateInfo.instance = gpu->vk_instance;
     allocatorCreateInfo.pVulkanFunctions = &vulkanFunctions;
-     
+
     VmaAllocator allocator;
     auto check = vmaCreateAllocator(&allocatorCreateInfo, &allocator);
     DEBUG_OBJ_CREATION(vmaCreateAllocator, check);
@@ -389,7 +389,7 @@ VkSurfaceKHR create_vk_surface(VkInstance vk_instance, Glfw *glfw) {
 
     DEBUG_OBJ_CREATION(glfwCreateWindowSurface, check);
     return vk_surface;
-} 
+}
 void destroy_vk_surface(VkInstance vk_instance, VkSurfaceKHR vk_surface) {
     vkDestroySurfaceKHR(vk_instance, vk_surface, ALLOCATION_CALLBACKS);
 }
@@ -404,8 +404,8 @@ VkSwapchainKHR recreate_vk_swapchain(Gpu *gpu, Window *window) {
     window->info.imageExtent = surface_capabilities.currentExtent;
     window->info.preTransform = surface_capabilities.currentTransform;
 
-    // 
-    // This might error with some stuff in the createinfo not properly define, 
+    //
+    // This might error with some stuff in the createinfo not properly define,
     // I made the refactor while sleepy!
     //
     auto check = vkCreateSwapchainKHR(gpu->vk_device, &window->info, ALLOCATION_CALLBACKS, &window->vk_swapchain);
@@ -417,11 +417,11 @@ VkSwapchainKHR recreate_vk_swapchain(Gpu *gpu, Window *window) {
     auto img_check = vkGetSwapchainImagesKHR(gpu->vk_device, window->vk_swapchain, &window->image_count, window->vk_images);
     DEBUG_OBJ_CREATION(vkGetSwapchainImagesKHR, img_check);
 
-    VkImageViewCreateInfo view_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO}; 
+    VkImageViewCreateInfo view_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
     view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
     view_info.format   = window->info.imageFormat;
 
-    view_info.components = { 
+    view_info.components = {
         VK_COMPONENT_SWIZZLE_IDENTITY,
         VK_COMPONENT_SWIZZLE_IDENTITY,
         VK_COMPONENT_SWIZZLE_IDENTITY,
@@ -519,16 +519,16 @@ VkSwapchainKHR create_vk_swapchain(Gpu *gpu, VkSurfaceKHR vk_surface) {
     vkGetSwapchainImagesKHR(gpu->vk_device, window->vk_swapchain, &image_count_check, NULL);
     ASSERT(image_count_check == image_count, "Incorrect return value from GetSwapchainImages");
 
-    auto check_swapchain_img_count = 
+    auto check_swapchain_img_count =
         vkGetSwapchainImagesKHR(gpu->vk_device, window->vk_swapchain, &image_count, window->vk_images);
     DEBUG_OBJ_CREATION(vkGetSwapchainImagesKHR, check_swapchain_img_count);
 
     // Create Views
-    VkImageViewCreateInfo view_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO}; 
+    VkImageViewCreateInfo view_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
     view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
     view_info.format   = swapchain_info.imageFormat;
 
-    view_info.components = { 
+    view_info.components = {
         VK_COMPONENT_SWIZZLE_IDENTITY,
         VK_COMPONENT_SWIZZLE_IDENTITY,
         VK_COMPONENT_SWIZZLE_IDENTITY,
@@ -571,8 +571,8 @@ Gpu_Command_Allocator gpu_create_command_allocator(
     DEBUG_OBJ_CREATION(vkCreateCommandPool, check);
 
     Gpu_Command_Allocator allocator = {};
-    allocator.pool         = pool; 
-    allocator.buffer_count = 0; 
+    allocator.pool         = pool;
+    allocator.buffer_count = 0;
     allocator.cap          = size;
     allocator.buffers      = (VkCommandBuffer*)memory_allocate_heap(sizeof(VkCommandBuffer) * size, 8);
     return allocator;
@@ -588,7 +588,7 @@ void gpu_reset_command_allocator(VkDevice vk_device, Gpu_Command_Allocator *allo
 }
 VkCommandBuffer* gpu_allocate_command_buffers(
     VkDevice vk_device, Gpu_Command_Allocator *allocator, int count, bool secondary) {
-    VkCommandBufferAllocateInfo info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO}; 
+    VkCommandBufferAllocateInfo info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     info.commandPool = allocator->pool;
     info.level = (VkCommandBufferLevel)secondary;
     info.commandBufferCount = count;
@@ -596,7 +596,7 @@ VkCommandBuffer* gpu_allocate_command_buffers(
     // @Todo handle overflow better? Do I want the allocator to be able to grow? Or should the
     // client know how many are necessary (I expect and prefer the second one...)
     ASSERT(allocator->buffer_count + count <= allocator->cap, "Command Allocator Overflow");
-    auto check = 
+    auto check =
         vkAllocateCommandBuffers(vk_device, &info, allocator->buffers + allocator->buffer_count);
     DEBUG_OBJ_CREATION(vkAllocateCommandBuffers, check);
 
@@ -629,7 +629,7 @@ VkSubmitInfo2 gpu_get_submit_info(Gpu_Queue_Submit_Info *info) {
     }
     ret.commandBufferInfoCount = info->cmd_count;
     ret.pCommandBufferInfos    = cmd_infos;
-    
+
     return ret;
 }
 
@@ -643,14 +643,14 @@ VkBufferMemoryBarrier2 gpu_get_buffer_barrier(Gpu_Buffer_Barrier_Info *info) {
     ret.buffer              = info->buffer;
     ret.offset              = info->offset;
     ret.size                = info->size;
- 
+
     switch(info->setting) {
     case GPU_MEMORY_BARRIER_SETTING_TRANSFER_SRC:
         ret.srcStageMask  = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
         ret.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
         break;
     case GPU_MEMORY_BARRIER_SETTING_VERTEX_INDEX_OWNERSHIP_TRANSFER:
-        ret.dstStageMask  = 
+        ret.dstStageMask  =
             VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT |
             VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT;
         ret.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
@@ -679,10 +679,10 @@ VkDependencyInfo gpu_get_pipeline_barrier(Gpu_Pipeline_Barrier_Info *info) {
     return ret;
 }
 
-// @Todo for these sync pools, maybe implement a free mask and simd checking, so if there is a large enough 
-// block of free objects in the middle of the pool, they can be used instead of appending. I have no idea if this 
-// will be useful, as my intendedm use case for this system is to have a persistent pool and a temp pool. This 
-// would eliminate the requirement for space saving. 
+// @Todo for these sync pools, maybe implement a free mask and simd checking, so if there is a large enough
+// block of free objects in the middle of the pool, they can be used instead of appending. I have no idea if this
+// will be useful, as my intendedm use case for this system is to have a persistent pool and a temp pool. This
+// would eliminate the requirement for space saving.
 Gpu_Fence_Pool gpu_create_fence_pool(VkDevice vk_device, u32 size) {
     Gpu_Fence_Pool pool;
     pool.len = size;
@@ -783,20 +783,20 @@ VkResult reset_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool) {
 }
 void destroy_vk_descriptor_pool(VkDevice vk_device, VkDescriptorPool pool) {
     vkDestroyDescriptorPool(vk_device, pool, ALLOCATION_CALLBACKS);
-} 
+}
 
 Gpu_Descriptor_Allocator gpu_create_descriptor_allocator(VkDevice vk_device, int max_sets, int counts[11]) {
     Gpu_Descriptor_Allocator allocator = {};
     for(int i = 0; i < 11; ++i)
         allocator.cap[i] = counts[i];
 
-    allocator.pool = 
+    allocator.pool =
         create_vk_descriptor_pool(vk_device, max_sets, counts);
     allocator.set_cap = max_sets;
 
     u8 *memory_block = memory_allocate_heap(
        (sizeof(VkDescriptorSetLayout) * max_sets) +
-       (      sizeof(VkDescriptorSet) * max_sets), 8); 
+       (      sizeof(VkDescriptorSet) * max_sets), 8);
 
     allocator.layouts = (VkDescriptorSetLayout*)(memory_block);
     allocator.sets    = (VkDescriptorSet*)(allocator.layouts + max_sets);
@@ -822,7 +822,7 @@ VkDescriptorSet* gpu_queue_descriptor_set_allocation(
     ASSERT(allocator->sets_queued + info->layout_count >= allocator->sets_allocated, "Overflow Check");
 
     for(int i = 0; i < 11; ++i) {
-        ASSERT(allocator->counts[i] + info->descriptor_counts[i] >= allocator->counts[i], 
+        ASSERT(allocator->counts[i] + info->descriptor_counts[i] >= allocator->counts[i],
                "Overflow Check");
         allocator->counts[i] += info->descriptor_counts[i];
 
@@ -848,7 +848,7 @@ VkDescriptorSet* gpu_queue_descriptor_set_allocation(
 
     return allocator->sets + (allocator->sets_queued - info->layout_count);
 }
-// This should never fail with 'OUT_OF_POOL_MEMORY' or 'FRAGMENTED_POOL' because of the way the pools 
+// This should never fail with 'OUT_OF_POOL_MEMORY' or 'FRAGMENTED_POOL' because of the way the pools
 // are managed by the allocator... I will manage the out of host and device memory with just an
 // assert for now, as handling an error like that would require a large management op...
 void gpu_allocate_descriptor_sets(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator) {
@@ -859,7 +859,7 @@ void gpu_allocate_descriptor_sets(VkDevice vk_device, Gpu_Descriptor_Allocator *
 
     if (!info.descriptorSetCount)
         return;
-    
+
     auto check =
         vkAllocateDescriptorSets(vk_device, &info, allocator->sets + allocator->sets_allocated);
     DEBUG_OBJ_CREATION(vkAllocateDescriptorSets, check);
@@ -876,10 +876,10 @@ void gpu_allocate_descriptor_sets(VkDevice vk_device, Gpu_Descriptor_Allocator *
 // sets should be usable across many shaders and pipelines etc. I feel like with proper planning,
 // this would be possible... idk maybe I am miles off) -- - sol 4 oct 2023
 //
-VkDescriptorSetLayout* 
+VkDescriptorSetLayout*
 create_vk_descriptor_set_layouts(VkDevice vk_device, int count, Create_Vk_Descriptor_Set_Layout_Info *infos) {
     // @Todo think about the lifetime of this allocation
-    VkDescriptorSetLayout *layouts = 
+    VkDescriptorSetLayout *layouts =
         (VkDescriptorSetLayout*)memory_allocate_heap(
             sizeof(VkDescriptorSetLayout) * count, 8);
 
@@ -924,7 +924,7 @@ Gpu_Descriptor_List gpu_make_descriptor_list(int count, Create_Vk_Descriptor_Set
 // `PipelineSetup
 // `ShaderStages
 VkPipelineShaderStageCreateInfo* create_vk_pipeline_shader_stages(VkDevice vk_device, u32 count, Create_Vk_Pipeline_Shader_Stage_Info *infos) {
-    // @Todo like with other aspects of pipeline creation, I think that shader stage infos can all be allocated 
+    // @Todo like with other aspects of pipeline creation, I think that shader stage infos can all be allocated
     // and loaded at startup and the  not freed for the duration of the program as these are not changing state
     u8 *memory_block = memory_allocate_heap(sizeof(VkPipelineShaderStageCreateInfo) * count, 8);
 
@@ -934,7 +934,7 @@ VkPipelineShaderStageCreateInfo* create_vk_pipeline_shader_stages(VkDevice vk_de
     for(int i = 0; i < count; ++i) {
 
         module_info = {
-            VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, 
+            VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
             NULL,
             0x0,
             infos[i].code_size,
@@ -969,7 +969,7 @@ void destroy_vk_pipeline_shader_stages(VkDevice vk_device, u32 count, VkPipeline
 
 // `VertexInputState
 VkVertexInputBindingDescription create_vk_vertex_binding_description(Create_Vk_Vertex_Input_Binding_Description_Info *info) {
-    VkVertexInputBindingDescription binding_description = { info->binding, info->stride }; 
+    VkVertexInputBindingDescription binding_description = { info->binding, info->stride };
     return binding_description;
 }
 
@@ -1061,8 +1061,8 @@ void vkCmdSetPolygonModeEXT(VkCommandBuffer commandBuffer, VkPolygonMode polygon
 
 // `MultisampleState // @Todo actually support setting multisampling functions
 VkPipelineMultisampleStateCreateInfo create_vk_pipeline_multisample_state(VkSampleCountFlagBits sample_count) {
-    VkPipelineMultisampleStateCreateInfo state = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO}; 
-    state.rasterizationSamples = sample_count; 
+    VkPipelineMultisampleStateCreateInfo state = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+    state.rasterizationSamples = sample_count;
     state.sampleShadingEnable = VK_FALSE;
     return state;
 }
@@ -1081,8 +1081,8 @@ VkPipelineDepthStencilStateCreateInfo create_vk_pipeline_depth_stencil_state(Cre
 
 // `BlendState - Lots of inlined dyn states
 VkPipelineColorBlendStateCreateInfo create_vk_pipeline_color_blend_state(Create_Vk_Pipeline_Color_Blend_State_Info *info) {
-    // @PipelineAllocations I think this state is one that contrasts to the others, these will likely be super 
-    // ephemeral. I do not know to what extent I can effect color blending. Not very much I assume without 
+    // @PipelineAllocations I think this state is one that contrasts to the others, these will likely be super
+    // ephemeral. I do not know to what extent I can effect color blending. Not very much I assume without
     // extended dyn state 3... so I think this will require recompilations or state explosion...
     VkPipelineColorBlendStateCreateInfo blend_state = {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
     blend_state.attachmentCount = info->attachment_count;
@@ -1151,7 +1151,7 @@ const VkDynamicState dyn_state_list[] = {
     VK_DYNAMIC_STATE_RASTERIZER_DISCARD_ENABLE,
     VK_DYNAMIC_STATE_DEPTH_BIAS_ENABLE,
     VK_DYNAMIC_STATE_PRIMITIVE_RESTART_ENABLE,
-}; 
+};
 const u32 dyn_state_count = 22; //  This list is 23 last time I counted
     // @Todo @DynState list of possible other dyn states
     //      vertex input
@@ -1199,9 +1199,9 @@ VkPipelineRenderingCreateInfo create_vk_pipeline_rendering_info(Create_Vk_Pipeli
 void create_vk_graphics_pipelines(VkDevice vk_device, VkPipelineCache cache, int count, Create_Vk_Pipeline_Info *info, VkPipeline *pipelines) {
 
     // @Todo wrap this state shit in a loop (multiple pipeline creation)
-    
+
     // `Vertex Input Stage 1
-    VkVertexInputBindingDescription *vertex_binding_descriptions = 
+    VkVertexInputBindingDescription *vertex_binding_descriptions =
         (VkVertexInputBindingDescription*)memory_allocate_temp(
             sizeof(VkVertexInputBindingDescription) * info->vertex_input_state->input_binding_description_count, 8);
 
@@ -1214,7 +1214,7 @@ void create_vk_graphics_pipelines(VkDevice vk_device, VkPipelineCache cache, int
         vertex_binding_descriptions[i] = create_vk_vertex_binding_description(&binding_info);
     }
 
-    VkVertexInputAttributeDescription *vertex_attribute_descriptions = 
+    VkVertexInputAttributeDescription *vertex_attribute_descriptions =
         (VkVertexInputAttributeDescription*)memory_allocate_temp(
             sizeof(VkVertexInputAttributeDescription) * info->vertex_input_state->input_attribute_description_count, 8);
 
@@ -1243,7 +1243,7 @@ void create_vk_graphics_pipelines(VkDevice vk_device, VkPipelineCache cache, int
     // `Rasterization Stage 2
     Window *window = get_window_instance();
     VkPipelineViewportStateCreateInfo viewport = create_vk_pipeline_viewport_state(window);
-    
+
     // @Todo setup multiple pipeline compilation for differing topology state
     VkPipelineRasterizationStateCreateInfo rasterization = create_vk_pipeline_rasterization_state(info->rasterization_state->polygon_modes[0], info->rasterization_state->cull_mode, info->rasterization_state->front_face);
 
@@ -1309,12 +1309,12 @@ VkPipeline* create_vk_graphics_pipelines_heap(VkDevice vk_device, VkPipelineCach
 
     // @Todo @Pipeline @Allocation @Speed in future I need a separate creation function for temp and heap allocated pipelines:
     // (a better explanation is do not assume all pipelines should be allocated like this)
-    // I can imagine that some pipelines will be more persistent than others and therefore might want to be put on the heap 
-    // instead. 
+    // I can imagine that some pipelines will be more persistent than others and therefore might want to be put on the heap
+    // instead.
     // Potential Options:
-    //     1. make a large heap allocation where all the persistent pipelines are allocated, this keeps more room in temp allocation 
+    //     1. make a large heap allocation where all the persistent pipelines are allocated, this keeps more room in temp allocation
     //        to do what it was made for: short lifetime allocations
-    //     2. allocate persistent pipelines first in temp allocation and reset up to this mark, this is a faster allocation, but as it 
+    //     2. allocate persistent pipelines first in temp allocation and reset up to this mark, this is a faster allocation, but as it
     //        would only happen once in option 1, not worth an unshifting lump in the linear allocator?
     //     3. Unless I find something, option 1 looks best
     VkPipeline *pipelines = (VkPipeline*)memory_allocate_heap(sizeof(VkPipeline) * count, 8);
@@ -1344,7 +1344,7 @@ VkRenderPass gpu_create_single_renderpass_graphics(VkDevice vk_device, Gpu_Rende
     if (info->resolve_flags)
         attachment_description_count += info->color_attachment_count;
 
-    VkAttachmentDescription *attachment_descriptions = 
+    VkAttachmentDescription *attachment_descriptions =
         (VkAttachmentDescription*)memory_allocate_temp(
             sizeof(VkAttachmentDescription) * attachment_description_count + 1, 8); // +1 in case depth
 
@@ -1370,17 +1370,17 @@ VkRenderPass gpu_create_single_renderpass_graphics(VkDevice vk_device, Gpu_Rende
     if (info->resolve_flags) {
         if (info->resolve_flags == GPU_RESOLVE_COLOR_BIT) {
         resolve_layouts = (VkImageLayout*)memory_allocate_temp(sizeof(VkImageLayout) * info->color_attachment, 8);
-            memset(resolve_layouts, 
-                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
+            memset(resolve_layouts,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                     sizeof(VkImageLayout) * info->color_attachment_count);
         }
         else if (info->resolve_flags == GPU_RESOLVE_DEPTH_STENCIL_BIT) {
         resolve_layouts = (VkImageLayout*)memory_allocate_temp(sizeof(VkImageLayout) * info->color_attachment, 8);
-            memset(resolve_layouts, 
-                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 
+            memset(resolve_layouts,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                     sizeof(VkImageLayout) * info->color_attachment_count);
         } else if (info->resolve_flags == (GPU_RESOLVE_COLOR_BIT | GPU_RESOLVE_DEPTH_STENCIL_BIT) {
-            resolve_layouts = (VkImageLayout*)info->resolve_layouts;        
+            resolve_layouts = (VkImageLayout*)info->resolve_layouts;
         }
 
         for(int i = 0; i < info->color_attachment_count; ++i) {
@@ -1393,7 +1393,7 @@ VkRenderPass gpu_create_single_renderpass_graphics(VkDevice vk_device, Gpu_Rende
             description->stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             description->initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
             description->finalLayout    = resolve_layouts[i];
-            description->format         = 
+            description->format         =
                 resolve_layouts[i] == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL ?
                 color_info->imageFormat : VK_FORMAT_D16_UNORM;
         }
@@ -1412,7 +1412,7 @@ VkRenderPass gpu_create_single_renderpass_graphics(VkDevice vk_device, Gpu_Rende
             input_layouts =
                 memory_allocate_temp(sizeof(VkImageLayout) * info->input_attachment_count, 8);
 
-            memset(input_layouts, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL, 
+            memset(input_layouts, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
                 sizeof(VkImageLayout) * info->input_attachment_count);
 
         } else if (info->input_flags == GPU_RESOLVE_COLOR | GPU_RESOLVE_DEPTH_STENCIL) {
@@ -1429,7 +1429,7 @@ VkRenderPass gpu_create_single_renderpass_graphics(VkDevice vk_device, Gpu_Rende
         description->stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         description->initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
         description->finalLayout    = input_layouts[i];
-        description->format         = 
+        description->format         =
             input_layouts[i] == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ?
             color_info->imageFormat : VK_FORMAT_D16_UNORM;
     }
@@ -1535,14 +1535,14 @@ VkSubpassDependency create_vk_subpass_dependency(Create_Vk_Subpass_Dependency_In
         dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
         break;
     case GPU_SUBPASS_DEPENDENCY_SETTING_COLOR_DEPTH_BASIC_DRAW:
-        dependency.srcStageMask  = 
+        dependency.srcStageMask  =
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
             VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-        dependency.dstStageMask  = 
+        dependency.dstStageMask  =
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
             VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
         dependency.srcAccessMask = 0;
-        dependency.dstAccessMask = 
+        dependency.dstAccessMask =
             VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
             VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
@@ -1556,7 +1556,7 @@ VkSubpassDependency create_vk_subpass_dependency(Create_Vk_Subpass_Dependency_In
         dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
         break;
     case GPU_SUBPASS_DEPENDENCY_SETTING_WRITE_READ_DEPTH_FRAGMENT:
-        dependency.srcStageMask  = 
+        dependency.srcStageMask  =
             VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT_KHR |
             VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT_KHR;
         dependency.dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
@@ -1694,7 +1694,7 @@ void gpu_destroy_linear_allocator(VmaAllocator vma_allocator, Gpu_Linear_Allocat
     linear_allocator->cap  = 0;
 }
 void* gpu_make_linear_allocation(Gpu_Linear_Allocator *allocator, u64 size, u64 *offset) {
-    // @Note I removed user setting alignment here: 
+    // @Note I removed user setting alignment here:
     // I need to better check alignment rules for Vulkan resources
     // to see if 8 is actually fine, or if stuff actually needs greater alignment
     u64 alignment = 8;
@@ -1787,12 +1787,12 @@ Gpu_Image gpu_create_depth_attachment(VmaAllocator vma_allocator, int width, int
     imgCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     imgCreateInfo.usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     imgCreateInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
- 
+
     VmaAllocationCreateInfo allocCreateInfo = {};
     allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
     allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
     allocCreateInfo.priority = 1.0f;
- 
+
     VkImage img;
     VmaAllocation alloc;
     vmaCreateImage(vma_allocator, &imgCreateInfo, &allocCreateInfo, &img, &alloc, nullptr);
@@ -1845,7 +1845,7 @@ VkDebugUtilsMessengerEXT create_debug_messenger(Create_Vk_Debug_Messenger_Info *
     return debug_messenger;
 }
 
-VkResult vkCreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) 
+VkResult vkCreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger)
 {
     auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
     if (func != nullptr) {
@@ -1862,5 +1862,5 @@ void vkDestroyDebugUtilsMessengerEXT(
     auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
     if (func != nullptr)
         return func(instance, messenger, pAllocator);
-} 
+}
 #endif
