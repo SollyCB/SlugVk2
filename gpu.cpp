@@ -755,10 +755,39 @@ VkCommandBuffer* gpu_allocate_command_buffers(
     return allocator->buffers + (allocator->buffer_count -  count);
 }
 
+/* Queue */
+
+VkSemaphoreSubmitInfo gpu_define_semaphore_submission(
+    VkSemaphore semaphore, Gpu_Pipeline_Stage_Flags stages) {
+    VkSemaphoreSubmitInfo ret = {VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
+    ret.semaphore = semaphore;
+    ret.stageMask = (VkPipelineStageFlags)stages;
+    return ret;
+}
+VkSubmitInfo2 gpu_get_submit_info(Gpu_Queue_Submit_Info *info) {
+    VkSubmitInfo2 ret = {VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
+    ret.waitSemaphoreInfoCount = info->wait_count;
+    ret.pWaitSemaphoreInfos   =  info->wait_infos;
+    ret.signalSemaphoreInfoCount = info->signal_count;
+    ret.pSignalSemaphoreInfos   =  info->signal_infos;
+
+    VkCommandBufferSubmitInfo *cmd_infos =
+        (VkCommandBufferSubmitInfo*)memory_allocate_temp(
+            sizeof(VkCommandBufferSubmitInfo) * info->cmd_count, 8);
+    for(int i = 0; i < info->cmd_count; ++i) {
+        cmd_infos[i] = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+        cmd_infos[i].commandBuffer = info->command_buffers[i];
+    }
+    ret.commandBufferInfoCount = info->cmd_count;
+    ret.pCommandBufferInfos    = cmd_infos;
+    
+    return ret;
+}
+
 /* `Sync */
 
 // MemoryBarriers
-VkBufferMemoryBarrier2 gpu_get_buffer_barrier(Gpu_Buffer_Transfer_Info *info) {
+VkBufferMemoryBarrier2 gpu_get_buffer_barrier(Gpu_Buffer_Barrier_Info *info) {
     VkBufferMemoryBarrier2 ret = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
     ret.srcQueueFamilyIndex = info->src_queue;
     ret.dstQueueFamilyIndex = info->dst_queue;
@@ -767,27 +796,31 @@ VkBufferMemoryBarrier2 gpu_get_buffer_barrier(Gpu_Buffer_Transfer_Info *info) {
     ret.size                = info->size;
  
     switch(info->setting) {
-    // I am pretty sure that the access masks are irrelevant for the next two cases, as they define
-    // queue family transfers, for which the spec says memory is automatically made available.
-    case GPU_MEMORY_BARRIER_SETTING_VERTEX_BUFFER_TRANSFER_SRC:
-        ret.srcStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        ret.srcAccessMask = 0x0;
-        ret.dstStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        ret.dstAccessMask = 0x0;
+    case GPU_MEMORY_BARRIER_SETTING_TRANSFER_SRC:
+        ret.srcStageMask  = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        ret.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
+        break;
+    case GPU_MEMORY_BARRIER_SETTING_VERTEX_INDEX_OWNERSHIP_TRANSFER:
+        ret.dstStageMask  = 
+            VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT |
+            VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT;
+        ret.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
         break;
     case GPU_MEMORY_BARRIER_SETTING_VERTEX_BUFFER_TRANSFER_DST:
-        ret.srcStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        ret.srcAccessMask = 0x0;
-        ret.dstStageMask  = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-        ret.dstAccessMask = 0x0;
+        ret.dstStageMask  = VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT;
+        ret.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
+        break;
+    case GPU_MEMORY_BARRIER_SETTING_INDEX_BUFFER_TRANSFER_DST:
+        ret.dstStageMask = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT;
+        ret.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
         break;
     }
 
     return ret;
 }
-VkDependencyInfo gpu_get_pipeline_barrier(int buffer_barrier_count, Gpu_Pl_Barrier_Info *info) {
+VkDependencyInfo gpu_get_pipeline_barrier(Gpu_Pipeline_Barrier_Info *info) {
     VkDependencyInfo ret = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-    ret.flags                    = VK_DEPENDENCY_BY_REGION_BIT;
+    ret.dependencyFlags                    = VK_DEPENDENCY_BY_REGION_BIT;
     ret.memoryBarrierCount       = info->memory_count;
     ret.pMemoryBarriers          = info->memory_barriers;
     ret.bufferMemoryBarrierCount = info->buffer_count;
@@ -976,6 +1009,9 @@ void gpu_allocate_descriptor_sets(VkDevice vk_device, Gpu_Descriptor_Allocator *
     info.descriptorSetCount = allocator->sets_queued - allocator->sets_allocated;
     info.pSetLayouts        = allocator->layouts     + allocator->sets_allocated;
 
+    if (!info.descriptorSetCount)
+        return;
+    
     auto check =
         vkAllocateDescriptorSets(vk_device, &info, allocator->sets + allocator->sets_allocated);
     DEBUG_OBJ_CREATION(vkAllocateDescriptorSets, check);
@@ -1153,6 +1189,7 @@ VkPipelineViewportStateCreateInfo create_vk_pipeline_viewport_state(Window *wind
 VkPipelineRasterizationStateCreateInfo create_vk_pipeline_rasterization_state(VkPolygonMode polygon_mode, VkCullModeFlags cull_mode, VkFrontFace front_face) {
     VkPipelineRasterizationStateCreateInfo state = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
     state.polygonMode = polygon_mode;
+    ASSERT(cull_mode == VK_CULL_MODE_NONE, "");
     state.cullMode    = cull_mode;
     state.frontFace   = front_face;
     state.lineWidth   = 1.0f;
@@ -1477,7 +1514,7 @@ VkAttachmentDescription gpu_get_attachment_description(Gpu_Attachment_Descriptio
         description.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         description.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         description.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-        description.finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        description.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         break;
     case GPU_ATTACHMENT_DESCRIPTION_SETTING_COLOR_LOAD_OPTIMAL_STORE:
         description.format         = info->format;
@@ -1534,7 +1571,7 @@ VkSubpassDependency create_vk_subpass_dependency(Create_Vk_Subpass_Dependency_In
             VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
             VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
-        dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        //dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
         break;
     case GPU_SUBPASS_DEPENDENCY_SETTING_WRITE_READ_COLOR_FRAGMENT:
         dependency.srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -1667,6 +1704,7 @@ Gpu_Linear_Allocator gpu_create_linear_allocator_device(
 
     VmaAllocationCreateInfo allocation_create_info = {};
     allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    allocation_create_info.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
     Gpu_Linear_Allocator gpu_linear_allocator = {};
     auto check = vmaCreateBuffer(vma_allocator, &buffer_create_info, &allocation_create_info, &gpu_linear_allocator.buffer, &gpu_linear_allocator.vma_allocation, NULL);

@@ -110,8 +110,8 @@ Gltf parse_gltf(const char *filename) {
     //     While there is a '"' before a closing brace in the file, jump to the '"' as '"' means a key;
     //     match the key and call its parser function.
     //
-    //     Each parser function increments the file offset to point to the end of whatver it parsed, 
-    //     so if a closing brace is ever found before a key, there must be no keys left in the file. 
+    //     Each parser function increments the file offset to point to the end of whatver it parsed,
+    //     so if a closing brace is ever found before a key, there must be no keys left in the file.
     //
     u64 size;
     const char *data = (const char*)file_read_char_heap_padded(filename, &size, 16);
@@ -181,7 +181,7 @@ Gltf parse_gltf(const char *filename) {
             gltf.scene = gltf_ascii_to_int(data + offset, &offset);
             continue;
         } else {
-            ASSERT(false, "This is not a top level gltf key"); 
+            ASSERT(false, "This is not a top level gltf key");
         }
     }
     memory_free_heap((void*)data); // free file data
@@ -227,7 +227,7 @@ Gltf parse_gltf(const char *filename) {
         total_stride += buffer->stride;
         buffer = (Gltf_Buffer*)((u8*)buffer + buffer->stride);
     }
-    
+
     total_stride = 0;
 
     gltf.buffer_view_count = (int*)memory_allocate_temp(sizeof(int) * buffer_view_count + 1, 4);
@@ -355,11 +355,13 @@ Gltf parse_gltf(const char *filename) {
     //
     accessor = gltf.accessors;
     for(int i = 0; i < gltf.accessor_count[-1]; ++i) {
-        buffer_view = 
-            (Gltf_Buffer_View*)((u8*)gltf.buffer_views + 
+        buffer_view =
+            (Gltf_Buffer_View*)((u8*)gltf.buffer_views +
                 gltf.buffer_view_count[accessor->buffer_view]);
 
-        accessor->byte_stride = buffer_view->byte_stride;
+        if (buffer_view->byte_stride)
+            accessor->byte_stride = buffer_view->byte_stride;
+
         accessor = (Gltf_Accessor*)((u8*)accessor + accessor->stride);
     }
 
@@ -397,7 +399,7 @@ float gltf_ascii_to_float(const char *data, u64 *offset) {
     //
     // for(int i = 0; i < after_dot; ++i)
     //     accum /= 10;
-    // 
+    //
     // ...It is little pieces of code like this that make me worry my code is actually slow while
     // I am believing it to be fast lol
     accum /= pow(10, after_dot);
@@ -478,7 +480,7 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
     // aligned pointer to return
     Gltf_Accessor *ret = (Gltf_Accessor*)memory_allocate_temp(0, 8);
     // pointer for allocating to in loops
-    Gltf_Accessor *accessor; 
+    Gltf_Accessor *accessor;
 
     //
     // Function Method:
@@ -501,9 +503,9 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
         while (simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
             inc++; // go beyond the '"' found by find_char_inter...
             //simd_skip_passed_char(data + inc, &inc, '"', Max_u64); // skip to beginning of key
-            
+
             //
-            // I do not like all these branch misses, but I cant see a better way. Even if I make a system 
+            // I do not like all these branch misses, but I cant see a better way. Even if I make a system
             // to remove options if they have already been chosen, there would still be at least one branch
             // with no improvement in predictability... (I think)
             //
@@ -525,7 +527,7 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
                 continue;
             } else if (simd_strcmp_short(data + inc, "typexxxxxxxxxxxx", 12) == 0) {
 
-                simd_skip_passed_char_count(data + inc, '"', 2, &inc); // jump into value string 
+                simd_skip_passed_char_count(data + inc, '"', 2, &inc); // jump into value string
 
                 if (simd_strcmp_short(data + inc, "SCALARxxxxxxxxxx", 10) == 0)
                     accessor_type = GLTF_ACCESSOR_TYPE_SCALAR;
@@ -555,7 +557,7 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
                     accessor->normalized = 0;
                     inc += 6; // go passed the 'false' in the file
                 }
-                
+
                 continue; // go to next key
             } else if (simd_strcmp_short(data + inc, "sparsexxxxxxxxxx", 10) == 0) {
                 gltf_parse_accessor_sparse(data + inc, &inc, accessor);
@@ -574,7 +576,7 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
         if (min_found && max_found) {
             // @MemAlign careful here
             temp = align(sizeof(float) * min_max_len * 2, 8);
-            accessor->max = (float*)memory_allocate_temp(temp, 8); 
+            accessor->max = (float*)memory_allocate_temp(temp, 8);
             accessor->min = accessor->max + min_max_len;
 
             memcpy(accessor->max, max, sizeof(float) * min_max_len);
@@ -591,31 +593,37 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
             case GLTF_ACCESSOR_TYPE_BYTE:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_SCALAR_S8;
+                accessor->byte_stride = 1;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_BYTE:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_SCALAR_U8;
+                accessor->byte_stride = 1;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_SHORT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_SCALAR_S16;
+                accessor->byte_stride = 2;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_SHORT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_SCALAR_U16;
+                accessor->byte_stride = 2;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_INT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_SCALAR_U32;
+                accessor->byte_stride = 4;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_FLOAT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_SCALAR_FLOAT32;
+                accessor->byte_stride = 4;
                 break;
             }
             default:
@@ -632,31 +640,37 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
             case GLTF_ACCESSOR_TYPE_BYTE:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC2_S8;
+                accessor->byte_stride = 2;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_BYTE:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC2_U8;
+                accessor->byte_stride = 2;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_SHORT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC2_S16;
+                accessor->byte_stride = 4;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_SHORT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC2_U16;
+                accessor->byte_stride = 4;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_INT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC2_U32;
+                accessor->byte_stride = 8;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_FLOAT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC2_FLOAT32;
+                accessor->byte_stride = 8;
                 break;
             }
             default:
@@ -673,31 +687,37 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
             case GLTF_ACCESSOR_TYPE_BYTE:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC3_S8;
+                accessor->byte_stride = 3;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_BYTE:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC3_U8;
+                accessor->byte_stride = 3;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_SHORT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC3_S16;
+                accessor->byte_stride = 6;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_SHORT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC3_U16;
+                accessor->byte_stride = 6;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_INT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC3_U32;
+                accessor->byte_stride = 12;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_FLOAT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC3_FLOAT32;
+                accessor->byte_stride = 12;
                 break;
             }
             default:
@@ -714,31 +734,37 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
             case GLTF_ACCESSOR_TYPE_BYTE:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC4_S8;
+                accessor->byte_stride = 4;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_BYTE:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC4_U8;
+                accessor->byte_stride = 4;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_SHORT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC4_S16;
+                accessor->byte_stride = 8;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_SHORT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC4_U16;
+                accessor->byte_stride = 8;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_INT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC4_U32;
+                accessor->byte_stride = 16;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_FLOAT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_VEC4_FLOAT32;
+                accessor->byte_stride = 16;
                 break;
             }
             default:
@@ -755,31 +781,37 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
             case GLTF_ACCESSOR_TYPE_BYTE:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT2_S8;
+                accessor->byte_stride = 4;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_BYTE:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT2_U8;
+                accessor->byte_stride = 4;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_SHORT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT2_S16;
+                accessor->byte_stride = 8;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_SHORT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT2_U16;
+                accessor->byte_stride = 8;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_INT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT2_U32;
+                accessor->byte_stride = 16;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_FLOAT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT2_FLOAT32;
+                accessor->byte_stride = 16;
                 break;
             }
             default:
@@ -796,31 +828,37 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
             case GLTF_ACCESSOR_TYPE_BYTE:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT3_S8;
+                accessor->byte_stride = 9;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_BYTE:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT3_U8;
+                accessor->byte_stride = 9;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_SHORT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT3_S16;
+                accessor->byte_stride = 18;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_SHORT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT3_U16;
+                accessor->byte_stride = 18;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_INT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT3_U32;
+                accessor->byte_stride = 36;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_FLOAT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT3_FLOAT32;
+                accessor->byte_stride = 36;
                 break;
             }
             default:
@@ -837,31 +875,37 @@ Gltf_Accessor* gltf_parse_accessors(const char *data, u64 *offset, int *accessor
             case GLTF_ACCESSOR_TYPE_BYTE:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT4_S8;
+                accessor->byte_stride = 16;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_BYTE:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT4_U8;
+                accessor->byte_stride = 16;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_SHORT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT4_S16;
+                accessor->byte_stride = 32;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_SHORT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT4_U16;
+                accessor->byte_stride = 32;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_UNSIGNED_INT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT4_U32;
+                accessor->byte_stride = 64;
                 break;
             }
             case GLTF_ACCESSOR_TYPE_FLOAT:
             {
                 accessor->format = GLTF_ACCESSOR_FORMAT_MAT4_FLOAT32;
+                accessor->byte_stride = 64;
                 break;
             }
             default:
@@ -1053,7 +1097,7 @@ Gltf_Animation* gltf_parse_animations(const char *data, u64 *offset, int *animat
 
     Gltf_Animation *animations = (Gltf_Animation*)memory_allocate_temp(0, 8); // get aligned pointer to return
     Gltf_Animation *animation; // pointer for allocating to in loops
-    
+
     u64 inc = 0;   // track pos in file
     int count = 0; // track object count
 
@@ -1075,8 +1119,8 @@ Gltf_Animation* gltf_parse_animations(const char *data, u64 *offset, int *animat
                 continue;
             }
         }
-        animation->stride =  sizeof(Gltf_Animation) + 
-                            (sizeof(Gltf_Animation_Channel) * animation->channel_count) + 
+        animation->stride =  sizeof(Gltf_Animation) +
+                            (sizeof(Gltf_Animation_Channel) * animation->channel_count) +
                             (sizeof(Gltf_Animation_Sampler) * animation->sampler_count);
     }
 
@@ -1183,7 +1227,7 @@ Gltf_Camera* gltf_parse_cameras(const char *data, u64 *offset, int *camera_count
                     camera->ortho = false;
                     simd_skip_passed_char(data + inc, &inc, '"');
                     continue;
-                } 
+                }
             } else if (simd_strcmp_short(data + inc, "orthographicxxxx", 4) == 0) {
                 simd_skip_passed_char(data + inc, &inc, '"');
                 while(simd_find_char_interrupted(data + inc, '"', '}', &inc)) {
@@ -1303,12 +1347,12 @@ Gltf_Material* gltf_parse_materials(const char *data, u64 *offset, int *material
                         continue;
                     } else if (simd_strcmp_short(data + inc, "baseColorTexture", 0) == 0) {
                         simd_skip_passed_char(data + inc, &inc, '"');
-                        gltf_parse_texture_info(data + inc, &inc, &material->base_color_texture_index, 
+                        gltf_parse_texture_info(data + inc, &inc, &material->base_color_texture_index,
                                                 &material->base_color_tex_coord, NULL, NULL);
                         continue;
                     } else if (simd_strcmp_long(data + inc, "metallicRoughnessTexturexxxxxxxx", 8) == 0) {
                         simd_skip_passed_char(data + inc, &inc, '"');
-                        gltf_parse_texture_info(data + inc, &inc, &material->metallic_roughness_texture_index, 
+                        gltf_parse_texture_info(data + inc, &inc, &material->metallic_roughness_texture_index,
                                                 &material->metallic_roughness_tex_coord, NULL, NULL);
                         continue;
                     }
@@ -1317,12 +1361,12 @@ Gltf_Material* gltf_parse_materials(const char *data, u64 *offset, int *material
                 continue;
             } else if (simd_strcmp_short(data + inc, "normalTexturexxx", 3) == 0) {
                 simd_skip_passed_char(data + inc, &inc, '"');
-                gltf_parse_texture_info(data + inc, &inc, &material->normal_texture_index, &material->normal_tex_coord, 
+                gltf_parse_texture_info(data + inc, &inc, &material->normal_texture_index, &material->normal_tex_coord,
                                         &material->normal_scale, NULL);
                 continue;
             } else if (simd_strcmp_short(data + inc, "occlusionTexture", 0) == 0) {
                 simd_skip_passed_char(data + inc, &inc, '"');
-                gltf_parse_texture_info(data + inc, &inc, &material->occlusion_texture_index, &material->occlusion_tex_coord, 
+                gltf_parse_texture_info(data + inc, &inc, &material->occlusion_texture_index, &material->occlusion_tex_coord,
                                         NULL, &material->occlusion_strength);
                 continue;
             } else if (simd_strcmp_short(data + inc, "emissiveFactorxx", 2) == 0) {
@@ -1330,7 +1374,7 @@ Gltf_Material* gltf_parse_materials(const char *data, u64 *offset, int *material
                 continue;
             } else if (simd_strcmp_short(data + inc, "emissiveTexturex", 1) == 0) {
                 simd_skip_passed_char(data + inc, &inc, '"');
-                gltf_parse_texture_info(data + inc, &inc, &material->emissive_texture_index, 
+                gltf_parse_texture_info(data + inc, &inc, &material->emissive_texture_index,
                                         &material->emissive_tex_coord, NULL, NULL);
                 continue;
             } else if (simd_strcmp_short(data + inc, "alphaModexxxxxxx", 7) == 0) {
@@ -1490,7 +1534,7 @@ Gltf_Mesh_Primitive* gltf_parse_mesh_primitives(const char *data, u64 *offset, i
                 continue;
             } else if (simd_strcmp_short(data + inc, "attributesxxxxxx", 6) == 0) {
                 simd_skip_passed_char(data + inc, &inc, '{');
-                primitive->extra_attributes = gltf_parse_mesh_attributes(data + inc, &inc, &primitive->extra_attribute_count, false, 
+                primitive->extra_attributes = gltf_parse_mesh_attributes(data + inc, &inc, &primitive->extra_attribute_count, false,
                 &primitive->position,
                 &primitive->tangent,
                 &primitive->normal,
@@ -1755,7 +1799,7 @@ Gltf_Scene* gltf_parse_scenes(const char *data, u64 *offset, int *scene_count) {
             inc++; // step into key
             if (simd_strcmp_short(data + inc, "nodesxxxxxxxxxxx", 11) == 0) {
                 // It annoys me that sometimes I have to do look aheads like this. Maybe
-                // I should change the instances of this pattern to just temp allocate for 
+                // I should change the instances of this pattern to just temp allocate for
                 // every array elem, even though they are so small (sizeof int or float); The
                 // temp allocator would just be super cache hot. I guess it just matters how big
                 // the look ahead in the file is. Tbh for this node array it can probably be
@@ -2029,7 +2073,7 @@ void test_gltf() {
 }
 
 static void test_accessors(Gltf_Accessor *accessor) {
-    BEGIN_TEST_MODULE("Gltf_Accessor", true, false);   
+    BEGIN_TEST_MODULE("Gltf_Accessor", true, false);
 
     TEST_EQ("accessor[0].format", accessor->format, GLTF_ACCESSOR_FORMAT_SCALAR_U16, false);
     TEST_EQ("accessor[0].buffer_view", accessor->buffer_view, 1, false);
@@ -2064,11 +2108,11 @@ static void test_accessors(Gltf_Accessor *accessor) {
     TEST_EQ("accessor[2].indices_byte_offset", accessor->indices_byte_offset, (u64)8888, false);
     TEST_EQ("accessor[2].values_byte_offset", accessor->values_byte_offset, (u64)9999, false);
 
-    END_TEST_MODULE();   
+    END_TEST_MODULE();
 }
 
 static void test_animations(Gltf_Animation *animation) {
-    BEGIN_TEST_MODULE("Gltf_Accessor", true, false);   
+    BEGIN_TEST_MODULE("Gltf_Accessor", true, false);
 
     TEST_EQ("animation[0].channels[0].sampler", animation->channels    [0].sampler,     0, false);
     TEST_EQ("animation[0].channels[0].target_node", animation->channels[0].target_node, 1, false);
@@ -2220,12 +2264,12 @@ static void test_images(Gltf_Image *images) {
     Gltf_Image *image = images;
     TEST_STREQ("images[0].uri", image->uri, "duckCM.png", false);
 
-    image = (Gltf_Image*)((u8*)image + image->stride); 
+    image = (Gltf_Image*)((u8*)image + image->stride);
     TEST_EQ("images[1].jpeg", image->jpeg, 1, false);
     TEST_EQ("images[1].bufferView", image->buffer_view, 14, false);
     TEST_EQ("images[1].uri", image->uri, nullptr, false);
 
-    image = (Gltf_Image*)((u8*)image + image->stride); 
+    image = (Gltf_Image*)((u8*)image + image->stride);
     TEST_STREQ("images[2].uri", image->uri, "duck_but_better.jpeg", false);
 
     END_TEST_MODULE();
@@ -2455,7 +2499,7 @@ void test_nodes(Gltf_Node *nodes) {
 }
 void test_samplers(Gltf_Sampler *samplers) {
     BEGIN_TEST_MODULE("Gltf_Sampler", true, false);
-    
+
     Gltf_Sampler *sampler = samplers;
     TEST_EQ("samplers[0].mag_filter", sampler->mag_filter, 1, false);
     TEST_EQ("samplers[0].min_filter", sampler->min_filter, 1, false);
@@ -2537,7 +2581,7 @@ void test_skins(Gltf_Skin *skins) {
 }
 void test_textures(Gltf_Texture *textures) {
     BEGIN_TEST_MODULE("Gltf_Texture", true, false);
-    
+
     Gltf_Texture *texture = textures;
     TEST_EQ("textures[0].sampler", texture->sampler,       0, false);
     TEST_EQ("textures[0].source",  texture->source_image,  1, false);
@@ -2568,7 +2612,7 @@ void test_textures(Gltf_Texture *textures) {
 // being traversed forwards. And as the file is traversed, the C++ structs are filled at the same time.
 //
 // The workflow takes the form: define a char of interest, define a break char, jump to the next char of interest
-// while they come before the closing char in the file. This is more complicated and error prone than saying "find 
+// while they come before the closing char in the file. This is more complicated and error prone than saying "find
 // me this key", but such function would be expensive, as you could not go through the whole file in one clean parse:
 // you have to look ahead for the string matching the key, and then return it. Then to get the next key you have to
 // do the same, then when all keys are collected, do a big jump passed all the keys. This can be a big jump for some
@@ -2596,11 +2640,11 @@ void test_textures(Gltf_Texture *textures) {
 */
 
 /* ** Old Note See Above **
-    After working on the problem more, I hav realised that a json parser would be very difficult. It would not be 
-    hard to serialize the text data into a big block of mem with pointers into that memory mapped to keys. 
+    After working on the problem more, I hav realised that a json parser would be very difficult. It would not be
+    hard to serialize the text data into a big block of mem with pointers into that memory mapped to keys.
     Just iterate through keys or do a hash look up to find the matching key, deref its pointer to find its data.
     By just knowing what type of data the key is pointing to, it is trivial to interpret the data on the end of the
-    pointer. 
+    pointer.
 
     However I am going to use my original plan but just in one loop. Because this is much faster than the other option.
     To serialize all the text data into a memory block meaningful for C++ would be a waste of time, because I would
@@ -2621,12 +2665,12 @@ void test_textures(Gltf_Texture *textures) {
     I am unsure how to implement this file. But I think I have come to a working solution:
 
     I have a working idea:
-    
-        Make a list of function pointers. This list is ordered by the order of the gltf keys 
-        in the file. Then I do not have to branch for each key. I just loop through the file once 
-        to get the memory required for each first level type. As I do this, I push the correct function 
-        pointers to the array. Then I loop through this list calling each function, which will 
-        use the file data in order, keeping it all in cache. 
+
+        Make a list of function pointers. This list is ordered by the order of the gltf keys
+        in the file. Then I do not have to branch for each key. I just loop through the file once
+        to get the memory required for each first level type. As I do this, I push the correct function
+        pointers to the array. Then I loop through this list calling each function, which will
+        use the file data in order, keeping it all in cache.
 
     e.g.
 
@@ -2650,8 +2694,8 @@ void test_textures(Gltf_Texture *textures) {
     }
 
     ~~~~~~~~~~~
-    
-    This way I loop the entire file 2 times, and each time in entirety, so the prefectcher is only 
+
+    This way I loop the entire file 2 times, and each time in entirety, so the prefectcher is only
     interrupted once. I only have to match keys in order to dispatch correct fucntions once, as the
     second pass can just call the functions in order.
 */
@@ -2683,7 +2727,7 @@ int resolve_depth(u16 mask1, u16 mask2, int current_depth) {
     u8 tz;
     int open;
     while(mask1) {
-        tz = ctz(mask1); 
+        tz = ctz(mask1);
         open = pop_count(mask2 << (16 - tz));
 
         current_depth -= 1;
@@ -2723,7 +2767,7 @@ int main() {
 }
 */
 
-/* 
+/*
     ** Template Key Pad **
 
     Key_Pad keys[] = {
@@ -2736,7 +2780,7 @@ int main() {
         {"typexxxxxxxxxxxx", 12},
         {"sparsexxxxxxxxxx", 10},
     };
-    int key_count = 8; 
+    int key_count = 8;
 
 
 // Old but imo cool code, so I am preserving it
@@ -2745,12 +2789,12 @@ int resolve_depth(u16 mask1, u16 mask2, int current_depth, int *results) {
     int open;
     int index = 0;
     while(mask1) {
-        tz = count_trailing_zeros_u16(mask1); 
+        tz = count_trailing_zeros_u16(mask1);
         open = pop_count16(mask2 << (16 - tz));
 
         current_depth -= 1;
         if (current_depth + open == 0) {
-            results[index] = tz; 
+            results[index] = tz;
             ++index;
         }
 

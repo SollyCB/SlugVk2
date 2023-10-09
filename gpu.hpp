@@ -95,37 +95,7 @@ VkSwapchainKHR create_vk_swapchain(Gpu *gpu, VkSurfaceKHR vk_surface); // This f
 void destroy_vk_swapchain(VkDevice vk_device, Window *window); // also destroys image views
 VkSwapchainKHR recreate_vk_swapchain(Gpu *gpu, Window *window);
 
-/* Begin Old Cmd */
-// CommandPools and CommandBuffers
-struct Command_Group_Vk {
-    VkCommandPool pool;
-    Dyn_Array<VkCommandBuffer> buffers;
-};
-Command_Group_Vk create_command_group_vk(VkDevice vk_device, u32 queue_family_index);
-Command_Group_Vk create_command_group_vk_transient(VkDevice vk_device, u32 queue_family_index);
-void destroy_command_groups_vk(VkDevice vk_device, u32 count, Command_Group_Vk *command_groups_vk);
-
-void reset_vk_command_pools(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools);
-void reset_vk_command_pools_and_release_resources(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools);
-
-VkCommandBuffer* allocate_vk_secondary_command_buffers(VkDevice vk_device, Command_Group_Vk *command_group, u32 count);
-VkCommandBuffer* allocate_vk_primary_command_buffers(VkDevice vk_device, Command_Group_Vk *command_group, u32 count);
-
-void begin_vk_command_buffer_primary(VkCommandBuffer vk_command_buffer);
-void begin_vk_command_buffer_primary_onetime(VkCommandBuffer vk_command_buffer);
-void end_vk_command_buffer(VkCommandBuffer vk_command_buffer);
-
-struct Submit_Vk_Command_Buffer_Info {
-    u32 wait_semaphore_info_count;
-    VkSemaphoreSubmitInfo *wait_semaphore_infos;
-    u32 signal_semaphore_info_count;
-    VkSemaphoreSubmitInfo *signal_semaphore_infos;
-    u32 command_buffer_count;
-    VkCommandBuffer *command_buffers;
-};
-void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Submit_Vk_Command_Buffer_Info *infos);
-/* End Old Cmd */
-
+// Command Buffers
 struct Gpu_Command_Allocator {
     VkCommandPool pool;
     int buffer_count; // Implicit cap of 64 (in_use_mask bit count)
@@ -134,10 +104,13 @@ struct Gpu_Command_Allocator {
 };
 Gpu_Command_Allocator gpu_create_command_allocator(
     VkDevice vk_device, int queue_family_index, bool transient, int size);
+
 // Free allocator.buffers memory; Call 'vk destroy pool'
 void gpu_destroy_command_allocator(VkDevice vk_device, Gpu_Command_Allocator *allocator);
+
 // Sets in use to zero; Calls 'vk reset pool'
 void gpu_reset_command_allocator(VkDevice vk_device, Gpu_Command_Allocator *allocator);
+
 // Allocate into allocator.buffers + allocators.in_use (offset pointer); Increment in_use by count;
 // Return pointer to beginning of new allocation
 VkCommandBuffer* gpu_allocate_command_buffers(
@@ -152,33 +125,37 @@ inline static void gpu_end_command_buffer(VkCommandBuffer cmd) {
     vkEndCommandBuffer(cmd);
 }
 
-// Begin @Unimplemented
-enum Gpu_Semaphore_Setting {
-    GPU_SEMAPHORE_SETTING_BASIC_DRAW_PRESENT,
-    GPU_SEMAPHORE_SETTING_VERTEX_ATTRIBUTE_QUEUE_TRANSFER,
+/* Queue */
+enum Gpu_Pipeline_Stage_Flags {
+    GPU_PIPELINE_STAGE_TRANSFER     = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+    GPU_PIPELINE_STAGE_VERTEX_INPUT = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT,
+    GPU_PIPELINE_STAGE_COLOR_OUTPUT = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+    GPU_PIPELINE_STAGE_ALL_COMMANDS = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+    GPU_PIPELINE_STAGE_TOP_OF_PIPE  = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
 };
-struct Gpu_Semaphore_Submission_Pair {
-    VkSemaphoreSubmitInfo wait_semaphore;
-    VkSemaphoreSubmitInfo signal_semaphore;
-};
-Gpu_Semaphore_Submission_Pair gpu_get_semaphore_submission_pair(
-    VkSemaphore wait_semaphore, VkSemaphore signal_semaphore, 
-    Gpu_Semaphore_Setting setting);
-// End @Unimplemented
+VkSemaphoreSubmitInfo gpu_define_semaphore_submission(
+    VkSemaphore semaphore, Gpu_Pipeline_Stage_Flags stage);
 
 struct Gpu_Queue_Submit_Info {
-    
+    int wait_count;
+    int signal_count;
+    int cmd_count;
+    VkSemaphoreSubmitInfo *wait_infos;  
+    VkSemaphoreSubmitInfo *signal_infos;
+    VkCommandBuffer *command_buffers;
 };
-void gpu_queue_submit(VkQueue vk_queue);
+VkSubmitInfo2 gpu_get_submit_info(Gpu_Queue_Submit_Info *info);
 
 /* Sync */
 
 // Pipeline Barriers
 enum Gpu_Memory_Barrier_Setting {
-    GPU_MEMORY_BARRIER_SETTING_VERTEX_BUFFER_TRANSFER_SRC,
+    GPU_MEMORY_BARRIER_SETTING_TRANSFER_SRC,
+    GPU_MEMORY_BARRIER_SETTING_VERTEX_INDEX_OWNERSHIP_TRANSFER,
     GPU_MEMORY_BARRIER_SETTING_VERTEX_BUFFER_TRANSFER_DST,
+    GPU_MEMORY_BARRIER_SETTING_INDEX_BUFFER_TRANSFER_DST,
 };
-struct Gpu_Buffer_Transfer_Info {
+struct Gpu_Buffer_Barrier_Info {
     Gpu_Memory_Barrier_Setting setting;
     int src_queue;
     int dst_queue;
@@ -186,9 +163,9 @@ struct Gpu_Buffer_Transfer_Info {
     u64 offset;
     u64 size;
 };
-VkBufferMemoryBarrier2 gpu_get_buffer_barrier(Gpu_Buffer_Transfer_Info *info);
+VkBufferMemoryBarrier2 gpu_get_buffer_barrier(Gpu_Buffer_Barrier_Info *info);
 
-struct Gpu_Pl_Barrier_Info {
+struct Gpu_Pipeline_Barrier_Info {
     int memory_count;
     int buffer_count;
     int image_count;
@@ -196,7 +173,7 @@ struct Gpu_Pl_Barrier_Info {
     VkBufferMemoryBarrier2 *buffer_barriers;
     VkImageMemoryBarrier2  *image_barriers;
 };
-VkDependencyInfo gpu_get_pipeline_barrier(int buffer_barrier_count, Gpu_Pl_Barrier_Info *info);
+VkDependencyInfo gpu_get_pipeline_barrier(Gpu_Pipeline_Barrier_Info *info);
 
 // Fences
 struct Gpu_Fence_Pool {
@@ -284,6 +261,37 @@ Gpu_Descriptor_List gpu_make_descriptor_list(int count, Create_Vk_Descriptor_Set
 
 //Gpu_Allocate_Descriptor_Set_Info* create_vk_descriptor_set_layouts(VkDevice vk_device, int count, Create_Vk_Descriptor_Set_Layout_Info *binding_info);
 //void destroy_vk_descriptor_set_layouts(VkDevice vk_device, int count, VkDescriptorSetLayout *layouts);
+
+/* Begin Old Cmd */
+// CommandPools and CommandBuffers
+struct Command_Group_Vk {
+    VkCommandPool pool;
+    Dyn_Array<VkCommandBuffer> buffers;
+};
+Command_Group_Vk create_command_group_vk(VkDevice vk_device, u32 queue_family_index);
+Command_Group_Vk create_command_group_vk_transient(VkDevice vk_device, u32 queue_family_index);
+void destroy_command_groups_vk(VkDevice vk_device, u32 count, Command_Group_Vk *command_groups_vk);
+
+void reset_vk_command_pools(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools);
+void reset_vk_command_pools_and_release_resources(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools);
+
+VkCommandBuffer* allocate_vk_secondary_command_buffers(VkDevice vk_device, Command_Group_Vk *command_group, u32 count);
+VkCommandBuffer* allocate_vk_primary_command_buffers(VkDevice vk_device, Command_Group_Vk *command_group, u32 count);
+
+void begin_vk_command_buffer_primary(VkCommandBuffer vk_command_buffer);
+void begin_vk_command_buffer_primary_onetime(VkCommandBuffer vk_command_buffer);
+void end_vk_command_buffer(VkCommandBuffer vk_command_buffer);
+
+struct Submit_Vk_Command_Buffer_Info {
+    u32 wait_semaphore_info_count;
+    VkSemaphoreSubmitInfo *wait_semaphore_infos;
+    u32 signal_semaphore_info_count;
+    VkSemaphoreSubmitInfo *signal_semaphore_infos;
+    u32 command_buffer_count;
+    VkCommandBuffer *command_buffers;
+};
+void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Submit_Vk_Command_Buffer_Info *infos);
+/* End Old Cmd */
 
 // Pipeline Setup
 // `ShaderStages

@@ -257,8 +257,8 @@ Renderer_Model_Resources renderer_setup_model_resources(Gltf *model, Renderer_Gp
         mesh = (Gltf_Mesh*)((u8*)mesh + mesh->stride);
     }
 
-    ret.index_allocation_end  = allocators->index_allocator->used;
-    ret.vertex_allocation_end = allocators->vertex_allocator->used;
+    ret.index_allocation_end  = allocators->index_allocator->used - ret.index_allocation_start;
+    ret.vertex_allocation_end = allocators->vertex_allocator->used - ret.vertex_allocation_start;
 
     /*WARNING THIS FUNCTION IS NOT COMPLETE SEE TODOS ABOVE*/
     return ret;
