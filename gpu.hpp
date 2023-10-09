@@ -451,6 +451,39 @@ VkPipeline* create_vk_graphics_pipelines_heap(VkDevice vk_device, VkPipelineCach
 void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipelines); // Also frees memory associated with the 'pipelines' pointer
 
 // `Static Rendering (framebuffers, renderpass, subpasses)
+
+/* Begin Better Automate Rendering */ 
+
+enum Gpu_Image_Layout {
+    GPU_IMAGE_LAYOUT_COLOR = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+    GPU_IMAGE_LAYOUT_DEPTH_STENCIL = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+};
+enum Gpu_Resolve_Bits {
+    GPU_RESOLVE_COLOR_BIT = 0x01,
+    GPU_RESOLVE_DEPTH_STENCIL_BIT = 0x02,
+};
+typedef u8 Gpu_Resolve_Flags;
+struct Gpu_Renderpass_Info {
+    Gpu_Resolve_Flags resolve_flags;
+    Gpu_Resolve_Flags input_flags; // if input_attachment count > 0 && flags == 0x0, assume color input
+    int sample_count;
+    int input_attachment_count;
+    int color_attachment_count;
+    bool32 no_depth_attachment;
+    Gpu_Image_Layout *resolve_layouts; // Ignored unless flags is both depth and color
+    Gpu_Image_Layout *input_layouts; // Ignored unless flags is both depth and color
+};
+
+VkRenderPass gpu_create_single_renderpass_graphics();
+
+// @Unimplemented
+VkRenderPass gpu_create_first_renderpass_graphics();
+VkRenderPass gpu_create_subsequent_renderpass_graphics();
+VkRenderPass gpu_create_final_renderpass_graphics();
+VkRenderPass gpu_create_renderpass_deferred();
+
+/* End Better Automate Rendering */
+
 enum Gpu_Attachment_Description_Setting {
     GPU_ATTACHMENT_DESCRIPTION_SETTING_COLOR_LOAD_UNDEFINED_STORE,
     GPU_ATTACHMENT_DESCRIPTION_SETTING_COLOR_LOAD_OPTIMAL_STORE,
@@ -749,7 +782,7 @@ static inline void* get_vma_mapped_ptr(VmaAllocator vma_allocator, Gpu_Buffer *g
 }
 void destroy_vma_buffer(VmaAllocator vma_allocator, Gpu_Buffer *gpu_buffer);
 
-// Buffer Allocators - @Todo create texture linear allocator.
+// Buffer Allocators - @Todo Different code paths for unified vs discrete memory
 struct Gpu_Linear_Allocator {
     u64 offset;
     u64 used;

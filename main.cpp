@@ -351,12 +351,12 @@ int main() {
     renderpass_begin_info.pClearValues = clear_values;
 
     VkViewport viewport = {};
-        viewport.x = 0;
-        viewport.y = 0;
-        viewport.width = window->info.imageExtent.width;
-        viewport.height = window->info.imageExtent.height;
-        viewport.minDepth = 0.0;
-        viewport.maxDepth = 1.0;
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = window->info.imageExtent.width;
+    viewport.height = window->info.imageExtent.height;
+    viewport.minDepth = 0.0;
+    viewport.maxDepth = 1.0;
 
     VkBuffer vertex_buffers[] = {
         device_vertex_allocator.buffer,
@@ -432,7 +432,10 @@ int main() {
     present_info.pResults = &present_result;
     vkQueuePresentKHR(gpu->vk_queues[1], &present_info);
 
+    zero_temp();
     while(!glfwWindowShouldClose(glfw->window)) {
+        // vkAcquireNextImageKHR(
+        //     gpu->vk_device, window->vk_swapchain, 10e9, VK_NULL_HANDLE, *fence, &image_index);
         window_poll_and_get_input(glfw);
     }
 
