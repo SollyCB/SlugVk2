@@ -263,37 +263,6 @@ Gpu_Descriptor_List gpu_make_descriptor_list(int count, Create_Vk_Descriptor_Set
 //Gpu_Allocate_Descriptor_Set_Info* create_vk_descriptor_set_layouts(VkDevice vk_device, int count, Create_Vk_Descriptor_Set_Layout_Info *binding_info);
 //void destroy_vk_descriptor_set_layouts(VkDevice vk_device, int count, VkDescriptorSetLayout *layouts);
 
-/* Begin Old Cmd */
-// CommandPools and CommandBuffers
-struct Command_Group_Vk {
-    VkCommandPool pool;
-    Dyn_Array<VkCommandBuffer> buffers;
-};
-Command_Group_Vk create_command_group_vk(VkDevice vk_device, u32 queue_family_index);
-Command_Group_Vk create_command_group_vk_transient(VkDevice vk_device, u32 queue_family_index);
-void destroy_command_groups_vk(VkDevice vk_device, u32 count, Command_Group_Vk *command_groups_vk);
-
-void reset_vk_command_pools(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools);
-void reset_vk_command_pools_and_release_resources(VkDevice vk_device, u32 count, VkCommandPool *vk_command_pools);
-
-VkCommandBuffer* allocate_vk_secondary_command_buffers(VkDevice vk_device, Command_Group_Vk *command_group, u32 count);
-VkCommandBuffer* allocate_vk_primary_command_buffers(VkDevice vk_device, Command_Group_Vk *command_group, u32 count);
-
-void begin_vk_command_buffer_primary(VkCommandBuffer vk_command_buffer);
-void begin_vk_command_buffer_primary_onetime(VkCommandBuffer vk_command_buffer);
-void end_vk_command_buffer(VkCommandBuffer vk_command_buffer);
-
-struct Submit_Vk_Command_Buffer_Info {
-    u32 wait_semaphore_info_count;
-    VkSemaphoreSubmitInfo *wait_semaphore_infos;
-    u32 signal_semaphore_info_count;
-    VkSemaphoreSubmitInfo *signal_semaphore_infos;
-    u32 command_buffer_count;
-    VkCommandBuffer *command_buffers;
-};
-void submit_vk_command_buffer(VkQueue vk_queue, VkFence vk_fence, u32 count, Submit_Vk_Command_Buffer_Info *infos);
-/* End Old Cmd */
-
 // Pipeline Setup
 // `ShaderStages
 struct Create_Vk_Pipeline_Shader_Stage_Info {
