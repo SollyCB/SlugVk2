@@ -458,29 +458,56 @@ enum Gpu_Image_Layout {
     GPU_IMAGE_LAYOUT_COLOR = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     GPU_IMAGE_LAYOUT_DEPTH_STENCIL = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 };
-enum Gpu_Resolve_Bits {
-    GPU_RESOLVE_COLOR_BIT = 0x01,
-    GPU_RESOLVE_DEPTH_STENCIL_BIT = 0x02,
+enum Gpu_Attachment_Bits {
+    GPU_ATTACHMENT_DEFAULT           = 0x0,
+    GPU_ATTACHMENT_COLOR_BIT         = 0x01,
+    GPU_ATTACHMENT_DEPTH_STENCIL_BIT = 0x02,
 };
-typedef u8 Gpu_Resolve_Flags;
+typedef u8 Gpu_Attachment_Flags;
 struct Gpu_Renderpass_Info {
-    Gpu_Resolve_Flags resolve_flags;
-    Gpu_Resolve_Flags input_flags; // if input_attachment count > 0 && flags == 0x0, assume color input
+    Gpu_Attachment_Flags resolve_flags; // default: assume NULL resolve attachments
+    Gpu_Attachment_Flags input_flags;   // default && input_attachment count > 1: assume color input
+
     int sample_count;
     int input_attachment_count;
     int color_attachment_count;
     bool32 no_depth_attachment;
+
+    VkClearValue color_clear_value;
+    VkClearValue depth_clear_value;
+
     Gpu_Image_Layout *resolve_layouts; // Ignored unless flags is both depth and color
-    Gpu_Image_Layout *input_layouts; // Ignored unless flags is both depth and color
+    Gpu_Image_Layout *input_layouts;   // Ignored unless flags is both depth and color
+
+    VkImageView *depth_view;
+    VkImageView *color_views;
+    VkImageView *resolve_views;
+    VkImageView *input_views;
 };
 
-VkRenderPass gpu_create_single_renderpass_graphics();
+struct Gpu_Renderpass_Framebuffer {
+    VkRenderPass renderpass;
+    VkFramebuffer framebuffer;
+    int clear_count;
+    VkClearValue *clear_values;
+};
+Gpu_Renderpass_Framebuffer gpu_create_renderpass_framebuffer_graphics_single(
+    VkDevice vk_device, Gpu_Renderpass_Info *info);
+
+struct Gpu_Renderpass_Begin_Info {
+    Gpu_Renderpass_Framebuffer *renderpass_framebuffer;
+    VkRect2D *render_area; // if NULL, render to full viewport
+};
+void gpu_cmd_primary_begin_renderpass(VkCommandBuffer command_buffer, Gpu_Renderpass_Begin_Info *info);
 
 // @Unimplemented
 VkRenderPass gpu_create_first_renderpass_graphics();
 VkRenderPass gpu_create_subsequent_renderpass_graphics();
 VkRenderPass gpu_create_final_renderpass_graphics();
 VkRenderPass gpu_create_renderpass_deferred();
+
+void gpu_destroy_renderpass_framebuffer(
+    VkDevice vk_device, VkRenderPassBeginInfo *renderpass_framebuffer);
 
 /* End Better Automate Rendering */
 

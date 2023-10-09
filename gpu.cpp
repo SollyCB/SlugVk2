@@ -1,4 +1,5 @@
 #include "gpu.hpp"
+#include "vulkan/vulkan_core.h"
 #include "vulkan_errors.hpp"
 #include "glfw.hpp"
 #include "spirv.hpp"
@@ -1335,125 +1336,388 @@ void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipeli
 
 /* Begin Better Automate Rendering */
 
-VkRenderPass gpu_create_single_renderpass_graphics(VkDevice vk_device, Gpu_Renderpass_Info *info) {
+Gpu_Renderpass_Framebuffer gpu_create_renderpass_framebuffer_graphics_single(
+    VkDevice vk_device, Gpu_Renderpass_Info *info) {
 
     /* Begin Attachment Descriptions */
+
     int attachment_description_count = 0;
     attachment_description_count += info->input_attachment_count + info->color_attachment_count;
 
     if (info->resolve_flags)
         attachment_description_count += info->color_attachment_count;
 
-    VkAttachmentDescription *attachment_descriptions =
-        (VkAttachmentDescription*)memory_allocate_temp(
-            sizeof(VkAttachmentDescription) * attachment_description_count + 1, 8); // +1 in case depth
-
     VkAttachmentDescription *description;
-    attachment_descriptions++; // For now, assume no depth attachment, so write to descriptions
-                               // beyond its slot;
+    VkAttachmentDescription *attachment_descriptions =
+        (VkAttachmentDescription*)memory_allocate_temp( // +1 in case of depth attachment
+            sizeof(VkAttachmentDescription) * (attachment_description_count + 1), 8);
 
-    VkSwapchainCreateInfo *color_info = &get_instance_window()->info;
+    VkClearValue *clear_values = 
+        (VkClearValue*)memory_allocate_heap(
+            sizeof(VkClearValue) * (attachment_description_count + 1), 8);
+    
+    // For now, assume no depth attachment, so write to descriptions
+    // beyond its slot;    
+    clear_values++;
+    attachment_descriptions++; 
+                               
+    VkSwapchainCreateInfoKHR *color_info = &get_window_instance()->info;
     for(int i = 0; i < info->color_attachment_count; ++i) {
+
         description = &attachment_descriptions[i];
+
         *description = {};
         description->format         = color_info->imageFormat;
         description->samples        = (VkSampleCountFlagBits)info->sample_count;
-        description->loadOp         = VK_LOAD_OP_CLEAR;
-        description->storeOp        = VK_STORE_OP_STORE;
+        description->loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        description->storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
         description->stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         description->stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         description->initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-        description->finalLayout    = VK_IMAGE_PRESENT_SRC_KHR;
+        description->finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+        clear_values[i] = info->color_clear_value;
     }
 
     VkImageLayout *resolve_layouts;
     if (info->resolve_flags) {
-        if (info->resolve_flags == GPU_RESOLVE_COLOR_BIT) {
-        resolve_layouts = (VkImageLayout*)memory_allocate_temp(sizeof(VkImageLayout) * info->color_attachment, 8);
+        switch(info->resolve_flags) {
+        case GPU_ATTACHMENT_COLOR_BIT:
+        {
+            resolve_layouts =
+                    (VkImageLayout*)memory_allocate_temp(
+                        sizeof(VkImageLayout) * info->color_attachment_count, 8);
+
             memset(resolve_layouts,
-                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                    sizeof(VkImageLayout) * info->color_attachment_count);
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
+                        sizeof(VkImageLayout) * info->color_attachment_count);
+            break;
         }
-        else if (info->resolve_flags == GPU_RESOLVE_DEPTH_STENCIL_BIT) {
-        resolve_layouts = (VkImageLayout*)memory_allocate_temp(sizeof(VkImageLayout) * info->color_attachment, 8);
+        case GPU_ATTACHMENT_DEPTH_STENCIL_BIT:
+        {
+            resolve_layouts = 
+                    (VkImageLayout*)memory_allocate_temp(
+                        sizeof(VkImageLayout) * info->color_attachment_count, 8);
+
             memset(resolve_layouts,
                 VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                     sizeof(VkImageLayout) * info->color_attachment_count);
-        } else if (info->resolve_flags == (GPU_RESOLVE_COLOR_BIT | GPU_RESOLVE_DEPTH_STENCIL_BIT) {
-            resolve_layouts = (VkImageLayout*)info->resolve_layouts;
+            break;
         }
+        case GPU_ATTACHMENT_COLOR_BIT | GPU_ATTACHMENT_DEPTH_STENCIL_BIT:
+        {
+            resolve_layouts = (VkImageLayout*)info->resolve_layouts;
+            break;
+        }
+        default:
+            ASSERT(false, "Invalid Resolve Flags");
+        } // switch info->resolve_flags
 
         for(int i = 0; i < info->color_attachment_count; ++i) {
+
             description = &attachment_descriptions[i + info->color_attachment_count];
+
             *description = {};
             description->samples        = (VkSampleCountFlagBits)info->sample_count;
-            description->loadOp         = VK_LOAD_OP_CLEAR;
-            description->storeOp        = VK_STORE_OP_STORE;
+            description->loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            description->storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
             description->stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             description->stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             description->initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
             description->finalLayout    = resolve_layouts[i];
-            description->format         =
-                resolve_layouts[i] == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL ?
-                color_info->imageFormat : VK_FORMAT_D16_UNORM;
+
+            // Leave the resource in the same layout as it was transitioned to in the subpass
+            if (resolve_layouts[i] == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+                description->format = color_info->imageFormat;
+                clear_values[i + info->color_attachment_count] = info->color_clear_value;
+            } else {
+                description->format = VK_FORMAT_D16_UNORM;
+                clear_values[i + info->color_attachment_count] = info->depth_clear_value;
+            }
         }
     }
 
     VkImageLayout *input_layouts;
     if (info->input_attachment_count) {
-       if (info->input_flags == GPU_RESOLVE_COLOR_BIT || info->input_flags == 0x0) {
+        switch(info->input_flags) {
+        case 0x0: // Intentional fall through
+        case GPU_ATTACHMENT_COLOR_BIT:
+        {
             input_layouts =
-                memory_allocate_temp(sizeof(VkImageLayout) * info->input_attachment_count, 8);
+                (VkImageLayout*)memory_allocate_temp(
+                    sizeof(VkImageLayout) * info->input_attachment_count, 8);
 
-            memset(input_layouts, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                sizeof(VkImageLayout) * info->input_attachment_count);
-
-        } else if (info->input_flags == GPU_RESOLVE_DEPTH_STENCIL_BIT) {
+            memset(input_layouts, 
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    sizeof(VkImageLayout) * info->input_attachment_count);
+            break;
+        }
+        case GPU_ATTACHMENT_DEPTH_STENCIL_BIT:
+        {
             input_layouts =
-                memory_allocate_temp(sizeof(VkImageLayout) * info->input_attachment_count, 8);
+                (VkImageLayout*)memory_allocate_temp(
+                    sizeof(VkImageLayout) * info->input_attachment_count, 8);
 
             memset(input_layouts, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
                 sizeof(VkImageLayout) * info->input_attachment_count);
-
-        } else if (info->input_flags == GPU_RESOLVE_COLOR | GPU_RESOLVE_DEPTH_STENCIL) {
+            break;
+        }
+        case GPU_ATTACHMENT_COLOR_BIT | GPU_ATTACHMENT_DEPTH_STENCIL_BIT:
+        {
             input_layouts = (VkImageLayout*)info->input_layouts;
+            break;
+        }
+        default:
+            ASSERT(false, "Invalid Input Flags");
+            input_layouts = NULL; // @CrashMe
+            break;
         }
     }
+
+    int input_layout_offset = 
+        info->resolve_flags ? info->color_attachment_count * 2 : info->color_attachment_count;
+
     for(int i = 0; i < info->input_attachment_count; ++i) {
-        description = &attachment_descriptions[i + (color_attachment_count * 2)];
+
+        description = &attachment_descriptions[i + input_layout_offset];
+
         *description = {};
         description->samples        = (VkSampleCountFlagBits)info->sample_count;
-        description->loadOp         = VK_LOAD_OP_CLEAR;
-        description->storeOp        = VK_STORE_OP_STORE;
+        description->loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        description->storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
         description->stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         description->stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         description->initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
         description->finalLayout    = input_layouts[i];
-        description->format         =
-            input_layouts[i] == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ?
-            color_info->imageFormat : VK_FORMAT_D16_UNORM;
+
+        // Leave the resource in the same layout as it was transitioned to in the subpass
+        if (resolve_layouts[i] == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+            description->format = color_info->imageFormat;
+            clear_values[i + input_layout_offset] = info->color_clear_value;
+        } else {
+            description->format = VK_FORMAT_D16_UNORM;
+            clear_values[i + input_layout_offset] = info->depth_clear_value;
+        }
     }
 
     if (!info->no_depth_attachment) {
         attachment_descriptions--; // return depth slot to stack
-        attachment_count++;
-
         description = &attachment_descriptions[0];
+
+        clear_values--;
+        clear_values[0] = info->depth_clear_value;
+
         *description = {};
         description->samples        = (VkSampleCountFlagBits)info->sample_count;
-        description->loadOp         = VK_LOAD_OP_CLEAR;
-        description->storeOp        = VK_STORE_OP_STORE;
+        description->loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        description->storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
         description->stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         description->stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         description->initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
-        description->finalLayout    = VK_DEPTH_ATTACHMENT_OPTIMAL;
+        description->finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         description->format         = VK_FORMAT_D16_UNORM;
+
+        attachment_description_count++;
     }
+
     /* End Attachment Descriptions */
 
     /* Begin Subpass Descriptions */
-        // @TODO CURRENT TASK!!
+
+    VkAttachmentReference *attachment_references = 
+        (VkAttachmentReference*)memory_allocate_temp(
+            sizeof(VkAttachmentReference) * attachment_description_count, 8);
+
+    VkAttachmentReference *depth_attachment;
+    VkAttachmentReference *color_attachments;
+    VkAttachmentReference *resolve_attachments;
+    VkAttachmentReference *input_attachments;
+
+    int attachment_reference_index = 0;
+    if (!info->no_depth_attachment) {
+
+        attachment_references[0] = {0, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
+
+        depth_attachment  = &attachment_references[0];
+        color_attachments = &attachment_references[1];
+
+        attachment_reference_index++;
+    } else {
+        depth_attachment  = NULL;
+        color_attachments = &attachment_references[0];
+    }
+
+    if (info->resolve_flags) {
+        resolve_attachments = color_attachments + info->color_attachment_count;
+        input_attachments   = resolve_attachments + info->color_attachment_count;
+    } else {
+        resolve_attachments = NULL;
+        input_attachments   = color_attachments + info->color_attachment_count;
+    }
+
+    for(int i = 0; i < info->color_attachment_count; ++i) {
+        color_attachments[i].attachment = attachment_reference_index;
+        color_attachments[i].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        attachment_reference_index++;
+    }
+    if (info->resolve_flags) {
+        for(int i = 0; i < info->color_attachment_count; ++i) {
+            resolve_attachments[i].attachment = attachment_reference_index;
+            resolve_attachments[i].attachment = resolve_layouts[i];
+
+            attachment_reference_index++;
+        }
+    }
+    for(int i = 0; i < info->input_attachment_count; ++i) {
+        input_attachments[i].attachment = attachment_reference_index;
+        input_attachments[i].attachment = input_layouts[i];
+
+        attachment_reference_index++;
+    }
+
+    VkSubpassDescription subpass_description = {};
+    subpass_description.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass_description.pDepthStencilAttachment = depth_attachment;
+    subpass_description.colorAttachmentCount    = info->color_attachment_count;
+    subpass_description.pColorAttachments       = color_attachments;
+    subpass_description.pResolveAttachments     = resolve_attachments;
+    subpass_description.inputAttachmentCount    = info->input_attachment_count;
+    subpass_description.pInputAttachments       = input_attachments;
+    
     /* End Subpass Descriptions */
+
+    /* Begin Subpass Dependencies */
+
+    VkPipelineStageFlags src_stage;
+    VkPipelineStageFlags dst_stage;
+    if (!info->no_depth_attachment) {
+        src_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dst_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    } else {
+        src_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dst_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    }
+
+    VkAccessFlags src_access_flags;
+    VkAccessFlags dst_access_flags;
+    if (!info->no_depth_attachment) {
+        src_access_flags = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                           VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        dst_access_flags = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                           VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    } else {
+        src_access_flags = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dst_access_flags = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    }
+    if (info->input_attachment_count) {
+        src_access_flags |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+        dst_access_flags |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+    }
+
+    VkSubpassDependency subpass_dependency = {};
+    subpass_dependency.srcSubpass    = VK_SUBPASS_EXTERNAL;
+    subpass_dependency.dstSubpass    = 0;
+    subpass_dependency.srcStageMask  = src_stage;
+    subpass_dependency.srcAccessMask = src_access_flags;
+    subpass_dependency.dstStageMask  = dst_stage;
+    subpass_dependency.dstAccessMask = dst_access_flags;
+    subpass_dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    
+    /* End Subpass Dependencies */
+
+    /* Create Renderpass */
+    VkRenderPassCreateInfo create_info = {VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
+    create_info.attachmentCount = attachment_description_count;
+    create_info.pAttachments    = attachment_descriptions;
+    create_info.subpassCount    = 1; // Basic renderpass, use other functions for deferred etc.
+    create_info.pSubpasses      = &subpass_description;
+    create_info.dependencyCount = 1;
+    create_info.pDependencies   = &subpass_dependency;
+
+    VkRenderPass renderpass;
+    auto check = vkCreateRenderPass(vk_device, &create_info, ALLOCATION_CALLBACKS, &renderpass);
+    DEBUG_OBJ_CREATION(vkCreateRenderPass, check);
+
+    VkImageView *attachment_views =
+        (VkImageView*)memory_allocate_temp(
+            sizeof(VkImageView) * attachment_description_count, 8);
+
+    int attachment_index = 0;
+    if (!info->no_depth_attachment) {
+        attachment_views[0] = *info->depth_view;
+        attachment_index++;
+    }
+
+    memcpy(attachment_views + attachment_index, 
+           info->color_views, 
+           sizeof(VkImageView) * info->color_attachment_count);
+    attachment_index += info->color_attachment_count;
+
+    if (info->resolve_flags) {
+        memcpy(attachment_views + attachment_index,
+               info->resolve_views,
+               sizeof(VkImageView) * info->color_attachment_count);
+        attachment_index += info->color_attachment_count;
+    }
+
+    if (info->input_attachment_count) {
+        memcpy(attachment_views + attachment_index,
+               info->input_views,
+               sizeof(VkImageView) * info->input_attachment_count);
+        attachment_index += info->input_attachment_count;
+    }
+
+    VkFramebufferCreateInfo framebuffer_info = {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+    framebuffer_info.renderPass         = renderpass;
+    framebuffer_info.attachmentCount    = attachment_description_count;
+    framebuffer_info.pAttachments       = attachment_views;
+    framebuffer_info.width              = color_info->imageExtent.width;
+    framebuffer_info.height             = color_info->imageExtent.height;
+    framebuffer_info.layers             = 1;
+
+    ASSERT(attachment_description_count == attachment_index, "");
+
+    VkFramebuffer framebuffer;
+    check = vkCreateFramebuffer(vk_device, &framebuffer_info, ALLOCATION_CALLBACKS, &framebuffer);
+    DEBUG_OBJ_CREATION(vkCreateFramebuffer, check);
+
+    Gpu_Renderpass_Framebuffer ret = {};
+    ret.renderpass   = renderpass;
+    ret.framebuffer  = framebuffer;
+    ret.clear_count  = attachment_description_count;
+    ret.clear_values = clear_values;
+
+    return ret;
+}
+
+void gpu_destroy_renderpass_framebuffer(
+    VkDevice vk_device, Gpu_Renderpass_Framebuffer *renderpass_framebuffer) {
+    vkDestroyRenderPass(vk_device, renderpass_framebuffer->renderpass, ALLOCATION_CALLBACKS);
+    vkDestroyFramebuffer(vk_device, renderpass_framebuffer->framebuffer, ALLOCATION_CALLBACKS);
+
+    memory_free_heap(renderpass_framebuffer->clear_values);
+}
+
+void gpu_cmd_primary_begin_renderpass(VkCommandBuffer command_buffer, Gpu_Renderpass_Begin_Info *info) {
+    VkRenderPassBeginInfo begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+    begin_info.renderPass = info->renderpass_framebuffer->renderpass;
+    begin_info.framebuffer = info->renderpass_framebuffer->framebuffer;
+    begin_info.clearValueCount = info->renderpass_framebuffer->clear_count;
+    begin_info.pClearValues = info->renderpass_framebuffer->clear_values;
+
+    VkRect2D rect;
+    if (info->render_area) {
+        begin_info.renderArea = *info->render_area;
+    } else {
+        rect.offset = {0, 0};
+        rect.extent =  get_window_instance()->info.imageExtent;
+        begin_info.renderArea = rect;
+    }
+
+    vkCmdBeginRenderPass(command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
 }
 
 /* End Better Automate Rendering */
