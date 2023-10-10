@@ -468,13 +468,13 @@ struct Gpu_Renderpass_Info {
     Gpu_Attachment_Flags resolve_flags; // default: assume NULL resolve attachments
     Gpu_Attachment_Flags input_flags;   // default && input_attachment count > 1: assume color input
 
-    int sample_count;
+    int sample_count = 1;
     int input_attachment_count;
     int color_attachment_count;
     bool32 no_depth_attachment;
 
-    VkClearValue color_clear_value;
-    VkClearValue depth_clear_value;
+    VkClearValue color_clear_value = {.color = {0, 0, 0, 0}};
+    VkClearValue depth_clear_value = {.depthStencil = {1, 0}};
 
     Gpu_Image_Layout *resolve_layouts; // Ignored unless flags is both depth and color
     Gpu_Image_Layout *input_layouts;   // Ignored unless flags is both depth and color
@@ -507,7 +507,7 @@ VkRenderPass gpu_create_final_renderpass_graphics();
 VkRenderPass gpu_create_renderpass_deferred();
 
 void gpu_destroy_renderpass_framebuffer(
-    VkDevice vk_device, VkRenderPassBeginInfo *renderpass_framebuffer);
+    VkDevice vk_device, Gpu_Renderpass_Framebuffer *renderpass_framebuffer);
 
 /* End Better Automate Rendering */
 

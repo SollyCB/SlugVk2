@@ -1,5 +1,5 @@
 #include "GLFW/glfw3.h"
-// #include "basic.h"
+#include "basic.h"
 #include "glfw.hpp"
 #include "gpu.hpp"
 #include "file.hpp"
@@ -151,39 +151,6 @@ int main() {
     VkAttachmentDescription depth_attachment_description =
         gpu_get_attachment_description(&attachment_description_info);
 
-    VkAttachmentReference color_attachment_reference = {
-        0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-    };
-    VkAttachmentReference depth_attachment_reference = {
-        1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-    };
-    Create_Vk_Subpass_Description_Info subpass_description_info = {};
-    subpass_description_info.color_attachment_count   = 1;
-    subpass_description_info.color_attachments        = &color_attachment_reference;
-    subpass_description_info.depth_stencil_attachment = &depth_attachment_reference;
-    VkSubpassDescription subpass_description =
-        create_vk_graphics_subpass_description(&subpass_description_info);
-
-    Create_Vk_Subpass_Dependency_Info subpass_dependency_info = {};
-    subpass_dependency_info.access_rules = GPU_SUBPASS_DEPENDENCY_SETTING_COLOR_DEPTH_BASIC_DRAW;
-    subpass_dependency_info.src_subpass  = VK_SUBPASS_EXTERNAL;
-    subpass_dependency_info.dst_subpass  = 0;
-    VkSubpassDependency subpass_dependency = create_vk_subpass_dependency(&subpass_dependency_info);
-
-    VkAttachmentDescription attachment_descriptions[] = {
-        color_attachment_description,
-        depth_attachment_description
-    };
-
-    Create_Vk_Renderpass_Info renderpass_info = {};
-    renderpass_info.attachment_count = 2;
-    renderpass_info.subpass_count    = 1;
-    renderpass_info.dependency_count = 1;
-    renderpass_info.attachments      = attachment_descriptions;
-    renderpass_info.subpasses        = &subpass_description;
-    renderpass_info.dependencies     = &subpass_dependency;
-    VkRenderPass renderpass = create_vk_renderpass(gpu->vk_device, &renderpass_info);
-
     Gpu_Fence_Pool fence_pool = gpu_create_fence_pool(gpu->vk_device, 1);
     VkFence *fence = gpu_get_fences(&fence_pool, 1);
     u32 image_index;
@@ -191,22 +158,20 @@ int main() {
         gpu->vk_device, window->vk_swapchain, 10e9, VK_NULL_HANDLE, *fence, &image_index);
     vkWaitForFences(gpu->vk_device, 1, fence, VK_TRUE, 10e9);
     vkResetFences(gpu->vk_device, 1, fence);
-
-    VkImageView framebuffer_attachments[] = {
-        window->vk_image_views[image_index],
-        depth_attachment_view,
-    };
-    Gpu_Framebuffer_Info framebuffer_info = {};
-    framebuffer_info.renderpass = renderpass;
-    framebuffer_info.attachment_count = 2;
-    framebuffer_info.attachments = framebuffer_attachments;
-    framebuffer_info.width = window->info.imageExtent.width;
-    framebuffer_info.height = window->info.imageExtent.height;
-    VkFramebuffer framebuffer = gpu_create_framebuffer(gpu->vk_device, &framebuffer_info);
+    
+    Gpu_Renderpass_Info renderpass_info = {};
+    renderpass_info.sample_count = 1;
+    renderpass_info.color_attachment_count = 1;
+    renderpass_info.color_views = &window->vk_image_views[image_index];
+    renderpass_info.depth_view = &depth_attachment_view;
+    // renderpass_info.color_clear_value = {.color = {1, 1, 1, 1}};
+    // renderpass_info.depth_clear_value = {.depthStencil = {1, 0}};
+    Gpu_Renderpass_Framebuffer renderpass_framebuffer =
+        gpu_create_renderpass_framebuffer_graphics_single(gpu->vk_device, &renderpass_info);
 
     Renderer_Create_Pipeline_Info pl_info = {};
     pl_info.layout                = pl_layout;
-    pl_info.renderpass            = renderpass;
+    pl_info.renderpass            = renderpass_framebuffer.renderpass;
     pl_info.subpass               = 0;
     pl_info.shader_stage_count    = 2;
     pl_info.shader_stages         = pl_shader_stages;
@@ -325,31 +290,6 @@ int main() {
     };
     VkDependencyInfo pl_dependency_graphics = gpu_get_pipeline_barrier(&pl_barrier_info_graphics);
 
-    VkRenderPassBeginInfo renderpass_begin_info = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    renderpass_begin_info.renderPass = renderpass;
-    renderpass_begin_info.framebuffer = framebuffer;
-    VkRect2D render_area = {
-        .offset = {
-            0,0
-        },
-        .extent = {
-            window->info.imageExtent.width,
-            window->info.imageExtent.height,
-        }
-    };
-    renderpass_begin_info.renderArea = render_area;
-    renderpass_begin_info.clearValueCount = 2;
-
-    VkClearValue clear_values[] = {
-        {
-            .color = {1.0, 1.0, 1.0, 1.0}
-        },
-        {
-            .depthStencil = {1.0, 0},
-        }
-    };
-    renderpass_begin_info.pClearValues = clear_values;
-
     VkViewport viewport = {};
     viewport.x = 0;
     viewport.y = 0;
@@ -370,14 +310,29 @@ int main() {
         model_draw_infos.draw_infos[0][0].vertex_buffer_offsets[2],
         model_draw_infos.draw_infos[0][0].vertex_buffer_offsets[3],
     };
+
+    VkRect2D render_area = {
+        .offset = {
+            0,0
+        },
+        .extent = {
+            window->info.imageExtent.width,
+            window->info.imageExtent.height,
+        }
+    };
+
+    Gpu_Renderpass_Begin_Info renderpass_begin_info = {
+        &renderpass_framebuffer, &render_area,
+    };
+    
     gpu_begin_primary_command_buffer(*graphics_cmd, false);
 
         vkCmdSetViewportWithCount(*graphics_cmd, 1, &viewport);
-        vkCmdSetScissorWithCount(*graphics_cmd, 1, &render_area);
+        vkCmdSetScissorWithCount(*graphics_cmd, 1, renderpass_begin_info.render_area);
 
         vkCmdPipelineBarrier2(*graphics_cmd, &pl_dependency_graphics);
 
-        vkCmdBeginRenderPass(*graphics_cmd, &renderpass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+        gpu_cmd_primary_begin_renderpass(*graphics_cmd, &renderpass_begin_info);
 
             vkCmdBindPipeline(*graphics_cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
@@ -444,16 +399,15 @@ int main() {
     gpu_destroy_command_allocator(gpu->vk_device, &graphics_command_allocator);
     gpu_destroy_command_allocator(gpu->vk_device, &transfer_command_allocator);
 
-    gpu_destroy_image(gpu->vma_allocator, &depth_attachment); // depth attachment
+    gpu_destroy_image(gpu->vma_allocator, &depth_attachment);
     gpu_destroy_image_view(gpu->vk_device, depth_attachment_view);
-    gpu_destroy_framebuffer(gpu->vk_device, framebuffer);
+    gpu_destroy_renderpass_framebuffer(gpu->vk_device, &renderpass_framebuffer);
 
     gpu_reset_fence_pool(gpu->vk_device, &fence_pool);
     gpu_destroy_fence_pool(gpu->vk_device, &fence_pool);
     gpu_destroy_semaphore_pool(gpu->vk_device, &semaphore_pool);
 
     gpu_destroy_pipeline(gpu->vk_device, pipeline);
-    destroy_vk_renderpass(gpu->vk_device, renderpass);
     destroy_vk_pipeline_layout(gpu->vk_device, pl_layout);
     renderer_destroy_shader_stages(gpu->vk_device, 2, pl_shader_stages);
     renderer_free_model_data(&resource_list);

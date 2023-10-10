@@ -1336,6 +1336,15 @@ void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipeli
 
 /* Begin Better Automate Rendering */
 
+/* 
+                                    ** WARNING ** 
+    This function is not tested yet using input attachments, resolve attachments etc.
+    If things are behaving weirdly while using these types of attachment, look here...
+    It is intended for basic drawing, with the other functionality added more as a
+    placeholder, intended to keep the function flexible, and make an example and layout
+    for setup functions for more complicated renderpasses.
+
+*/
 Gpu_Renderpass_Framebuffer gpu_create_renderpass_framebuffer_graphics_single(
     VkDevice vk_device, Gpu_Renderpass_Info *info) {
 
