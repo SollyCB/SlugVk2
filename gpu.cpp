@@ -804,12 +804,14 @@ Gpu_Descriptor_Allocator gpu_create_descriptor_allocator(VkDevice vk_device, int
 
     return allocator;
 }
-void gpu_destroy_descriptor_allocator(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator) {
+void gpu_destroy_descriptor_allocator(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator)
+{
     vkDestroyDescriptorPool(vk_device, allocator->pool, ALLOCATION_CALLBACKS);
     memory_free_heap(allocator->layouts);
     *allocator = {};
 }
-void gpu_reset_descriptor_allocator(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator) {
+void gpu_reset_descriptor_allocator(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator)
+{
     allocator->sets_queued    = 0;
     allocator->sets_allocated = 0;
     // Zeroing this way seems dumb, but I dont want to memset...
@@ -852,7 +854,8 @@ VkDescriptorSet* gpu_queue_descriptor_set_allocation(
 // This should never fail with 'OUT_OF_POOL_MEMORY' or 'FRAGMENTED_POOL' because of the way the pools
 // are managed by the allocator... I will manage the out of host and device memory with just an
 // assert for now, as handling an error like that would require a large management op...
-void gpu_allocate_descriptor_sets(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator) {
+void gpu_allocate_descriptor_sets(VkDevice vk_device, Gpu_Descriptor_Allocator *allocator)
+{
     VkDescriptorSetAllocateInfo info = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     info.descriptorPool     = allocator->pool;
     info.descriptorSetCount = allocator->sets_queued - allocator->sets_allocated;
@@ -878,7 +881,8 @@ void gpu_allocate_descriptor_sets(VkDevice vk_device, Gpu_Descriptor_Allocator *
 // this would be possible... idk maybe I am miles off) -- - sol 4 oct 2023
 //
 VkDescriptorSetLayout*
-create_vk_descriptor_set_layouts(VkDevice vk_device, int count, Create_Vk_Descriptor_Set_Layout_Info *infos) {
+create_vk_descriptor_set_layouts(VkDevice vk_device, int count, Create_Vk_Descriptor_Set_Layout_Info *infos)
+{
     // @Todo think about the lifetime of this allocation
     VkDescriptorSetLayout *layouts =
         (VkDescriptorSetLayout*)memory_allocate_heap(
@@ -1336,8 +1340,8 @@ void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipeli
 
 /* Begin Better Automate Rendering */
 
-/* 
-                                    ** WARNING ** 
+/*
+                                    ** WARNING **
     This function is not tested yet using input attachments, resolve attachments etc.
     If things are behaving weirdly while using these types of attachment, look here...
     It is intended for basic drawing, with the other functionality added more as a
@@ -1347,6 +1351,12 @@ void destroy_vk_pipelines_heap(VkDevice vk_device, u32 count, VkPipeline *pipeli
 */
 Gpu_Renderpass_Framebuffer gpu_create_renderpass_framebuffer_graphics_single(
     VkDevice vk_device, Gpu_Renderpass_Info *info) {
+
+    // @Todo reduce the branching in this function. There are multiple sections that branch
+    // on the same predicate. Collapse these sections into single sections which exist under
+    // the same branch predicate. (e.g. multiple tests for there being a depth attachment.
+    // This can probably be collasped to just test for it once).
+    // Also, arrange the branches to be consistent with static branch checking...
 
     /* Begin Attachment Descriptions */
 
@@ -1361,15 +1371,15 @@ Gpu_Renderpass_Framebuffer gpu_create_renderpass_framebuffer_graphics_single(
         (VkAttachmentDescription*)memory_allocate_temp( // +1 in case of depth attachment
             sizeof(VkAttachmentDescription) * (attachment_description_count + 1), 8);
 
-    VkClearValue *clear_values = 
+    VkClearValue *clear_values =
         (VkClearValue*)memory_allocate_heap(
             sizeof(VkClearValue) * (attachment_description_count + 1), 8);
-    
+
     // For now, assume no depth attachment, so write to descriptions
-    // beyond its slot;    
+    // beyond its slot;
     clear_values++;
-    attachment_descriptions++; 
-                               
+    attachment_descriptions++;
+
     VkSwapchainCreateInfoKHR *color_info = &get_window_instance()->info;
     for(int i = 0; i < info->color_attachment_count; ++i) {
 
@@ -1398,13 +1408,13 @@ Gpu_Renderpass_Framebuffer gpu_create_renderpass_framebuffer_graphics_single(
                         sizeof(VkImageLayout) * info->color_attachment_count, 8);
 
             memset(resolve_layouts,
-                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                         sizeof(VkImageLayout) * info->color_attachment_count);
             break;
         }
         case GPU_ATTACHMENT_DEPTH_STENCIL_BIT:
         {
-            resolve_layouts = 
+            resolve_layouts =
                     (VkImageLayout*)memory_allocate_temp(
                         sizeof(VkImageLayout) * info->color_attachment_count, 8);
 
@@ -1456,7 +1466,7 @@ Gpu_Renderpass_Framebuffer gpu_create_renderpass_framebuffer_graphics_single(
                 (VkImageLayout*)memory_allocate_temp(
                     sizeof(VkImageLayout) * info->input_attachment_count, 8);
 
-            memset(input_layouts, 
+            memset(input_layouts,
                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                     sizeof(VkImageLayout) * info->input_attachment_count);
             break;
@@ -1483,7 +1493,7 @@ Gpu_Renderpass_Framebuffer gpu_create_renderpass_framebuffer_graphics_single(
         }
     }
 
-    int input_layout_offset = 
+    int input_layout_offset =
         info->resolve_flags ? info->color_attachment_count * 2 : info->color_attachment_count;
 
     for(int i = 0; i < info->input_attachment_count; ++i) {
@@ -1533,7 +1543,7 @@ Gpu_Renderpass_Framebuffer gpu_create_renderpass_framebuffer_graphics_single(
 
     /* Begin Subpass Descriptions */
 
-    VkAttachmentReference *attachment_references = 
+    VkAttachmentReference *attachment_references =
         (VkAttachmentReference*)memory_allocate_temp(
             sizeof(VkAttachmentReference) * attachment_description_count, 8);
 
@@ -1593,7 +1603,7 @@ Gpu_Renderpass_Framebuffer gpu_create_renderpass_framebuffer_graphics_single(
     subpass_description.pResolveAttachments     = resolve_attachments;
     subpass_description.inputAttachmentCount    = info->input_attachment_count;
     subpass_description.pInputAttachments       = input_attachments;
-    
+
     /* End Subpass Descriptions */
 
     /* Begin Subpass Dependencies */
@@ -1634,7 +1644,7 @@ Gpu_Renderpass_Framebuffer gpu_create_renderpass_framebuffer_graphics_single(
     subpass_dependency.dstStageMask  = dst_stage;
     subpass_dependency.dstAccessMask = dst_access_flags;
     subpass_dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-    
+
     /* End Subpass Dependencies */
 
     /* Create Renderpass */
@@ -1660,8 +1670,8 @@ Gpu_Renderpass_Framebuffer gpu_create_renderpass_framebuffer_graphics_single(
         attachment_index++;
     }
 
-    memcpy(attachment_views + attachment_index, 
-           info->color_views, 
+    memcpy(attachment_views + attachment_index,
+           info->color_views,
            sizeof(VkImageView) * info->color_attachment_count);
     attachment_index += info->color_attachment_count;
 
