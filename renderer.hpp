@@ -6,22 +6,27 @@
 #include "gltf.hpp"
 #include "string.hpp"
 
-struct Renderer_Draw_Info {
+// @Todo Renderer_Draw_Info_Skinned
+
+struct Renderer_Draw_Info_Static {
     int draw_count;
     u64 index_buffer_offset;
     u64 vertex_buffer_offsets[4]; // position, normal, tangent, tex_coord_0
 };
+struct Renderer_Mesh {
+    int primitive_count;
+    Renderer_Draw_Info_Static *primitive_draw_infos;
+};
 struct Renderer_Draws {
     int mesh_count;
-    int *primitive_counts;
-    Renderer_Draw_Info **draw_infos;
+    Renderer_Mesh *meshes;
 };
 struct Renderer_Buffer_View {
     u64 byte_length;
     u64 byte_offset;
     void *data;
 };
-struct Renderer_Model_Resources {
+struct Renderer_Vertex_Attribute_Resources {
     int buffer_view_count;
     int mesh_count; // The number of integers in 'primitive_counts'
     Renderer_Buffer_View *buffer_views;
@@ -32,24 +37,23 @@ struct Renderer_Model_Resources {
     u64 vertex_allocation_start;
     u64 vertex_allocation_end;
 
-    int *primitive_counts;
-    Renderer_Draw_Info     **draw_infos; // Heap allocated
+    Renderer_Mesh *meshes;
     Gpu_Vertex_Input_State **vertex_state_infos; // Temp allocated
 };
 struct Renderer_Gpu_Allocator_Group {
+    Linear_Allocator     *draw_info_allocator;
     Gpu_Linear_Allocator *index_allocator;
     Gpu_Linear_Allocator *vertex_allocator;
     Gpu_Linear_Allocator *uniform_allocator;
 };
 // Get list of required resources from gltf model
-Renderer_Model_Resources renderer_setup_model_resources(
+Renderer_Vertex_Attribute_Resources renderer_setup_vertex_attribute_resources_static_model(
     Gltf *model, Renderer_Gpu_Allocator_Group *allocators);
-void renderer_free_model_data(Renderer_Model_Resources *list);
 Renderer_Draws renderer_download_model_data(
-    Gltf *model, Renderer_Model_Resources *list, const char *model_dir_path);
+    Gltf *model, Renderer_Vertex_Attribute_Resources *list, const char *model_dir_path);
 
 // Pl_Stage_1
-Gpu_Vertex_Input_State renderer_define_vertex_input_state(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model);
+Gpu_Vertex_Input_State renderer_define_vertex_input_state_static_model(Gltf_Mesh_Primitive *mesh_primitive, Gltf *model);
 
 // Pl_Stage_2
 Gpu_Rasterization_State renderer_define_rasterization_state(Gpu_Polygon_Mode_Flags polygon_mode_flags = GPU_POLYGON_MODE_FILL_BIT, VkCullModeFlags cull_mode_flags = VK_CULL_MODE_FRONT_BIT);

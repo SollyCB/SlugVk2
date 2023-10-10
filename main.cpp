@@ -16,6 +16,12 @@
 void run_tests(); // defined below main
 #endif
 
+// @Todo Find a good memory footprint
+// Some completely arbitrary sizes for now.
+static constexpr u64 DRAW_INFO_ALLOCATOR_SIZE  = 10000;
+static constexpr u64 GPU_INDEX_ALLOCATOR_SIZE  = 10000;
+static constexpr u64 GPU_VERTEX_ALLOCATOR_SIZE = 10000;
+
 int main() {
     init_allocators();
 
@@ -40,24 +46,27 @@ int main() {
 
     Gpu_Linear_Allocator host_index_allocator =
         gpu_create_linear_allocator_host(
-            gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_SRC);
+            gpu->vma_allocator, GPU_INDEX_ALLOCATOR_SIZE, GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_SRC);
     Gpu_Linear_Allocator host_vertex_allocator =
         gpu_create_linear_allocator_host(
-            gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_SRC);
+            gpu->vma_allocator, GPU_VERTEX_ALLOCATOR_SIZE, GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_SRC);
 
     Gpu_Linear_Allocator device_index_allocator =
         gpu_create_linear_allocator_device(
-            gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_DST);
+            gpu->vma_allocator, GPU_INDEX_ALLOCATOR_SIZE, GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_DST);
     Gpu_Linear_Allocator device_vertex_allocator =
         gpu_create_linear_allocator_device(
-            gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_DST);
+            gpu->vma_allocator, GPU_VERTEX_ALLOCATOR_SIZE, GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_DST);
+
+    Linear_Allocator draw_info_allocator = create_linear_allocator(DRAW_INFO_ALLOCATOR_SIZE);
 
     Renderer_Gpu_Allocator_Group gpu_allocator_group = {
-        .index_allocator  = &host_index_allocator,
-        .vertex_allocator = &host_vertex_allocator,
+        .draw_info_allocator = &draw_info_allocator,
+        .index_allocator     = &host_index_allocator,
+        .vertex_allocator    = &host_vertex_allocator,
     };
-    Renderer_Model_Resources resource_list =
-        renderer_setup_model_resources(&model, &gpu_allocator_group);
+    Renderer_Vertex_Attribute_Resources resource_list =
+        renderer_setup_vertex_attribute_resources_static_model(&model, &gpu_allocator_group);
     Renderer_Draws model_draw_infos =
         renderer_download_model_data(&model, &resource_list, "models/cube-static/");
 
@@ -298,10 +307,10 @@ int main() {
         device_vertex_allocator.buffer,
     };
     u64 vertex_buffer_offsets[] = {
-        model_draw_infos.draw_infos[0][0].vertex_buffer_offsets[0],
-        model_draw_infos.draw_infos[0][0].vertex_buffer_offsets[1],
-        model_draw_infos.draw_infos[0][0].vertex_buffer_offsets[2],
-        model_draw_infos.draw_infos[0][0].vertex_buffer_offsets[3],
+        model_draw_infos.meshes[0].primitive_draw_infos[0].vertex_buffer_offsets[0],
+        model_draw_infos.meshes[0].primitive_draw_infos[0].vertex_buffer_offsets[1],
+        model_draw_infos.meshes[0].primitive_draw_infos[0].vertex_buffer_offsets[2],
+        model_draw_infos.meshes[0].primitive_draw_infos[0].vertex_buffer_offsets[3],
     };
 
     VkViewport viewport = gpu_get_complete_screen_viewport();
@@ -325,7 +334,7 @@ int main() {
             vkCmdBindIndexBuffer(
                 *graphics_cmd,
                 device_index_allocator.buffer,
-                model_draw_infos.draw_infos[0][0].index_buffer_offset,
+                model_draw_infos.meshes[0].primitive_draw_infos[0].index_buffer_offset,
                 VK_INDEX_TYPE_UINT16);
             vkCmdBindVertexBuffers(
                 *graphics_cmd,
@@ -335,8 +344,8 @@ int main() {
                 vertex_buffer_offsets);
             vkCmdDrawIndexed(
                 *graphics_cmd,
-                model_draw_infos.draw_infos[0][0].draw_count,
-                12,
+                model_draw_infos.meshes[0].primitive_draw_infos[0].draw_count,
+                1,
                 0, 0, 0);
 
         vkCmdEndRenderPass(*graphics_cmd);
@@ -396,8 +405,8 @@ int main() {
     gpu_destroy_pipeline(gpu->vk_device, pipeline);
     destroy_vk_pipeline_layout(gpu->vk_device, pl_layout);
     renderer_destroy_shader_stages(gpu->vk_device, 2, pl_shader_stages);
-    renderer_free_model_data(&resource_list);
 
+    destroy_linear_allocator(&draw_info_allocator);
     gpu_destroy_descriptor_allocator(gpu->vk_device, &descriptor_allocator);
     gpu_destroy_descriptor_set_layouts(gpu->vk_device, set_info_count, descriptor_set_layouts);
 
