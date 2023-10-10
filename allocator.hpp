@@ -5,6 +5,11 @@
 #include "typedef.h"
 #include "assert.h"
 
+static inline size_t align(size_t size, size_t alignment) {
+  const size_t alignment_mask = alignment - 1;
+  return (size + alignment_mask) & ~alignment_mask;
+}
+
 struct Heap_Allocator {
     u64 capacity;
     u64 used;
@@ -16,8 +21,13 @@ struct Linear_Allocator {
     u64 used;
     u8 *memory;
 };
+                           /* ** Begin Global Allocators ** */
 
-Heap_Allocator *get_instance_heap();
+        /* Every function in this section applies to the two global allocators. */
+
+// Call for instances of the global allocators. 
+// These exist for the lifetime of the program.
+Heap_Allocator   *get_instance_heap();
 Linear_Allocator *get_instance_temp();
 
 void init_allocators();
@@ -61,9 +71,47 @@ static inline u64 get_mark_temp() {
     return get_instance_temp()->used;
 }
 
-static inline size_t align(size_t size, size_t alignment) {
-  const size_t alignment_mask = alignment - 1;
-  return (size + alignment_mask) & ~alignment_mask;
+                           /* ** End Global Allocators ** */
+
+
+/* Functions to for other allocator types, to be allocated from the global heap allocator. */
+
+inline static Linear_Allocator create_linear_allocator(u64 size) 
+{
+    size = align(size, 8);
+    Linear_Allocator allocator;
+    allocator.memory = memory_allocate_heap(size, 8);
+    allocator.capacity = size;
+    allocator.used = 0;
+    return allocator;
+}
+inline static void destroy_linear_allocator(Linear_Allocator *allocator) 
+{
+    allocator->capacity = 0;
+    allocator->used = 0;
+    memory_free_heap(allocator->memory);
+}
+
+inline static u8*  linear_allocator_allocate(
+    Linear_Allocator *allocator, u64 size, int alignment) 
+{
+    size = align(size, alignment);
+    allocator->used = align(allocator->used, alignment);
+    allocator->used += size;
+    return allocator->memory + (allocator->used - size);
+}
+inline static void linear_allocator_cut_tail(Linear_Allocator *allocator, u64 size) 
+{
+    allocator->used -= size;
+}
+inline static void linear_allocator_reset_to_mark(Linear_Allocator *allocator, u64 mark)
+{
+    allocator->used = mark;
+}
+inline static void linear_allocator_zero(Linear_Allocator *allocator)
+{
+    memset(allocator->memory, 0, allocator->used);
+    allocator->used = 0;
 }
 
 #endif
