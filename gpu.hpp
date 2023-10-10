@@ -95,6 +95,25 @@ VkSwapchainKHR create_vk_swapchain(Gpu *gpu, VkSurfaceKHR vk_surface); // This f
 void destroy_vk_swapchain(VkDevice vk_device, Window *window); // also destroys image views
 VkSwapchainKHR recreate_vk_swapchain(Gpu *gpu, Window *window);
 
+inline static VkViewport gpu_get_complete_screen_viewport() {
+    VkViewport viewport = {};
+    viewport.x = 0;
+    viewport.y = 0;
+    VkExtent2D *extent = &get_window_instance()->info.imageExtent;
+    viewport.width = extent->width;
+    viewport.height = extent->height;
+    viewport.minDepth = 0.0;
+    viewport.maxDepth = 1.0;
+    return viewport;
+}
+inline static VkRect2D gpu_get_complete_screen_area() {
+    VkRect2D rect = {
+        .offset = {0, 0},
+        .extent = get_window_instance()->info.imageExtent,
+    };
+    return rect;
+}
+
 // Command Buffers
 struct Gpu_Command_Allocator {
     VkCommandPool pool;

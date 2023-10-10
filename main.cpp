@@ -290,13 +290,6 @@ int main() {
     };
     VkDependencyInfo pl_dependency_graphics = gpu_get_pipeline_barrier(&pl_barrier_info_graphics);
 
-    VkViewport viewport = {};
-    viewport.x = 0;
-    viewport.y = 0;
-    viewport.width = window->info.imageExtent.width;
-    viewport.height = window->info.imageExtent.height;
-    viewport.minDepth = 0.0;
-    viewport.maxDepth = 1.0;
 
     VkBuffer vertex_buffers[] = {
         device_vertex_allocator.buffer,
@@ -311,15 +304,8 @@ int main() {
         model_draw_infos.draw_infos[0][0].vertex_buffer_offsets[3],
     };
 
-    VkRect2D render_area = {
-        .offset = {
-            0,0
-        },
-        .extent = {
-            window->info.imageExtent.width,
-            window->info.imageExtent.height,
-        }
-    };
+    VkViewport viewport = gpu_get_complete_screen_viewport();
+    VkRect2D render_area = gpu_get_complete_screen_area();
 
     Gpu_Renderpass_Begin_Info renderpass_begin_info = {
         &renderpass_framebuffer, &render_area,
