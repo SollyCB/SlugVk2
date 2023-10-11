@@ -115,7 +115,8 @@ int main() {
 
     // @Warn These layouts are created in a temp allocation with the expectation that after shaders
     // are loaded and all the corresponding pl_layouts and descriptor sets have been allocated, the
-    // layouts are destroyed...
+    // layouts are destroyed... @Note Perhaps they should be moved into a non global allocator
+    // in the same way as Renderer_Draw_Infos are allocated. (@Todo)
     VkDescriptorSetLayout *descriptor_set_layouts =
         create_vk_descriptor_set_layouts(gpu->vk_device, set_info_count, descriptor_set_info);
 
@@ -150,7 +151,7 @@ int main() {
     VkAttachmentDescription color_attachment_description =
         gpu_get_attachment_description(&attachment_description_info);
 
-    Gpu_Image depth_attachment =
+    Gpu_Attachment depth_attachment =
         gpu_create_depth_attachment(gpu->vma_allocator, window->info.imageExtent.width, window->info.imageExtent.height);
     VkImageView depth_attachment_view =
         gpu_create_depth_attachment_view(gpu->vk_device, depth_attachment.vk_image);
@@ -394,7 +395,7 @@ int main() {
     gpu_destroy_command_allocator(gpu->vk_device, &graphics_command_allocator);
     gpu_destroy_command_allocator(gpu->vk_device, &transfer_command_allocator);
 
-    gpu_destroy_image(gpu->vma_allocator, &depth_attachment);
+    gpu_destroy_attachment(gpu->vma_allocator, &depth_attachment);
     gpu_destroy_image_view(gpu->vk_device, depth_attachment_view);
     gpu_destroy_renderpass_framebuffer(gpu->vk_device, &renderpass_framebuffer);
 

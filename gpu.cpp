@@ -25,15 +25,12 @@ void init_gpu() {
     // keep struct data together (not pointing to random heap addresses)
     s_Gpu = (Gpu*)memory_allocate_heap(
             sizeof(Gpu) +
-            sizeof(GpuInfo) +
             (sizeof(VkQueue) * 3) +
-            (sizeof(u32) * 3),
-            8);
+            (sizeof(u32) * 3), 8);
 
     Gpu *gpu = get_gpu_instance();
     gpu->vk_queues = (VkQueue*)(gpu + 1);
     gpu->vk_queue_indices = (u32*)(gpu->vk_queues + 3);
-    gpu->info = (GpuInfo*)(gpu->vk_queue_indices + 3);
 
     Create_Vk_Instance_Info create_instance_info = {};
     gpu->vk_instance = create_vk_instance(&create_instance_info);
@@ -342,7 +339,7 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
 
     VkPhysicalDeviceProperties physical_device_properties;
     vkGetPhysicalDeviceProperties(gpu->vk_physical_device, &physical_device_properties);
-    gpu->info->limits = physical_device_properties.limits;
+    gpu->info.properties = physical_device_properties;
 
     return vk_device;
 } // func create_vk_device
@@ -2056,8 +2053,8 @@ Gpu_Buffer create_src_buffer(VmaAllocator vma_allocator, u64 size) {
     return gpu_buffer;
 }
 
-// `Images
-Gpu_Image gpu_create_depth_attachment(VmaAllocator vma_allocator, int width, int height) {
+// `Attachments
+Gpu_Attachment gpu_create_depth_attachment(VmaAllocator vma_allocator, int width, int height) {
     VkImageCreateInfo imgCreateInfo = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     imgCreateInfo.imageType     = VK_IMAGE_TYPE_2D;
     imgCreateInfo.extent.width  = width;
@@ -2079,14 +2076,12 @@ Gpu_Image gpu_create_depth_attachment(VmaAllocator vma_allocator, int width, int
     VkImage img;
     VmaAllocation alloc;
     vmaCreateImage(vma_allocator, &imgCreateInfo, &allocCreateInfo, &img, &alloc, nullptr);
-    Gpu_Image gpu_image = {.vk_image = img, .vma_allocation = alloc};
+    Gpu_Attachment gpu_image = {.vk_image = img, .vma_allocation = alloc};
     return gpu_image;
 }
-void gpu_destroy_image(VmaAllocator vma_allocator, Gpu_Image *image) {
+void gpu_destroy_attachment(VmaAllocator vma_allocator, Gpu_Attachment *image) {
     vmaDestroyImage(vma_allocator, image->vk_image, image->vma_allocation);
 }
-
-// `ImageView
 VkImageView gpu_create_depth_attachment_view(VkDevice vk_device, VkImage vk_image) {
     VkImageViewCreateInfo create_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
     create_info.image            = vk_image;
@@ -2109,12 +2104,78 @@ void gpu_destroy_image_view(VkDevice vk_device, VkImageView view) {
     vkDestroyImageView(vk_device, view, ALLOCATION_CALLBACKS);
 }
 
-// @Note could be inlined cos so small? who cares...
-void destroy_vma_buffer(VmaAllocator vma_allocator, Gpu_Buffer *gpu_buffer) {
-    vmaDestroyBuffer(vma_allocator, gpu_buffer->vk_buffer, gpu_buffer->vma_allocation);
+// `Textures
+
+/* @Unimplemented */
+
+// `Samplers
+Gpu_Sampler_Storage gpu_create_sampler_storage(int size)
+{
+    Gpu_Sampler_Storage storage;
+    storage.cap = size;
+    storage.stored = 0;
+    storage.samplers = (VkSampler*)memory_allocate_heap(sizeof(VkSampler) * size, 8);
+    return storage;
 }
-void destroy_vma_image(VmaAllocator vma_allocator, Gpu_Image *gpu_image) {
-    vmaDestroyImage(vma_allocator, gpu_image->vk_image, gpu_image->vma_allocation);
+void gpu_free_sampler_storage(Gpu_Sampler_Storage *storage)
+{
+    storage->cap = 0;
+    for(u32 i = 0; i < storage->stored; ++i)
+        vkDestroySampler(storage->device, storage->samplers[i], ALLOCATION_CALLBACKS);
+    memory_free_heap(storage->samplers);
+    storage->stored = 0;
+}
+VkSampler* gpu_create_samplers(Gpu_Sampler_Storage *storage, int count, Gpu_Sampler_Info *infos)
+{
+    ASSERT(storage->stored + count <= storage->cap, "Sampler Storage Overflow");
+    /* Storage like this will likely not be fully dynamic, but will have a system for
+       spilling over into somewhere, like just into the temp allocator...
+
+    if (storage->stored + count > storage->cap) {
+        VkSampler *tmp = storage->samplers;
+        // storage->cap *= 2 + count;
+        storage->samplers = (VkSampler*)memory_allocate_heap(sizeof(VkSampler) * storage->cap, 8);
+        memcpy(storage->samplers, tmp, sizeof(VkSampler) * storage->stored);
+        memory_free_heap(tmp);
+    }
+    */
+
+    VkSamplerCreateInfo create_info;
+    for(u32 i = 0; i < count; ++i) {
+        create_info = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+
+        switch(infos->filter_address_setting) {
+        case GPU_SAMPLER_SETTING_LINEAR_REPEAT:
+            create_info.magFilter = VK_FILTER_LINEAR;
+            create_info.minFilter = VK_FILTER_LINEAR;
+            create_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            create_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            create_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            break;
+        default:
+            ASSERT(false, "Invalid Sampler Setting");
+        } // filter address switch
+
+        switch(infos->mip_map_setting) {
+        case GPU_SAMPLER_SETTING_MIP_LINEAR_ZERO:
+            create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+            create_info.mipLodBias = 0.0f;
+            create_info.minLod = 0.0f;
+            create_info.maxLod = 0.0f;
+            break;
+        default:
+            break;
+        } // mip map switch
+
+        auto check =
+            vkCreateSampler(storage->device,
+                &create_info,
+                ALLOCATION_CALLBACKS,
+                &storage->samplers[storage->stored]);
+            storage->stored++;
+        DEBUG_OBJ_CREATION(vkCreateSampler, check);
+    }
+    return storage->samplers + (storage->stored - count);
 }
 
 #if DEBUG

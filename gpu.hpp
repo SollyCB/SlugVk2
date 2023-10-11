@@ -32,9 +32,11 @@
 
 
 struct GpuInfo {
-    VkPhysicalDeviceLimits limits;
+    VkPhysicalDeviceProperties properties;
 };
 struct Gpu {
+    GpuInfo info;
+
     VkInstance vk_instance;
     VmaAllocator vma_allocator;
 
@@ -42,8 +44,6 @@ struct Gpu {
     VkDevice vk_device;
     VkQueue *vk_queues; // 3 queues ordered graphics, presentation, transfer
     u32 *vk_queue_indices;
-
-    GpuInfo *info;
 };
 Gpu* get_gpu_instance();
 
@@ -900,16 +900,8 @@ inline static void* gpu_linear_allocator_get_ptr(VmaAllocator vma_allocator, Gpu
     return info.pMappedData;
 }
 
-enum Gpu_Resource_Setting {
-    GPU_RESOURCE_SETTING_HOST_LOCAL_VERTEX   = 0,
-    GPU_RESOURCE_SETTING_DEVICE_LOCAL_VERTEX = 1,
-};
-// @Unimplemented
-Gpu_Buffer gpu_create_buffer(VmaAllocator vma_allocator, Gpu_Resource_Setting setting, u64 size);
-Gpu_Buffer gpu_create_image(VmaAllocator vma_allocator, Gpu_Resource_Setting setting, u64 size);
-
-// Images
-struct Gpu_Image {
+// Attachments
+struct Gpu_Attachment {
     VkImage vk_image;
     VmaAllocation vma_allocation;
 };
@@ -918,14 +910,37 @@ enum Gpu_Image_Type {
     GPU_IMAGE_TYPE_DEPTH_ATTACHMENT,
     GPU_IMAGE_TYPE_TEXTURE,
 };
-Gpu_Image gpu_create_depth_attachment(VmaAllocator vma_allocator, int width, int height);
-// For textures
-Gpu_Image gpu_create_image(VmaAllocator vma_allocator, int width, int height, Gpu_Image_Type type);
-void gpu_destroy_image(VmaAllocator vma_allocator, Gpu_Image *image);
+Gpu_Attachment gpu_create_depth_attachment(VmaAllocator vma_allocator, int width, int height);
+void gpu_destroy_attachment(VmaAllocator vma_allocator, Gpu_Attachment *attachment);
+
+// Textures - @Todo Texture pool
+// struct Gpu_Texture {};
+// Gpu_Texture gpu_create_Texture(VmaAllocator vma_allocator, int width, int height, Gpu_Texture_Type type);
+// void gpu_destroy_Texture(VmaAllocator vma_allocator, Gpu_Texture *Texture);
 
 VkImageView gpu_create_depth_attachment_view(VkDevice vk_device, VkImage vk_image);
 void gpu_destroy_image_view(VkDevice vk_device, VkImageView view);
 
+// Samplers
+struct Gpu_Sampler_Storage {
+    int cap;
+    int stored;
+    VkSampler *samplers;
+    VkDevice device;
+};
+Gpu_Sampler_Storage gpu_create_sampler_storage(int size);
+void gpu_free_sampler_storage(Gpu_Sampler_Storage *storage);
+
+enum Gpu_Sampler_Setting {
+    GPU_SAMPLER_SETTING_LINEAR_REPEAT,
+    GPU_SAMPLER_SETTING_MIP_LINEAR_ZERO,
+};
+struct Gpu_Sampler_Info {
+    Gpu_Sampler_Setting filter_address_setting;
+    Gpu_Sampler_Setting mip_map_setting;
+    float anisotropy; // -1 == max anisotropy; 0 == off
+};
+VkSampler* gpu_create_samplers(Gpu_Sampler_Info *info);
 
 #if DEBUG
 static VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_messenger_callback(
