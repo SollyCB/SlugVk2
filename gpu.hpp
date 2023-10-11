@@ -30,6 +30,36 @@
         and then offset that... We will see. Getting rid of it just for the sake of being self written is huge.
 */
 
+struct Gpu_Linear_Allocator {
+    u64 offset;
+    u64 used;
+    u64 cap;
+    VkBuffer buffer;
+    VmaAllocation vma_allocation;
+    void *mapped_ptr;
+};
+struct Gpu_Buffer_Copy_Info {
+    VkSemaphore transfer_signal;
+    VkCommandBuffer transfer_cmd;
+    VkCommandBuffer graphics_cmd;
+
+    int buffer_count;
+    VkBuffer *buffers;
+    VkCopyBufferInfo2 *copy_infos;
+};
+typedef VkSubmitInfo2 (*Pfn_Device_Buffer_Upload)(Gpu_Buffer_Copy_Info*);
+
+struct Gpu_Bind_Index_Vertex_Buffers_Info {
+    VkIndexType index_type;
+    u32 vertex_buffer_count;
+    u32 vertex_buffer_start_index;
+
+    u64 index_buffer_offset;
+    u64 *vertex_buffer_offsets;
+
+    VkCommandBuffer cmd;
+};
+typedef void (*Pfn_Bind_Index_Vertex_Buffers)(Gpu_Bind_Index_Vertex_Buffers_Info*);
 
 struct GpuInfo {
     VkPhysicalDeviceProperties properties;
@@ -38,12 +68,27 @@ struct Gpu {
     GpuInfo info;
 
     VkInstance vk_instance;
-    VmaAllocator vma_allocator;
+
 
     VkPhysicalDevice vk_physical_device;
     VkDevice vk_device;
+
+    VmaAllocator vma_allocator;
+
+    Pfn_Device_Buffer_Upload device_buffer_upload_fn;
+
+    Gpu_Linear_Allocator uniform_allocator;
+
+    /*Gpu_Linear_Allocator texture_staging_allocator;
+      Gpu_Linear_Allocator texture_device_allocator;*/
+
     VkQueue *vk_queues; // 3 queues ordered graphics, presentation, transfer
     u32 *vk_queue_indices;
+
+    Gpu_Linear_Allocator *index_device_allocator;
+    Gpu_Linear_Allocator *vertex_device_allocator;
+    Gpu_Linear_Allocator *index_staging_allocator;
+    Gpu_Linear_Allocator *vertex_staging_allocator;
 };
 Gpu* get_gpu_instance();
 
@@ -74,6 +119,56 @@ void destroy_vk_queue(Gpu *gpu);
 
 // Allocator
 VmaAllocator create_vma_allocator(Gpu *gpu);
+void gpu_init_allocators(Gpu *gpu);
+
+// Buffer Allocator functions
+/* Ugh, linear compilation models, this is defined above Gpu
+struct Gpu_Linear_Allocator {
+    u64 offset;
+    u64 used;
+    u64 cap;
+    VkBuffer buffer;
+    VmaAllocation vma_allocation;
+    void *mapped_ptr;
+};*/
+enum Gpu_Allocator_Type {
+    GPU_ALLOCATOR_TYPE_INDEX  = VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+                                           VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+    GPU_ALLOCATOR_TYPE_VERTEX = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+                                           VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+};
+// Memory is close to the host
+Gpu_Linear_Allocator gpu_create_linear_allocator_host(
+    VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type);
+// Memory is close to the device
+Gpu_Linear_Allocator gpu_create_linear_allocator_device(
+    VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type);
+// Shutdown an allocator
+void gpu_destroy_linear_allocator(
+    VmaAllocator vma_allocator, Gpu_Linear_Allocator *linear_allocator);
+// Return mapped ptr + offset into allocation; returns actual offset in 'offset'
+void* gpu_make_linear_allocation(Gpu_Linear_Allocator *allocator, u64 size, u64 *offset);
+// Reduce used by size
+void gpu_cut_tail_linear_allocator(Gpu_Linear_Allocator *allocator, u64 size);
+// Set used to zero
+void gpu_reset_linear_allocator(Gpu_Linear_Allocator *allocator);
+// Make allocation in 'to' allocator; Return copy information
+VkCopyBufferInfo2 gpu_linear_allocator_setup_copy(
+    Gpu_Linear_Allocator *to_allocator, 
+    Gpu_Linear_Allocator *from_allocator, 
+    u64 src_offset, u64 size);
+
+inline static VkSubmitInfo2 gpu_cmd_begin_transfer_graphics(Gpu_Buffer_Copy_Info *info) {
+    return get_gpu_instance()->device_buffer_upload_fn(info);
+}
+
+// Get mapped pointer to beginning of gpu linear allocator
+inline static void* gpu_linear_allocator_get_ptr(VmaAllocator vma_allocator, Gpu_Linear_Allocator *linear_allocator) {
+    VmaAllocationInfo info;
+    vmaGetAllocationInfo(vma_allocator, linear_allocator->vma_allocation, &info);
+    return info.pMappedData;
+}
+
 
 // Surface and Swapchain
 struct Window {
@@ -753,7 +848,8 @@ static inline void cmd_vk_set_stencil_op(
 {
     vkCmdSetStencilOp(vk_command_buffer, face_mask, fail_op, pass_op, depth_fail_op, compare_op);
 }
-static inline void cmd_vk_depth_bounds(VkCommandBuffer vk_command_buffer, float min, float max) {
+static inline void cmd_vk_depth_bounds(VkCommandBuffer vk_command_buffer, float min, float max)
+{
     vkCmdSetDepthBounds(vk_command_buffer, min, max);
 }
 
@@ -815,91 +911,6 @@ static inline void cmd_vk_bind_vertex_buffers2(VkCommandBuffer vk_command_buffer
             info->strides);
 }
 
-// Resources
-struct Gpu_Buffer {
-    VkBuffer vk_buffer;
-    VmaAllocation vma_allocation;
-};
-
-static inline void* get_vma_mapped_ptr(VmaAllocator vma_allocator, Gpu_Buffer *gpu_buffer) {
-    VmaAllocationInfo info;
-    vmaGetAllocationInfo(vma_allocator, gpu_buffer->vma_allocation, &info);
-    return info.pMappedData;
-}
-void destroy_vma_buffer(VmaAllocator vma_allocator, Gpu_Buffer *gpu_buffer);
-
-// Buffer Allocators - @Todo Different code paths for unified vs discrete memory
-struct Gpu_Linear_Allocator {
-    u64 offset;
-    u64 used;
-    u64 cap;
-    VkBuffer buffer;
-    VmaAllocation vma_allocation;
-    void *mapped_ptr;
-};
-enum Gpu_Allocator_Type {
-    GPU_ALLOCATOR_TYPE_BUFFER_GENERAL_SRC =
-                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-                VK_BUFFER_USAGE_INDEX_BUFFER_BIT  |
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-    GPU_ALLOCATOR_TYPE_BUFFER_GENERAL_DST =
-                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-                VK_BUFFER_USAGE_INDEX_BUFFER_BIT  |
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-
-    GPU_ALLOCATOR_TYPE_VERTEX       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_INDEX        = VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_UNIFORM      = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_STORAGE      = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_TRANSFER_SRC = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-    GPU_ALLOCATOR_TYPE_TRANSFER_DST = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-
-    GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_SRC =
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_DST =
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-
-    GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_DST =
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_SRC =
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-
-    GPU_ALLOCATOR_TYPE_UNIFORM_TRANSFER_DST =
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_UNIFORM_TRANSFER_SRC =
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-
-    GPU_ALLOCATOR_TYPE_STORAGE_TRANSFER_DST =
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-    GPU_ALLOCATOR_TYPE_STORAGE_TRANSFER_SRC =
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-};
-// Memory is close to the host
-Gpu_Linear_Allocator gpu_create_linear_allocator_host(
-    VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type);
-// Memory is close to the device
-Gpu_Linear_Allocator gpu_create_linear_allocator_device(
-    VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type);
-// Shutdown an allocator
-void gpu_destroy_linear_allocator(
-    VmaAllocator vma_allocator, Gpu_Linear_Allocator *linear_allocator);
-// Return mapped ptr + offset into allocation; returns actual offset in 'offset'
-void* gpu_make_linear_allocation(Gpu_Linear_Allocator *allocator, u64 size, u64 *offset);
-// Reduce used by size
-void gpu_cut_tail_linear_allocator(Gpu_Linear_Allocator *allocator, u64 size);
-// Set used to zero
-void gpu_reset_linear_allocator(Gpu_Linear_Allocator *allocator);
-// Make allocation in 'to' allocator; Return copy information
-VkBufferCopy gpu_linear_allocator_setup_copy(
-    Gpu_Linear_Allocator *to_allocator, u64 offset_into_src_buffer, u64 size);
-
-// Get mapped pointer to beginning of gpu linear allocator
-inline static void* gpu_linear_allocator_get_ptr(VmaAllocator vma_allocator, Gpu_Linear_Allocator *linear_allocator) {
-    VmaAllocationInfo info;
-    vmaGetAllocationInfo(vma_allocator, linear_allocator->vma_allocation, &info);
-    return info.pMappedData;
-}
-
 // Attachments
 struct Gpu_Attachment {
     VkImage vk_image;
@@ -913,13 +924,15 @@ enum Gpu_Image_Type {
 Gpu_Attachment gpu_create_depth_attachment(VmaAllocator vma_allocator, int width, int height);
 void gpu_destroy_attachment(VmaAllocator vma_allocator, Gpu_Attachment *attachment);
 
-// Textures - @Todo Texture pool
-// struct Gpu_Texture {};
-// Gpu_Texture gpu_create_Texture(VmaAllocator vma_allocator, int width, int height, Gpu_Texture_Type type);
-// void gpu_destroy_Texture(VmaAllocator vma_allocator, Gpu_Texture *Texture);
-
 VkImageView gpu_create_depth_attachment_view(VkDevice vk_device, VkImage vk_image);
 void gpu_destroy_image_view(VkDevice vk_device, VkImageView view);
+
+// Textures
+enum Gpu_Texture_Type {};
+struct Gpu_Texture {};
+Gpu_Texture gpu_create_Texture(VmaAllocator vma_allocator, int width, int height, Gpu_Texture_Type type);
+void gpu_destroy_Texture(VmaAllocator vma_allocator, Gpu_Texture *Texture);
+
 
 // Samplers
 struct Gpu_Sampler_Storage {

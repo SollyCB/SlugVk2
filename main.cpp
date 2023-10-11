@@ -29,7 +29,6 @@ int main() {
     run_tests();
 #endif
 
-    #if 1
     /* StartUp Code */
     init_glfw();
     Glfw *glfw = get_glfw_instance();
@@ -37,6 +36,7 @@ int main() {
     init_gpu();
     Gpu *gpu = get_gpu_instance();
 
+    #if 1
     init_window(gpu, glfw);
     Window *window = get_window_instance();
 
@@ -44,26 +44,18 @@ int main() {
     /* Begin Code That Actually Does Stuff */
     Gltf model = parse_gltf("models/cube-static/Cube.gltf");
 
-    Gpu_Linear_Allocator host_index_allocator =
-        gpu_create_linear_allocator_host(
-            gpu->vma_allocator, GPU_INDEX_ALLOCATOR_SIZE, GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_SRC);
-    Gpu_Linear_Allocator host_vertex_allocator =
-        gpu_create_linear_allocator_host(
-            gpu->vma_allocator, GPU_VERTEX_ALLOCATOR_SIZE, GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_SRC);
+    Gpu_Linear_Allocator *device_index_allocator  = gpu->index_device_allocator;
+    Gpu_Linear_Allocator *device_vertex_allocator = gpu->vertex_device_allocator;
 
-    Gpu_Linear_Allocator device_index_allocator =
-        gpu_create_linear_allocator_device(
-            gpu->vma_allocator, GPU_INDEX_ALLOCATOR_SIZE, GPU_ALLOCATOR_TYPE_INDEX_TRANSFER_DST);
-    Gpu_Linear_Allocator device_vertex_allocator =
-        gpu_create_linear_allocator_device(
-            gpu->vma_allocator, GPU_VERTEX_ALLOCATOR_SIZE, GPU_ALLOCATOR_TYPE_VERTEX_TRANSFER_DST);
+    Gpu_Linear_Allocator *host_index_allocator  = gpu->index_staging_allocator;
+    Gpu_Linear_Allocator *host_vertex_allocator = gpu->vertex_staging_allocator;
 
     Linear_Allocator draw_info_allocator = create_linear_allocator(DRAW_INFO_ALLOCATOR_SIZE);
 
     Renderer_Gpu_Allocator_Group gpu_allocator_group = {
         .draw_info_allocator = &draw_info_allocator,
-        .index_allocator     = &host_index_allocator,
-        .vertex_allocator    = &host_vertex_allocator,
+        .index_allocator     = host_index_allocator,
+        .vertex_allocator    = host_vertex_allocator,
     };
     Renderer_Vertex_Attribute_Resources resource_list =
         renderer_setup_vertex_attribute_resources_static_model(&model, &gpu_allocator_group);
@@ -191,6 +183,7 @@ int main() {
     pl_info.fragment_output_state = &pl_stage_4;
     VkPipeline pipeline = renderer_create_pipeline(gpu->vk_device, &pl_info);
 
+
     Gpu_Command_Allocator graphics_command_allocator =
         gpu_create_command_allocator(gpu->vk_device, gpu->vk_queue_indices[0], false, 4);
     Gpu_Command_Allocator transfer_command_allocator =
@@ -201,111 +194,38 @@ int main() {
     VkCommandBuffer *transfer_cmd =
         gpu_allocate_command_buffers(gpu->vk_device, &transfer_command_allocator, 1, false);
 
-    VkBufferCopy index_buffer_copy =
+    VkCopyBufferInfo2 buffer_copy_infos[] = {
         gpu_linear_allocator_setup_copy(
-            &device_index_allocator,
+            device_index_allocator,
+            host_index_allocator,
             resource_list.index_allocation_start,
-            resource_list.index_allocation_end);
-    VkBufferCopy vertex_buffer_copy =
+            resource_list.index_allocation_end),
         gpu_linear_allocator_setup_copy(
-            &device_vertex_allocator,
+            device_vertex_allocator,
+            host_vertex_allocator,
             resource_list.vertex_allocation_start,
-            resource_list.vertex_allocation_end);
-
-    int transfer_queue_index = gpu->vk_queue_indices[2];
-    int graphics_queue_index = gpu->vk_queue_indices[0];
-    Gpu_Buffer_Barrier_Info buffer_barrier_infos[] = {
-        {
-            .setting   = GPU_MEMORY_BARRIER_SETTING_TRANSFER_SRC,
-            .src_queue = transfer_queue_index,
-            .dst_queue = graphics_queue_index,
-            .buffer    = device_index_allocator.buffer,
-            .offset    = resource_list.index_allocation_start + device_index_allocator.offset,
-            .size      = resource_list.index_allocation_end,
-        },
-        {
-            .setting   = GPU_MEMORY_BARRIER_SETTING_TRANSFER_SRC,
-            .src_queue = transfer_queue_index,
-            .dst_queue = graphics_queue_index,
-            .buffer    = device_vertex_allocator.buffer,
-            .offset    = resource_list.index_allocation_start + device_index_allocator.offset,
-            .size      = resource_list.index_allocation_end,
-        },
-        {
-            .setting   = GPU_MEMORY_BARRIER_SETTING_INDEX_BUFFER_TRANSFER_DST,
-            .src_queue = transfer_queue_index,
-            .dst_queue = graphics_queue_index,
-            .buffer    = device_index_allocator.buffer,
-            .offset    = resource_list.index_allocation_start + device_index_allocator.offset,
-            .size      = resource_list.index_allocation_end,
-        },
-        {
-            .setting   = GPU_MEMORY_BARRIER_SETTING_VERTEX_BUFFER_TRANSFER_DST,
-            .src_queue = transfer_queue_index,
-            .dst_queue = graphics_queue_index,
-            .buffer    = device_vertex_allocator.buffer,
-            .offset    = resource_list.index_allocation_start + device_index_allocator.offset,
-            .size      = resource_list.index_allocation_end,
-        },
+            resource_list.vertex_allocation_end),
     };
-
-    VkBufferMemoryBarrier2 buffer_barriers[] = {
-        gpu_get_buffer_barrier(&buffer_barrier_infos[0]),
-        gpu_get_buffer_barrier(&buffer_barrier_infos[1]),
-        gpu_get_buffer_barrier(&buffer_barrier_infos[2]),
-        gpu_get_buffer_barrier(&buffer_barrier_infos[3]),
-    };
-
-    Gpu_Pipeline_Barrier_Info pl_barrier_info_transfer = {
-        .buffer_count = 2,
-        .buffer_barriers = buffer_barriers,
-    };
-    VkDependencyInfo pl_dependency_transfer = gpu_get_pipeline_barrier(&pl_barrier_info_transfer);
-
-    gpu_begin_primary_command_buffer(*transfer_cmd, false);
-
-        vkCmdCopyBuffer(*transfer_cmd,
-            host_index_allocator.buffer,
-            device_index_allocator.buffer,
-            1, &index_buffer_copy);
-        vkCmdCopyBuffer(*transfer_cmd,
-            host_vertex_allocator.buffer,
-            device_vertex_allocator.buffer,
-            1, &vertex_buffer_copy);
-
-        vkCmdPipelineBarrier2(*transfer_cmd, &pl_dependency_transfer);
-
-    gpu_end_command_buffer(*transfer_cmd);
 
     Gpu_Binary_Semaphore_Pool semaphore_pool =
         gpu_create_binary_semaphore_pool(gpu->vk_device, 4);
     VkSemaphore *transfer_semaphore = gpu_get_binary_semaphores(&semaphore_pool, 1);
 
-    VkSemaphoreSubmitInfo transfer_semaphore_submit =
-        gpu_define_semaphore_submission(*transfer_semaphore, GPU_PIPELINE_STAGE_TRANSFER);
+    VkBuffer buffers[] = {device_index_allocator->buffer, device_vertex_allocator->buffer};
 
-    Gpu_Queue_Submit_Info transfer_submit_info = {
-        .signal_count    = 1,
-        .cmd_count       = 1,
-        .signal_infos    = &transfer_semaphore_submit,
-        .command_buffers = transfer_cmd,
-    };
-    VkSubmitInfo2 transfer_queue_submit =
-        gpu_get_submit_info(&transfer_submit_info);
-    vkQueueSubmit2(gpu->vk_queues[2], 1, &transfer_queue_submit, VK_NULL_HANDLE);
-
-    Gpu_Pipeline_Barrier_Info pl_barrier_info_graphics = {
-        .buffer_count = 2,
-        .buffer_barriers = &buffer_barriers[2],
-    };
-    VkDependencyInfo pl_dependency_graphics = gpu_get_pipeline_barrier(&pl_barrier_info_graphics);
-
+    Gpu_Buffer_Copy_Info buffer_copy = {};
+    buffer_copy.transfer_signal = *transfer_semaphore;
+    buffer_copy.transfer_cmd = *transfer_cmd;
+    buffer_copy.graphics_cmd = *graphics_cmd;
+    buffer_copy.buffer_count = 2;
+    buffer_copy.buffers = buffers;
+    buffer_copy.copy_infos = buffer_copy_infos;
 
     VkBuffer vertex_buffers[] = {
-        device_vertex_allocator.buffer,
-        device_vertex_allocator.buffer,
-        device_vertex_allocator.buffer,
-        device_vertex_allocator.buffer,
+        device_vertex_allocator->buffer,
+        device_vertex_allocator->buffer,
+        device_vertex_allocator->buffer,
+        device_vertex_allocator->buffer,
     };
     u64 vertex_buffer_offsets[] = {
         model_draw_infos.meshes[0].primitive_draw_infos[0].vertex_buffer_offsets[0],
@@ -321,12 +241,10 @@ int main() {
         &renderpass_framebuffer, &render_area,
     };
     
-    gpu_begin_primary_command_buffer(*graphics_cmd, false);
-
+    VkSubmitInfo2 graphics_submit_info = gpu_cmd_begin_transfer_graphics(&buffer_copy);
+    ASSERT(graphics_submit_info.waitSemaphoreInfoCount == 1,"");
         vkCmdSetViewportWithCount(*graphics_cmd, 1, &viewport);
         vkCmdSetScissorWithCount(*graphics_cmd, 1, renderpass_begin_info.render_area);
-
-        vkCmdPipelineBarrier2(*graphics_cmd, &pl_dependency_graphics);
 
         gpu_cmd_primary_begin_renderpass(*graphics_cmd, &renderpass_begin_info);
 
@@ -334,7 +252,7 @@ int main() {
 
             vkCmdBindIndexBuffer(
                 *graphics_cmd,
-                device_index_allocator.buffer,
+                device_index_allocator->buffer,
                 model_draw_infos.meshes[0].primitive_draw_infos[0].index_buffer_offset,
                 VK_INDEX_TYPE_UINT16);
             vkCmdBindVertexBuffers(
@@ -356,22 +274,13 @@ int main() {
 
     VkSemaphore *graphics_semaphore = gpu_get_binary_semaphores(&semaphore_pool, 1);
 
-    VkSemaphoreSubmitInfo graphics_semaphore_wait =
-        gpu_define_semaphore_submission(*transfer_semaphore, GPU_PIPELINE_STAGE_VERTEX_INPUT);
-    VkSemaphoreSubmitInfo graphics_semaphore_submit =
+    VkSemaphoreSubmitInfo graphics_signal =
         gpu_define_semaphore_submission(*graphics_semaphore, GPU_PIPELINE_STAGE_ALL_GRAPHICS);
 
-    Gpu_Queue_Submit_Info graphics_submit_info = {
-        .wait_count      = 1,
-        .signal_count    = 1,
-        .cmd_count       = 1,
-        .wait_infos      = &graphics_semaphore_wait,
-        .signal_infos    = &graphics_semaphore_submit,
-        .command_buffers = graphics_cmd,
-    };
-    VkSubmitInfo2 graphics_queue_submit =
-        gpu_get_submit_info(&graphics_submit_info);
-    vkQueueSubmit2(gpu->vk_queues[0], 1, &graphics_queue_submit, *fence);
+    graphics_submit_info.signalSemaphoreInfoCount = 1;
+    graphics_submit_info.pSignalSemaphoreInfos = &graphics_signal;
+
+    vkQueueSubmit2(gpu->vk_queues[0], 1, &graphics_submit_info, *fence);
 
     VkPresentInfoKHR present_info = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
     present_info.waitSemaphoreCount = 1;
@@ -410,11 +319,6 @@ int main() {
     destroy_linear_allocator(&draw_info_allocator);
     gpu_destroy_descriptor_allocator(gpu->vk_device, &descriptor_allocator);
     gpu_destroy_descriptor_set_layouts(gpu->vk_device, set_info_count, descriptor_set_layouts);
-
-    gpu_destroy_linear_allocator(gpu->vma_allocator, &host_index_allocator);
-    gpu_destroy_linear_allocator(gpu->vma_allocator, &host_vertex_allocator);
-    gpu_destroy_linear_allocator(gpu->vma_allocator, &device_index_allocator);
-    gpu_destroy_linear_allocator(gpu->vma_allocator, &device_vertex_allocator);
 
     kill_window(gpu, window);
     kill_gpu(gpu);

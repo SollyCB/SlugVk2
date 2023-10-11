@@ -18,7 +18,7 @@
     Windows: _Interlocked.. <intrin.h>
     Linux: __sync_..
 
-6. Descriptor Set Alloction ; duplicate descriptor sets.
+6. Descriptor Set Allocation ; duplicate descriptor sets.
     Current system reads spirv for a group of shaders, and creates + allocates all of these
     decriptors. Improvement: before allocating and creating any descriptorsets, note duplicate
     sets and set set layouts, between shader groupings and avoid allocating the duplicates. 

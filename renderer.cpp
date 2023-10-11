@@ -2,8 +2,6 @@
 #include "gpu.hpp"
 #include "file.hpp"
 
-#include <immintrin.h> // for prefetching inconsistent strides (gltf)
-
 int renderer_get_byte_stride(Gltf_Accessor_Format);
 
 VkPipelineShaderStageCreateInfo* renderer_create_shader_stages(VkDevice device, int count, Renderer_Create_Shader_Stage_Info *infos) {
