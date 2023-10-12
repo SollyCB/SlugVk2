@@ -10,7 +10,7 @@ VkDebugUtilsMessengerEXT* get_vk_debug_messenger_instance() { return &s_vk_debug
 #endif
 
 //
-// @PipelineAllocation
+// @PipelineAllocation <- old note
 // Best idea really is to calculate how big all the unchanging state settings are upfront, then make one
 // allocation at load time large enough to hold everything, and just allocate everything into that.
 // Just need to find a good way to count all this size...
@@ -21,7 +21,8 @@ Gpu* get_gpu_instance() { return s_Gpu; }
 
 static VkFormat COLOR_ATTACHMENT_FORMAT;
 
-void init_gpu() {
+void init_gpu()
+{
     // keep struct data together (not pointing to random heap addresses)
     s_Gpu = (Gpu*)memory_allocate_heap(
             (sizeof(Gpu)                  * 1) +
@@ -545,14 +546,17 @@ void gpu_init_allocators(Gpu *gpu)
                 device_coherent = true;
     }
 
+    // @Note remember to consistently check and test with this if on and off
+    // (remove/add the '!')
+    //  v
     if (!device_coherent) {
         gpu->device_buffer_upload_fn = &gpu_device_buffer_upload_uma;
 
         *gpu->index_device_allocator  =
-            gpu_create_linear_allocator_host(
+            gpu_create_vertex_index_linear_allocator_host(
                     gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_INDEX);
         *gpu->vertex_device_allocator =
-            gpu_create_linear_allocator_host(
+            gpu_create_vertex_index_linear_allocator_host(
                     gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_VERTEX);
 
         gpu->index_staging_allocator  = gpu->index_device_allocator;
@@ -565,17 +569,17 @@ void gpu_init_allocators(Gpu *gpu)
             gpu->device_buffer_upload_fn = &gpu_device_buffer_upload_non_uma_discrete_transfer;
 
         *gpu->index_device_allocator =
-            gpu_create_linear_allocator_device(
+            gpu_create_vertex_index_linear_allocator_device(
                     gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_INDEX);
         *gpu->vertex_device_allocator =
-            gpu_create_linear_allocator_device(
+            gpu_create_vertex_index_linear_allocator_device(
                     gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_VERTEX);
 
         *gpu->index_staging_allocator =
-            gpu_create_linear_allocator_host(
+            gpu_create_vertex_index_linear_allocator_host(
                     gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_INDEX);
         *gpu->vertex_staging_allocator =
-            gpu_create_linear_allocator_host(
+            gpu_create_vertex_index_linear_allocator_host(
                     gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_VERTEX);
     }
 }
@@ -741,6 +745,9 @@ VkSwapchainKHR create_vk_swapchain(Gpu *gpu, VkSurfaceKHR vk_surface) {
     VkImageViewCreateInfo view_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
     view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
     view_info.format   = swapchain_info.imageFormat;
+    // @Todo Properly choose any gamma corrected format. Currently I just choose the very first one.
+    // Luckily this is B8G8R8A8_SRGB
+    // println("Swapchain Image Format: %u", view_info.format);
 
     view_info.components = {
         VK_COMPONENT_SWIZZLE_IDENTITY,
@@ -2066,12 +2073,12 @@ VkSubpassDependency create_vk_subpass_dependency(Create_Vk_Subpass_Dependency_In
 
 VkRenderPass create_vk_renderpass(VkDevice vk_device, Create_Vk_Renderpass_Info *info) {
     VkRenderPassCreateInfo create_info = {VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
-    create_info.attachmentCount = info->attachment_count;
-    create_info.pAttachments = info->attachments;
-    create_info.subpassCount = info->subpass_count;
-    create_info.pSubpasses = info->subpasses;
-    create_info.dependencyCount = info->dependency_count;
-    create_info.pDependencies = info->dependencies;
+    create_info.attachmentCount        = info->attachment_count;
+    create_info.pAttachments           = info->attachments;
+    create_info.subpassCount           = info->subpass_count;
+    create_info.pSubpasses             = info->subpasses;
+    create_info.dependencyCount        = info->dependency_count;
+    create_info.pDependencies          = info->dependencies;
     VkRenderPass renderpass;
     auto check = vkCreateRenderPass(vk_device, &create_info, ALLOCATION_CALLBACKS, &renderpass);
     DEBUG_OBJ_CREATION(vkCreateRenderPass, check);
@@ -2098,53 +2105,40 @@ void gpu_destroy_framebuffer(VkDevice vk_device, VkFramebuffer framebuffer) {
     vkDestroyFramebuffer(vk_device, framebuffer, ALLOCATION_CALLBACKS);
 }
 
-// `Drawing and `Rendering
-// @Note the names on these sorts of functions might be misleading, as create implies the need to destroy...
-VkRenderingAttachmentInfo create_vk_rendering_attachment_info(Create_Vk_Rendering_Attachment_Info_Info *info) {
-    VkRenderingAttachmentInfo attachment_info = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
-    attachment_info.imageView   = info->image_view;
-    attachment_info.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-    attachment_info.loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachment_info.storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
+/* `Resources */
 
-    attachment_info.clearValue.color.float32[0] = info->clear_color[0];
-    attachment_info.clearValue.color.float32[1] = info->clear_color[1];
-    attachment_info.clearValue.color.float32[2] = info->clear_color[2];
-    attachment_info.clearValue.color.float32[3] = info->clear_color[3];
+// `GpuLinearAllocator
+Gpu_Linear_Allocator gpu_create_texture_linear_allocator_host(
+    VmaAllocator vma_allocator, u64 size)
+{
+    VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    size = align(size, 8);
+    buffer_create_info.size  = size;
+    buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
-    return attachment_info;
+    VmaAllocationCreateInfo allocation_create_info = {};
+    allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+    allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                                   VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    Gpu_Linear_Allocator gpu_linear_allocator = {};
+    VmaAllocationInfo allocation_info = {};
+    auto check = vmaCreateBuffer(
+                    vma_allocator,
+                    &buffer_create_info,
+                    &allocation_create_info,
+                    &gpu_linear_allocator.buffer,
+                    &gpu_linear_allocator.vma_allocation,
+                    &allocation_info);
+
+    DEBUG_OBJ_CREATION(vmaCreateBuffer, check);
+
+    gpu_linear_allocator.cap = size;
+    gpu_linear_allocator.mapped_ptr = allocation_info.pMappedData;
+    gpu_linear_allocator.offset = allocation_info.offset;
+    return gpu_linear_allocator;
 }
-VkRenderingInfo create_vk_rendering_info(Create_Vk_Rendering_Info_Info *info) {
-    VkRenderingInfo rendering_info = {VK_STRUCTURE_TYPE_RENDERING_INFO};
-    rendering_info.renderArea           = info->render_area;
-    rendering_info.colorAttachmentCount = info->color_attachment_count;
-    rendering_info.pColorAttachments    = info->color_attachment_infos;
-    rendering_info.layerCount = 1;
-
-    return rendering_info;
-}
-
-void set_default_draw_state(VkCommandBuffer vk_command_buffer) {
-    cmd_vk_set_depth_test_disabled(vk_command_buffer);
-    cmd_vk_set_depth_write_disabled(vk_command_buffer);
-    cmd_vk_set_stencil_test_disabled(vk_command_buffer);
-    cmd_vk_set_cull_mode_none(vk_command_buffer);
-    cmd_vk_set_front_face_counter_clockwise(vk_command_buffer);
-    cmd_vk_set_topology_triangle_list(vk_command_buffer);
-    cmd_vk_set_depth_compare_op_never(vk_command_buffer);
-    cmd_vk_set_depth_bounds_test_disabled(vk_command_buffer);
-    cmd_vk_set_stencil_op(vk_command_buffer);
-    cmd_vk_set_rasterizer_discard_disabled(vk_command_buffer);
-    cmd_vk_set_depth_bias_disabled(vk_command_buffer);
-    cmd_vk_set_viewport(vk_command_buffer);
-    cmd_vk_set_scissor(vk_command_buffer);
-    cmd_vk_set_primitive_restart_disabled(vk_command_buffer);
-}
-
-// `Resources
-
-// `GpuLinearAllocator - Buffer optimisation
-Gpu_Linear_Allocator gpu_create_linear_allocator_host(
+Gpu_Linear_Allocator gpu_create_vertex_index_linear_allocator_host(
     VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type) {
     VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     size = align(size, 8);
@@ -2157,28 +2151,26 @@ Gpu_Linear_Allocator gpu_create_linear_allocator_host(
 
     // Determine if we will be doing transfer cmds
     Gpu *gpu = get_gpu_instance();
-    if (gpu->device_buffer_upload_fn == &gpu_device_buffer_upload_uma &&
-        (VkBufferUsageFlags)usage_type & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) 
-    {
-        buffer_create_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-        allocation_create_info.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    if (gpu->device_buffer_upload_fn == &gpu_device_buffer_upload_uma) {
 
-    } else if (gpu->device_buffer_upload_fn == &gpu_device_buffer_upload_uma &&
-        (VkBufferUsageFlags)usage_type & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) 
-    {
-        buffer_create_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-        allocation_create_info.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        if ((VkBufferUsageFlags)usage_type & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) {
 
-    } else if (
-    (gpu->device_buffer_upload_fn == &gpu_device_buffer_upload_non_uma_unified_transfer   ||
-     gpu->device_buffer_upload_fn == &gpu_device_buffer_upload_non_uma_discrete_transfer) &&
-     (VkBufferUsageFlags)usage_type & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | 
-                                      VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
-    {
-        buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+            buffer_create_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+            allocation_create_info.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
-    } else {
-        ASSERT(false, "Invalid Linear Allocator Setup");
+        } else if ((VkBufferUsageFlags)usage_type & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) {
+            buffer_create_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+            allocation_create_info.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        }
+
+    } else if (gpu->device_buffer_upload_fn == &gpu_device_buffer_upload_non_uma_unified_transfer ||
+               gpu->device_buffer_upload_fn == &gpu_device_buffer_upload_non_uma_discrete_transfer) {
+
+        if ((VkBufferUsageFlags)usage_type & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+                                             VK_BUFFER_USAGE_INDEX_BUFFER_BIT) 
+        {
+            buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        }
     }
 
     Gpu_Linear_Allocator gpu_linear_allocator = {};
@@ -2198,7 +2190,7 @@ Gpu_Linear_Allocator gpu_create_linear_allocator_host(
     gpu_linear_allocator.offset = allocation_info.offset;
     return gpu_linear_allocator;
 }
-Gpu_Linear_Allocator gpu_create_linear_allocator_device(
+Gpu_Linear_Allocator gpu_create_vertex_index_linear_allocator_device(
     VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type) {
     VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     size = align(size, 8);
@@ -2289,10 +2281,12 @@ Gpu_Attachment gpu_create_depth_attachment(VmaAllocator vma_allocator, int width
     Gpu_Attachment gpu_image = {.vk_image = img, .vma_allocation = alloc};
     return gpu_image;
 }
-void gpu_destroy_attachment(VmaAllocator vma_allocator, Gpu_Attachment *image) {
+void gpu_destroy_attachment(VmaAllocator vma_allocator, Gpu_Attachment *image)
+{
     vmaDestroyImage(vma_allocator, image->vk_image, image->vma_allocation);
 }
-VkImageView gpu_create_depth_attachment_view(VkDevice vk_device, VkImage vk_image) {
+VkImageView gpu_create_depth_attachment_view(VkDevice vk_device, VkImage vk_image)
+{
     VkImageViewCreateInfo create_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
     create_info.image            = vk_image;
     create_info.viewType         = VK_IMAGE_VIEW_TYPE_2D;

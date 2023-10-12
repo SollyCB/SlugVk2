@@ -30,23 +30,9 @@
         and then offset that... We will see. Getting rid of it just for the sake of being self written is huge.
 */
 
-struct Gpu_Linear_Allocator {
-    u64 offset;
-    u64 used;
-    u64 cap;
-    VkBuffer buffer;
-    VmaAllocation vma_allocation;
-    void *mapped_ptr;
-};
-struct Gpu_Buffer_Copy_Info {
-    VkSemaphore transfer_signal;
-    VkCommandBuffer transfer_cmd;
-    VkCommandBuffer graphics_cmd;
-
-    int buffer_count;
-    VkBuffer *buffers;
-    VkCopyBufferInfo2 *copy_infos;
-};
+struct Gpu_Texture_Allocator;
+struct Gpu_Linear_Allocator;
+struct Gpu_Buffer_Copy_Info;
 typedef VkSubmitInfo2 (*Pfn_Device_Buffer_Upload)(Gpu_Buffer_Copy_Info*);
 
 struct Gpu_Bind_Index_Vertex_Buffers_Info {
@@ -68,27 +54,32 @@ struct Gpu {
     GpuInfo info;
 
     VkInstance vk_instance;
-
-
     VkPhysicalDevice vk_physical_device;
     VkDevice vk_device;
+    VkQueue *vk_queues; // 3 queues ordered graphics, presentation, transfer
+    u32 *vk_queue_indices;
 
     VmaAllocator vma_allocator;
 
     Pfn_Device_Buffer_Upload device_buffer_upload_fn;
 
-    Gpu_Linear_Allocator uniform_allocator;
-
-    /*Gpu_Linear_Allocator texture_staging_allocator;
-      Gpu_Linear_Allocator texture_device_allocator;*/
-
-    VkQueue *vk_queues; // 3 queues ordered graphics, presentation, transfer
-    u32 *vk_queue_indices;
-
+    /*                                  (collapse staging allocators)
+     *                                                v 
+     * @Note These could be collapsed into fewer allocators but as the memory
+     * footprint would be identical (each allocator would just be shrunk according
+     * to how much they need to allocate), it is easier to reason about and synchronise
+     * different allocators for specific purposes, than it is to sync and use the same
+     * for specific purposes. 
+     * */
     Gpu_Linear_Allocator *index_device_allocator;
     Gpu_Linear_Allocator *vertex_device_allocator;
     Gpu_Linear_Allocator *index_staging_allocator;
     Gpu_Linear_Allocator *vertex_staging_allocator;
+
+    Gpu_Linear_Allocator *uniform_allocator;
+
+    // Contains both staging buffer, and images.
+    Gpu_Texture_Allocator *texture_allocator;
 };
 Gpu* get_gpu_instance();
 
@@ -121,8 +112,7 @@ void destroy_vk_queue(Gpu *gpu);
 VmaAllocator create_vma_allocator(Gpu *gpu);
 void gpu_init_allocators(Gpu *gpu);
 
-// Buffer Allocator functions
-/* Ugh, linear compilation models, this is defined above Gpu
+// Buffer Allocator
 struct Gpu_Linear_Allocator {
     u64 offset;
     u64 used;
@@ -186,11 +176,14 @@ void kill_window(Gpu *gpu, Window *window);
 VkSurfaceKHR create_vk_surface(VkInstance vk_instance, Glfw *glfw);
 void destroy_vk_surface(VkInstance vk_instance, VkSurfaceKHR vk_surface);
 
-VkSwapchainKHR create_vk_swapchain(Gpu *gpu, VkSurfaceKHR vk_surface); // This function is a little weird, because it does a lot, but at the same time the swapchain basically is the window, so it makes sense that it such a big function
-void destroy_vk_swapchain(VkDevice vk_device, Window *window); // also destroys image views
+// @Note this function does a lot to initialize window members, because I consider
+// these elems to be parts of the swapchain, not distinct things.
+VkSwapchainKHR create_vk_swapchain(Gpu *gpu, VkSurfaceKHR vk_surface);
+void destroy_vk_swapchain(VkDevice vk_device, Window *window);
 VkSwapchainKHR recreate_vk_swapchain(Gpu *gpu, Window *window);
 
-inline static VkViewport gpu_get_complete_screen_viewport() {
+inline static VkViewport gpu_get_complete_screen_viewport()
+{
     VkViewport viewport = {};
     viewport.x = 0;
     viewport.y = 0;
@@ -201,7 +194,8 @@ inline static VkViewport gpu_get_complete_screen_viewport() {
     viewport.maxDepth = 1.0;
     return viewport;
 }
-inline static VkRect2D gpu_get_complete_screen_area() {
+inline static VkRect2D gpu_get_complete_screen_area()
+{
     VkRect2D rect = {
         .offset = {0, 0},
         .extent = get_window_instance()->info.imageExtent,
@@ -209,15 +203,15 @@ inline static VkRect2D gpu_get_complete_screen_area() {
     return rect;
 }
 
-// Command Buffers
+/* Command Buffers */
 struct Gpu_Command_Allocator {
     VkCommandPool pool;
     int buffer_count; // Implicit cap of 64 (in_use_mask bit count)
     int cap;
     VkCommandBuffer *buffers;
 };
-Gpu_Command_Allocator gpu_create_command_allocator(
-    VkDevice vk_device, int queue_family_index, bool transient, int size);
+Gpu_Command_Allocator
+gpu_create_command_allocator(VkDevice vk_device, int queue_family_index, bool transient, int size);
 
 // Free allocator.buffers memory; Call 'vk destroy pool'
 void gpu_destroy_command_allocator(VkDevice vk_device, Gpu_Command_Allocator *allocator);
@@ -227,15 +221,20 @@ void gpu_reset_command_allocator(VkDevice vk_device, Gpu_Command_Allocator *allo
 
 // Allocate into allocator.buffers + allocators.in_use (offset pointer); Increment in_use by count;
 // Return pointer to beginning of new allocation
-VkCommandBuffer* gpu_allocate_command_buffers(
-    VkDevice vk_device, Gpu_Command_Allocator *allocator, int count, bool secondary);
+VkCommandBuffer* 
+gpu_allocate_command_buffers(VkDevice vk_device, Gpu_Command_Allocator *allocator, 
+                             int count, bool secondary);
 
-inline static void gpu_begin_primary_command_buffer(VkCommandBuffer cmd, bool one_time) {
+inline static void 
+gpu_begin_primary_command_buffer(VkCommandBuffer cmd, bool one_time)
+{
     VkCommandBufferBeginInfo info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     info.flags = (VkCommandBufferUsageFlags)one_time; // one time flag == 0x01
     vkBeginCommandBuffer(cmd, &info);
 }
-inline static void gpu_end_command_buffer(VkCommandBuffer cmd) {
+inline static void
+gpu_end_command_buffer(VkCommandBuffer cmd)
+{
     vkEndCommandBuffer(cmd);
 }
 
@@ -248,8 +247,8 @@ enum Gpu_Pipeline_Stage_Flags {
     GPU_PIPELINE_STAGE_TOP_OF_PIPE      = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
     GPU_PIPELINE_STAGE_ALL_GRAPHICS     = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
 };
-VkSemaphoreSubmitInfo gpu_define_semaphore_submission(
-    VkSemaphore semaphore, Gpu_Pipeline_Stage_Flags stage);
+VkSemaphoreSubmitInfo
+gpu_define_semaphore_submission( VkSemaphore semaphore, Gpu_Pipeline_Stage_Flags stage);
 
 struct Gpu_Queue_Submit_Info {
     int wait_count;
@@ -682,234 +681,6 @@ struct Gpu_Framebuffer_Info {
 };
 VkFramebuffer gpu_create_framebuffer(VkDevice vk_device, Gpu_Framebuffer_Info *info);
 void gpu_destroy_framebuffer(VkDevice vk_device, VkFramebuffer framebuffer);
-
-
-// `Rendering Dyn
-struct Create_Vk_Rendering_Attachment_Info_Info {
-    VkImageView image_view;
-    // Pretty sure this is left null for now (no multisampling yet...)
-    VkResolveModeFlagBits resolve_mode;
-    VkImageView resolve_image_view;
-    VkImageLayout resolve_image_layout;
-    float *clear_color;
-};
-VkRenderingAttachmentInfo create_vk_rendering_attachment_info(Create_Vk_Rendering_Attachment_Info_Info *info);
-
-struct Create_Vk_Rendering_Info_Info {
-    // @Todo support:
-    //     flags for secondary command buffers,
-    //     layered attachments (layer count and view mask)
-    VkRect2D render_area;
-    u32 color_attachment_count;
-    VkRenderingAttachmentInfo *color_attachment_infos;
-    VkRenderingAttachmentInfo *depth_attachment_info;
-    VkRenderingAttachmentInfo *stencil_attachment_info;
-
-    u32 view_mask;
-    u32 layer_count = 1; // I think 1 is correct??...
-};
-// @Note the names on these sorts of functions might be misleading, as create implies the need to destroy...
-VkRenderingInfo create_vk_rendering_info(Create_Vk_Rendering_Info_Info *info);
-
-// Inline Cmds - (Going to be heavily culled / edited in near future... - sol 8 oct, 2023)
-static inline void cmd_vk_set_scissor(VkCommandBuffer vk_command_buffer) {
-    VkSwapchainCreateInfoKHR info = get_window_instance()->info;
-    VkRect2D scissor = {
-        0, 0, // x, y
-        info.imageExtent.width,
-        info.imageExtent.height,
-    };
-    vkCmdSetScissorWithCount(vk_command_buffer, 1, &scissor);
-}
-static inline void cmd_vk_set_viewport(VkCommandBuffer vk_command_buffer) {
-    VkSwapchainCreateInfoKHR info = get_window_instance()->info;
-    VkViewport viewport = {
-        0.0f, 0.0f, // x, y
-        (float)info.imageExtent.width,
-        (float)info.imageExtent.height,
-        0.0f, 1.0f, // mindepth, maxdepth
-    };
-    vkCmdSetViewportWithCount(vk_command_buffer, 1, &viewport);
-}
-
-static inline void cmd_vk_enable_depth_clamp(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthClampEnableEXT(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_disable_depth_clamp(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthClampEnableEXT(vk_command_buffer, VK_FALSE);
-}
-
-static inline void cmd_vk_set_rasterizer_discard_enabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetRasterizerDiscardEnable(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_set_rasterizer_discard_disabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetRasterizerDiscardEnable(vk_command_buffer, VK_FALSE);
-}
-
-static inline void cmd_vk_draw_fill(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetPolygonModeEXT(vk_command_buffer, VK_POLYGON_MODE_FILL);
-}
-static inline void cmd_vk_draw_wireframe(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetPolygonModeEXT(vk_command_buffer, VK_POLYGON_MODE_LINE);
-}
-static inline void cmd_vk_draw_points(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetPolygonModeEXT(vk_command_buffer, VK_POLYGON_MODE_POINT);
-}
-
-static inline void cmd_vk_set_cull_mode_none(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetCullMode(vk_command_buffer, VK_CULL_MODE_NONE);
-}
-static inline void cmd_vk_set_cull_mode_front(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetCullMode(vk_command_buffer, VK_CULL_MODE_FRONT_BIT);
-}
-static inline void cmd_vk_set_cull_mode_back(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetCullMode(vk_command_buffer, VK_CULL_MODE_BACK_BIT);
-}
-static inline void cmd_vk_set_cull_mode_front_and_back(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetCullMode(vk_command_buffer, VK_CULL_MODE_FRONT_AND_BACK);
-}
-
-static inline void cmd_vk_set_front_face_clockwise(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetFrontFace(vk_command_buffer, VK_FRONT_FACE_CLOCKWISE);
-}
-static inline void cmd_vk_set_front_face_counter_clockwise(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetFrontFace(vk_command_buffer, VK_FRONT_FACE_COUNTER_CLOCKWISE);
-}
-
-static inline void cmd_vk_set_depth_bias_enabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthBiasEnable(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_set_depth_bias_disabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthBiasEnable(vk_command_buffer, VK_FALSE);
-}
-
-static inline void cmd_vk_line_width(VkCommandBuffer vk_command_buffer, float width) {
-    vkCmdSetLineWidth(vk_command_buffer, width);
-}
-
-static inline void cmd_vk_set_depth_test_enabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthTestEnable(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_set_depth_test_disabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthTestEnable(vk_command_buffer, VK_FALSE);
-}
-static inline void cmd_vk_set_depth_write_enabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthWriteEnable(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_set_depth_write_disabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthWriteEnable(vk_command_buffer, VK_FALSE);
-}
-
-static inline void cmd_vk_set_depth_compare_op_never(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_NEVER);
-}
-static inline void cmd_vk_set_depth_compare_op_less(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_LESS);
-}
-static inline void cmd_vk_set_depth_compare_op_equal(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_EQUAL);
-}
-static inline void cmd_vk_set_depth_compare_op_less_or_equal(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_LESS_OR_EQUAL);
-}
-static inline void cmd_set_vk_set_depth_compare_op_greater(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_GREATER);
-}
-static inline void cmd_set_vk_depth_compare_op_not_equal(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_NOT_EQUAL);
-}
-static inline void cmd_set_vk_depth_compare_op_greater_or_equal(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_GREATER_OR_EQUAL);
-}
-static inline void cmd_set_vk_depth_compare_op_always(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthCompareOp(vk_command_buffer, VK_COMPARE_OP_ALWAYS);
-}
-
-static inline void cmd_vk_set_depth_bounds_test_enabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthBoundsTestEnable(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_set_depth_bounds_test_disabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetDepthBoundsTestEnable(vk_command_buffer, VK_FALSE);
-}
-
-static inline void cmd_vk_set_stencil_test_enabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetStencilTestEnable(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_set_stencil_test_disabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetStencilTestEnable(vk_command_buffer, VK_FALSE);
-}
-static inline void cmd_vk_set_stencil_op(
-        VkCommandBuffer vk_command_buffer,
-        VkStencilFaceFlags face_mask = VK_STENCIL_FACE_FRONT_BIT,
-        VkStencilOp fail_op = VK_STENCIL_OP_KEEP,
-        VkStencilOp pass_op = VK_STENCIL_OP_KEEP,
-        VkStencilOp depth_fail_op = VK_STENCIL_OP_KEEP,
-        VkCompareOp compare_op = VK_COMPARE_OP_NEVER)
-{
-    vkCmdSetStencilOp(vk_command_buffer, face_mask, fail_op, pass_op, depth_fail_op, compare_op);
-}
-static inline void cmd_vk_depth_bounds(VkCommandBuffer vk_command_buffer, float min, float max)
-{
-    vkCmdSetDepthBounds(vk_command_buffer, min, max);
-}
-
-static inline void cmd_vk_logic_op_enable(VkCommandBuffer vk_command_buffer) {
-    // @Note this might fire a not found, even though dyn_state2 is in 1.3 core, to fix just define the PFN fetch
-    vkCmdSetLogicOpEnableEXT(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_logic_op_disable(VkCommandBuffer vk_command_buffer) {
-    // @Note this might fire a not found, even though dyn_state2 is in 1.3 core, to fix just define the PFN fetch
-    vkCmdSetLogicOpEnableEXT(vk_command_buffer, VK_FALSE);
-}
-static inline void cmd_vk_color_blend_enable_or_disables(VkCommandBuffer vk_command_buffer,
-        u32 first_attachment, u32 attachment_count, VkBool32 *enable_or_disables) {
-    vkCmdSetColorBlendEnableEXT(vk_command_buffer, first_attachment, attachment_count, enable_or_disables);
-}
-static inline void cmd_vk_color_blend_equations(VkCommandBuffer vk_command_buffer,
-        u32 first_attachment, u32 attachment_count, VkColorBlendEquationEXT *color_blend_equations) {
-    vkCmdSetColorBlendEquationEXT(vk_command_buffer, first_attachment, attachment_count, color_blend_equations);
-}
-static inline void cmd_vk_color_write_masks(VkCommandBuffer vk_command_buffer,
-        u32 first_attachment, u32 attachment_count, VkColorComponentFlags *color_write_masks) {
-    vkCmdSetColorWriteMaskEXT(vk_command_buffer, first_attachment, attachment_count, color_write_masks);
-}
-static inline void cmd_vk_blend_constants(VkCommandBuffer vk_command_buffer, const float blend_constants[4]) {
-    vkCmdSetBlendConstants(vk_command_buffer, blend_constants);
-}
-
-static inline void cmd_vk_set_topology_triangle_list(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetPrimitiveTopology(vk_command_buffer, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-}
-static inline void cmd_vk_set_topology_line_list(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetPrimitiveTopology(vk_command_buffer, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
-}
-static inline void cmd_vk_set_primitive_restart_enabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetPrimitiveRestartEnable(vk_command_buffer, VK_TRUE);
-}
-static inline void cmd_vk_set_primitive_restart_disabled(VkCommandBuffer vk_command_buffer) {
-    vkCmdSetPrimitiveRestartEnable(vk_command_buffer, VK_FALSE);
-}
-
-void set_default_draw_state(VkCommandBuffer vk_command_buffer); // calls lots of state cmds
-
-struct Dyn_Vertex_Bind_Info {
-    u32 first_binding;
-    u32 binding_count;
-    VkBuffer *buffers;
-    VkDeviceSize *offsets;
-    VkDeviceSize *sizes;
-    VkDeviceSize *strides;
-};
-static inline void cmd_vk_bind_vertex_buffers2(VkCommandBuffer vk_command_buffer, Dyn_Vertex_Bind_Info *info) {
-    vkCmdBindVertexBuffers2(
-            vk_command_buffer,
-            info->first_binding,
-            info->binding_count,
-            info->buffers,
-            info->offsets,
-            info->sizes,
-            info->strides);
-}
 
 // Attachments
 struct Gpu_Attachment {
