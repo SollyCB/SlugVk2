@@ -99,8 +99,8 @@ renderer_setup_vertex_attribute_resources_static_model(Gltf *model, Renderer_Gpu
     u64 *allocation_offsets   = (u64*)memory_allocate_temp(sizeof(u64) * buffer_view_count, 8);
 
     // To know which area of the buffer to synchronize
-    gpu_make_linear_allocation(allocators->index_allocator,  0, &ret.index_allocation_start);
-    gpu_make_linear_allocation(allocators->vertex_allocator, 0, &ret.vertex_allocation_start);
+    gpu_make_buf_allocation(allocators->index_allocator,  0, &ret.index_allocation_start);
+    gpu_make_buf_allocation(allocators->vertex_allocator, 0, &ret.vertex_allocation_start);
 
     // I dont like calling heap allocate in a loop at all, but this is not a tight loop anyway,
     // and the data per mesh will still be contiguous in memory... I could make a big allocation
@@ -162,7 +162,7 @@ renderer_setup_vertex_attribute_resources_static_model(Gltf *model, Renderer_Gpu
                 ret.buffer_views[buffer_indices[0]].byte_offset = buffer_view->byte_offset;
 
                 ret.buffer_views[buffer_indices[0]].data =
-                    gpu_make_linear_allocation(
+                    gpu_make_buf_allocation(
                         allocators->index_allocator, 
                         ret.buffer_views[buffer_indices[0]].byte_length,
                         &allocation_offsets[buffer_indices[0]]);
@@ -180,7 +180,7 @@ renderer_setup_vertex_attribute_resources_static_model(Gltf *model, Renderer_Gpu
                 ret.buffer_views[buffer_indices[1]].byte_offset = buffer_view->byte_offset;
 
                 ret.buffer_views[buffer_indices[1]].data =
-                    gpu_make_linear_allocation(
+                    gpu_make_buf_allocation(
                         allocators->vertex_allocator, 
                         ret.buffer_views[buffer_indices[1]].byte_length,
                         &allocation_offsets[buffer_indices[1]]);
@@ -198,7 +198,7 @@ renderer_setup_vertex_attribute_resources_static_model(Gltf *model, Renderer_Gpu
                 ret.buffer_views[buffer_indices[2]].byte_offset = buffer_view->byte_offset;
 
                 ret.buffer_views[buffer_indices[2]].data =
-                    gpu_make_linear_allocation(
+                    gpu_make_buf_allocation(
                         allocators->vertex_allocator, 
                         ret.buffer_views[buffer_indices[2]].byte_length,
                         &allocation_offsets[buffer_indices[2]]);
@@ -216,7 +216,7 @@ renderer_setup_vertex_attribute_resources_static_model(Gltf *model, Renderer_Gpu
                 ret.buffer_views[buffer_indices[3]].byte_offset = buffer_view->byte_offset;
 
                 ret.buffer_views[buffer_indices[3]].data =
-                    gpu_make_linear_allocation(
+                    gpu_make_buf_allocation(
                         allocators->vertex_allocator, 
                         ret.buffer_views [buffer_indices[3]].byte_length,
                         &allocation_offsets[buffer_indices[3]]);
@@ -234,7 +234,7 @@ renderer_setup_vertex_attribute_resources_static_model(Gltf *model, Renderer_Gpu
                 ret.buffer_views[buffer_indices[4]].byte_offset = buffer_view->byte_offset;
 
                 ret.buffer_views[buffer_indices[4]].data =
-                    gpu_make_linear_allocation(
+                    gpu_make_buf_allocation(
                         allocators->vertex_allocator, 
                         ret.buffer_views [buffer_indices[4]].byte_length,
                         &allocation_offsets[buffer_indices[4]]);

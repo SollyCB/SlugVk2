@@ -42,9 +42,9 @@ struct Renderer_Vertex_Attribute_Resources {
 };
 struct Renderer_Gpu_Allocator_Group {
     Linear_Allocator     *draw_info_allocator;
-    Gpu_Linear_Allocator *index_allocator;
-    Gpu_Linear_Allocator *vertex_allocator;
-    Gpu_Linear_Allocator *uniform_allocator;
+    Gpu_Buf_Allocator *index_allocator;
+    Gpu_Buf_Allocator *vertex_allocator;
+    Gpu_Buf_Allocator *uniform_allocator;
 };
 // Get list of required resources from gltf model
 Renderer_Vertex_Attribute_Resources renderer_setup_vertex_attribute_resources_static_model(

@@ -10,29 +10,21 @@
 #define ALLOCATION_CALLBACKS NULL
 #endif
 
-#define VMA_STATIC_VULKAN_FUNCTIONS 0
-#define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
-#include "external/vk_mem_alloc.h" // vma allocator
-
 #include "basic.h"
 #include "glfw.hpp"
 
-/* @Note
-        I want to end up with separate code paths beginning right from device creation. For instance, I dont want to
-        be deciding at draw time if I need to do a host device copy via a transfer queue because I am dealing
-        with a discrete gpu (Mike Acton's, decide early). Even measuring PCIe bandwith if possible. This will
-        likely be a long time down the road but I need to keep it in mind so that adapting the code base later
-        is not completely impossible...
+struct Gpu_Tex_Allocator;
+struct Gpu_Buf_Allocator;
 
-        Also regarding memory allocation. Is using VMA necessary? If I am using linear allocators per frame,
-        plus persistent allocations for other stuff, not really as I will very rarely be calling allocate
-        buffer, at the same time what can I gain by not using it? I can just use it to allocate a buffer once,
-        and then offset that... We will see. Getting rid of it just for the sake of being self written is huge.
-*/
+struct Gpu_Buffer_Copy_Info {
+    VkSemaphore transfer_signal;
+    VkCommandBuffer transfer_cmd;
+    VkCommandBuffer graphics_cmd;
 
-struct Gpu_Texture_Allocator;
-struct Gpu_Linear_Allocator;
-struct Gpu_Buffer_Copy_Info;
+    int buffer_count;
+    VkBuffer *buffers;
+    VkCopyBufferInfo2 *copy_infos;
+};
 typedef VkSubmitInfo2 (*Pfn_Device_Buffer_Upload)(Gpu_Buffer_Copy_Info*);
 
 struct Gpu_Bind_Index_Vertex_Buffers_Info {
@@ -47,6 +39,43 @@ struct Gpu_Bind_Index_Vertex_Buffers_Info {
 };
 typedef void (*Pfn_Bind_Index_Vertex_Buffers)(Gpu_Bind_Index_Vertex_Buffers_Info*);
 
+static constexpr u64 GPU_VERTEX_ALLOCATOR_SIZE = 1024 * 1024;
+static constexpr u64 GPU_INDEX_ALLOCATOR_SIZE  = 1024 * 1024;
+static constexpr u64 GPU_TEXTURE_ALLOCATOR_SIZE = 1024 * 1024;
+
+// @Todo Storage equivalents
+static constexpr u32 GPU_MAX_ALLOCATOR_COUNT_INDEX   = 1;
+static constexpr u32 GPU_MAX_ALLOCATOR_COUNT_VERTEX  = 1;
+static constexpr u32 GPU_MAX_ALLOCATOR_COUNT_UNIFORM = 1;
+static constexpr u32 GPU_MAX_ALLOCATOR_COUNT_TEXTURE = 1;
+static constexpr u32 GPU_MAX_ATTACHMENT_COUNT_DEPTH         = 1;
+static constexpr u32 GPU_MAX_ATTACHMENT_COUNT_COLOR         = 1;
+
+enum Gpu_Mem_Flag_Bits {
+    GPU_MEM_UMA_BIT = 0x01,
+};
+typedef u32 Gpu_Mem_Flags;
+
+struct Gpu_Memory_Resources {
+    Gpu_Mem_Flags flags;
+
+    VkDeviceMemory       index_vertex_mems_device       [GPU_MAX_ALLOCATOR_COUNT_INDEX  ];
+    VkDeviceMemory       index_vertex_mems_host         [GPU_MAX_ALLOCATOR_COUNT_INDEX  ];
+    VkDeviceMemory       uniform_mems                   [GPU_MAX_ALLOCATOR_COUNT_UNIFORM];
+    VkDeviceMemory       color_mems                     [GPU_MAX_ATTACHMENT_COUNT_COLOR ];
+    VkDeviceMemory       depth_mems                     [GPU_MAX_ATTACHMENT_COUNT_COLOR ];
+    VkDeviceMemory       texture_mems_stage             [GPU_MAX_ALLOCATOR_COUNT_TEXTURE];
+    VkDeviceMemory       texture_mems_device            [GPU_MAX_ALLOCATOR_COUNT_TEXTURE];
+
+    VkBuffer       index_bufs_device                    [GPU_MAX_ALLOCATOR_COUNT_INDEX  ];
+    VkBuffer       vertex_bufs_device                   [GPU_MAX_ALLOCATOR_COUNT_VERTEX ];
+    VkBuffer       index_bufs_host                      [GPU_MAX_ALLOCATOR_COUNT_INDEX  ];
+    VkBuffer       vertex_bufs_host                     [GPU_MAX_ALLOCATOR_COUNT_VERTEX ];
+    VkBuffer       uniform_bufs                         [GPU_MAX_ALLOCATOR_COUNT_UNIFORM];
+    VkImage        color_attachments                    [GPU_MAX_ATTACHMENT_COUNT_COLOR ];
+    VkImage        depth_attachments                    [GPU_MAX_ATTACHMENT_COUNT_DEPTH ];
+    VkBuffer       texture_stages                       [GPU_MAX_ALLOCATOR_COUNT_TEXTURE];
+};
 struct GpuInfo {
     VkPhysicalDeviceProperties properties;
 };
@@ -59,27 +88,19 @@ struct Gpu {
     VkQueue *vk_queues; // 3 queues ordered graphics, presentation, transfer
     u32 *vk_queue_indices;
 
-    VmaAllocator vma_allocator;
+    Gpu_Memory_Resources memory_resources;
 
+    VkImageView depth_views[GPU_MAX_ATTACHMENT_COUNT_DEPTH];
+
+    Gpu_Buf_Allocator *index_device_allocator;
+    Gpu_Buf_Allocator *vertex_device_allocator;
+    Gpu_Buf_Allocator *index_host_allocator;
+    Gpu_Buf_Allocator *vertex_host_allocator;
     Pfn_Device_Buffer_Upload device_buffer_upload_fn;
 
-    /*                                  (collapse staging allocators)
-     *                                                v 
-     * @Note These could be collapsed into fewer allocators but as the memory
-     * footprint would be identical (each allocator would just be shrunk according
-     * to how much they need to allocate), it is easier to reason about and synchronise
-     * different allocators for specific purposes, than it is to sync and use the same
-     * for specific purposes. 
-     * */
-    Gpu_Linear_Allocator *index_device_allocator;
-    Gpu_Linear_Allocator *vertex_device_allocator;
-    Gpu_Linear_Allocator *index_staging_allocator;
-    Gpu_Linear_Allocator *vertex_staging_allocator;
+    Gpu_Buf_Allocator *uniform_allocator;
 
-    Gpu_Linear_Allocator *uniform_allocator;
-
-    // Contains both staging buffer, and images.
-    Gpu_Texture_Allocator *texture_allocator;
+    Gpu_Tex_Allocator *texture_allocator;
 };
 Gpu* get_gpu_instance();
 
@@ -108,57 +129,56 @@ VkQueue create_vk_queue(Gpu *gpu);
 void destroy_vk_device(Gpu *gpu);
 void destroy_vk_queue(Gpu *gpu);
 
-// Allocator
-VmaAllocator create_vma_allocator(Gpu *gpu);
-void gpu_init_allocators(Gpu *gpu);
+// Allocator Implementation
+void gpu_init_memory_resources(Gpu *gpu);
 
 // Buffer Allocator
-struct Gpu_Linear_Allocator {
-    u64 offset;
+struct Gpu_Buf_Allocator {
+    u32 alloc_cnt;
+    u32 alloc_cap;
+    
+    u64  alignment;
+    u64  used;
+    u64  cap;
+
+    VkBuffer buf;
+    void *ptr;
+};
+/* Idk if this is necessary (the idea was for setting alignments for different types...)
+enum Gpu_Buf_Type {
+    GPU_BUF_TYPE_VERTEX,
+    GPU_BUF_TYPE_UNIFORM,
+    // @Todo add storage versions
+};
+*/
+Gpu_Buf_Allocator gpu_get_buf_allocator(VkBuffer buffer, void *ptr, u64 size, u32 count);
+void gpu_reset_buf_allocator(VkDevice device, Gpu_Buf_Allocator *allocator);
+
+struct Gpu_Tex_Allocator {
+    u32 img_cap;
+    u32 img_cnt;
+
+    u64 alignment;
     u64 used;
     u64 cap;
-    VkBuffer buffer;
-    VmaAllocation vma_allocation;
-    void *mapped_ptr;
-};*/
-enum Gpu_Allocator_Type {
-    GPU_ALLOCATOR_TYPE_INDEX  = VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-                                           VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-    GPU_ALLOCATOR_TYPE_VERTEX = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-                                           VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+
+    VkBuffer stage;
+    VkImage *imgs;
+    VkDeviceMemory mem;
+    void *ptr;
 };
-// Memory is close to the host
-Gpu_Linear_Allocator gpu_create_linear_allocator_host(
-    VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type);
-// Memory is close to the device
-Gpu_Linear_Allocator gpu_create_linear_allocator_device(
-    VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type);
-// Shutdown an allocator
-void gpu_destroy_linear_allocator(
-    VmaAllocator vma_allocator, Gpu_Linear_Allocator *linear_allocator);
+
 // Return mapped ptr + offset into allocation; returns actual offset in 'offset'
-void* gpu_make_linear_allocation(Gpu_Linear_Allocator *allocator, u64 size, u64 *offset);
+void* gpu_make_buf_allocation(Gpu_Buf_Allocator *allocator, u64 size, u64 *offset);
 // Reduce used by size
-void gpu_cut_tail_linear_allocator(Gpu_Linear_Allocator *allocator, u64 size);
-// Set used to zero
-void gpu_reset_linear_allocator(Gpu_Linear_Allocator *allocator);
-// Make allocation in 'to' allocator; Return copy information
-VkCopyBufferInfo2 gpu_linear_allocator_setup_copy(
-    Gpu_Linear_Allocator *to_allocator, 
-    Gpu_Linear_Allocator *from_allocator, 
+VkCopyBufferInfo2 gpu_buf_allocator_setup_copy(
+    Gpu_Buf_Allocator *to_allocator, 
+    Gpu_Buf_Allocator *from_allocator, 
     u64 src_offset, u64 size);
 
-inline static VkSubmitInfo2 gpu_cmd_begin_transfer_graphics(Gpu_Buffer_Copy_Info *info) {
+inline static VkSubmitInfo2 gpu_cmd_begin_buf_transfer_graphics(Gpu_Buffer_Copy_Info *info) {
     return get_gpu_instance()->device_buffer_upload_fn(info);
 }
-
-// Get mapped pointer to beginning of gpu linear allocator
-inline static void* gpu_linear_allocator_get_ptr(VmaAllocator vma_allocator, Gpu_Linear_Allocator *linear_allocator) {
-    VmaAllocationInfo info;
-    vmaGetAllocationInfo(vma_allocator, linear_allocator->vma_allocation, &info);
-    return info.pMappedData;
-}
-
 
 // Surface and Swapchain
 struct Window {
@@ -682,28 +702,18 @@ struct Gpu_Framebuffer_Info {
 VkFramebuffer gpu_create_framebuffer(VkDevice vk_device, Gpu_Framebuffer_Info *info);
 void gpu_destroy_framebuffer(VkDevice vk_device, VkFramebuffer framebuffer);
 
-// Attachments
-struct Gpu_Attachment {
-    VkImage vk_image;
-    VmaAllocation vma_allocation;
-};
-enum Gpu_Image_Type {
-    GPU_IMAGE_TYPE_COLOR_ATTACHMENT,
-    GPU_IMAGE_TYPE_DEPTH_ATTACHMENT,
-    GPU_IMAGE_TYPE_TEXTURE,
-};
-Gpu_Attachment gpu_create_depth_attachment(VmaAllocator vma_allocator, int width, int height);
-void gpu_destroy_attachment(VmaAllocator vma_allocator, Gpu_Attachment *attachment);
-
+// Attachment Views
 VkImageView gpu_create_depth_attachment_view(VkDevice vk_device, VkImage vk_image);
 void gpu_destroy_image_view(VkDevice vk_device, VkImageView view);
 
 // Textures
-enum Gpu_Texture_Type {};
-struct Gpu_Texture {};
-Gpu_Texture gpu_create_Texture(VmaAllocator vma_allocator, int width, int height, Gpu_Texture_Type type);
-void gpu_destroy_Texture(VmaAllocator vma_allocator, Gpu_Texture *Texture);
-
+struct Gpu_Texture_Allocation_2D {
+    u64 offset;
+    u64 width;
+    u64 height;
+};
+struct Gpu_Texture_Allocator_2D {
+};
 
 // Samplers
 struct Gpu_Sampler_Storage {

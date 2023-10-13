@@ -17,10 +17,8 @@ void run_tests(); // defined below main
 #endif
 
 // @Todo Find a good memory footprint
-// Some completely arbitrary sizes for now.
+// Some completely arbitrary sizes for now. This should be managed as the other memory resources are.
 static constexpr u64 DRAW_INFO_ALLOCATOR_SIZE  = 10000;
-static constexpr u64 GPU_INDEX_ALLOCATOR_SIZE  = 10000;
-static constexpr u64 GPU_VERTEX_ALLOCATOR_SIZE = 10000;
 
 int main() {
     init_allocators();
@@ -40,15 +38,18 @@ int main() {
     init_window(gpu, glfw);
     Window *window = get_window_instance();
 
+    // Has to be called after init window for screen extent values for attachments
+    gpu_init_memory_resources(gpu);
+
 
     /* Begin Code That Actually Does Stuff */
     Gltf model = parse_gltf("models/cube-static/Cube.gltf");
 
-    Gpu_Linear_Allocator *device_index_allocator  = gpu->index_device_allocator;
-    Gpu_Linear_Allocator *device_vertex_allocator = gpu->vertex_device_allocator;
+    Gpu_Buf_Allocator *device_index_allocator  = gpu->index_device_allocator;
+    Gpu_Buf_Allocator *device_vertex_allocator = gpu->vertex_device_allocator;
 
-    Gpu_Linear_Allocator *host_index_allocator  = gpu->index_staging_allocator;
-    Gpu_Linear_Allocator *host_vertex_allocator = gpu->vertex_staging_allocator;
+    Gpu_Buf_Allocator *host_index_allocator  = gpu->index_host_allocator;
+    Gpu_Buf_Allocator *host_vertex_allocator = gpu->vertex_host_allocator;
 
     Linear_Allocator draw_info_allocator = create_linear_allocator(DRAW_INFO_ALLOCATOR_SIZE);
 
@@ -143,10 +144,9 @@ int main() {
     VkAttachmentDescription color_attachment_description =
         gpu_get_attachment_description(&attachment_description_info);
 
-    Gpu_Attachment depth_attachment =
-        gpu_create_depth_attachment(gpu->vma_allocator, window->info.imageExtent.width, window->info.imageExtent.height);
+    VkImage depth_attachment = gpu->memory_resources.depth_attachments[0];
     VkImageView depth_attachment_view =
-        gpu_create_depth_attachment_view(gpu->vk_device, depth_attachment.vk_image);
+        gpu_create_depth_attachment_view(gpu->vk_device, depth_attachment);
 
     attachment_description_info.format = VK_FORMAT_D16_UNORM;
     attachment_description_info.setting = GPU_ATTACHMENT_DESCRIPTION_SETTING_DEPTH_LOAD_UNDEFINED_STORE;
@@ -183,7 +183,6 @@ int main() {
     pl_info.fragment_output_state = &pl_stage_4;
     VkPipeline pipeline = renderer_create_pipeline(gpu->vk_device, &pl_info);
 
-
     Gpu_Command_Allocator graphics_command_allocator =
         gpu_create_command_allocator(gpu->vk_device, gpu->vk_queue_indices[0], false, 4);
     Gpu_Command_Allocator transfer_command_allocator =
@@ -195,12 +194,12 @@ int main() {
         gpu_allocate_command_buffers(gpu->vk_device, &transfer_command_allocator, 1, false);
 
     VkCopyBufferInfo2 buffer_copy_infos[] = {
-        gpu_linear_allocator_setup_copy(
+        gpu_buf_allocator_setup_copy(
             device_index_allocator,
             host_index_allocator,
             resource_list.index_allocation_start,
             resource_list.index_allocation_end),
-        gpu_linear_allocator_setup_copy(
+        gpu_buf_allocator_setup_copy(
             device_vertex_allocator,
             host_vertex_allocator,
             resource_list.vertex_allocation_start,
@@ -211,7 +210,7 @@ int main() {
         gpu_create_binary_semaphore_pool(gpu->vk_device, 4);
     VkSemaphore *transfer_semaphore = gpu_get_binary_semaphores(&semaphore_pool, 1);
 
-    VkBuffer buffers[] = {device_index_allocator->buffer, device_vertex_allocator->buffer};
+    VkBuffer buffers[] = {device_index_allocator->buf, device_vertex_allocator->buf};
 
     Gpu_Buffer_Copy_Info buffer_copy = {};
     buffer_copy.transfer_signal = *transfer_semaphore;
@@ -222,10 +221,10 @@ int main() {
     buffer_copy.copy_infos = buffer_copy_infos;
 
     VkBuffer vertex_buffers[] = {
-        device_vertex_allocator->buffer,
-        device_vertex_allocator->buffer,
-        device_vertex_allocator->buffer,
-        device_vertex_allocator->buffer,
+        device_vertex_allocator->buf,
+        device_vertex_allocator->buf,
+        device_vertex_allocator->buf,
+        device_vertex_allocator->buf,
     };
     u64 vertex_buffer_offsets[] = {
         model_draw_infos.meshes[0].primitive_draw_infos[0].vertex_buffer_offsets[0],
@@ -241,8 +240,7 @@ int main() {
         &renderpass_framebuffer, &render_area,
     };
     
-    VkSubmitInfo2 graphics_submit_info = gpu_cmd_begin_transfer_graphics(&buffer_copy);
-    ASSERT(graphics_submit_info.waitSemaphoreInfoCount == 1,"");
+    VkSubmitInfo2 graphics_submit_info = gpu_cmd_begin_buf_transfer_graphics(&buffer_copy);
         vkCmdSetViewportWithCount(*graphics_cmd, 1, &viewport);
         vkCmdSetScissorWithCount(*graphics_cmd, 1, renderpass_begin_info.render_area);
 
@@ -252,7 +250,7 @@ int main() {
 
             vkCmdBindIndexBuffer(
                 *graphics_cmd,
-                device_index_allocator->buffer,
+                device_index_allocator->buf,
                 model_draw_infos.meshes[0].primitive_draw_infos[0].index_buffer_offset,
                 VK_INDEX_TYPE_UINT16);
             vkCmdBindVertexBuffers(
@@ -304,7 +302,6 @@ int main() {
     gpu_destroy_command_allocator(gpu->vk_device, &graphics_command_allocator);
     gpu_destroy_command_allocator(gpu->vk_device, &transfer_command_allocator);
 
-    gpu_destroy_attachment(gpu->vma_allocator, &depth_attachment);
     gpu_destroy_image_view(gpu->vk_device, depth_attachment_view);
     gpu_destroy_renderpass_framebuffer(gpu->vk_device, &renderpass_framebuffer);
 

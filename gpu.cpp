@@ -28,17 +28,17 @@ void init_gpu()
             (sizeof(Gpu)                  * 1) +
             (sizeof(VkQueue)              * 3) +
             (sizeof(u32)                  * 3) +
-            (sizeof(Gpu_Linear_Allocator) * 4), 8);
+            (sizeof(Gpu_Buf_Allocator) * 4), 8);
 
     Gpu *gpu = get_gpu_instance();
 
     gpu->vk_queues        = (VkQueue*)(gpu + 1);
     gpu->vk_queue_indices = (u32*)(gpu->vk_queues + 3);
 
-    gpu->index_device_allocator   = (Gpu_Linear_Allocator*)(gpu->vk_queue_indices        + 3);
-    gpu->vertex_device_allocator  = (Gpu_Linear_Allocator*)(gpu->index_device_allocator  + 1);
-    gpu->index_staging_allocator  = (Gpu_Linear_Allocator*)(gpu->vertex_device_allocator + 1);
-    gpu->vertex_staging_allocator = (Gpu_Linear_Allocator*)(gpu->index_staging_allocator + 1);
+    gpu->index_device_allocator   = (Gpu_Buf_Allocator*)(gpu->vk_queue_indices        + 3);
+    gpu->vertex_device_allocator  = (Gpu_Buf_Allocator*)(gpu->index_device_allocator  + 1);
+    gpu->index_host_allocator  = (Gpu_Buf_Allocator*)(gpu->vertex_device_allocator + 1);
+    gpu->vertex_host_allocator = (Gpu_Buf_Allocator*)(gpu->index_host_allocator + 1);
 
     Create_Vk_Instance_Info create_instance_info = {};
     gpu->vk_instance = create_vk_instance(&create_instance_info);
@@ -51,21 +51,25 @@ void init_gpu()
     // creates queues and fills gpu struct with them
     // features and extensions lists defined in the function body
     gpu->vk_device = create_vk_device(gpu);
-    gpu->vma_allocator = create_vma_allocator(gpu);
-
-    gpu_init_allocators(gpu);
+    //gpu->vma_allocator = create_vma_allocator(gpu);
 }
 void kill_gpu(Gpu *gpu) {
+    // @Todo When I am creating more memory resources, clean properly.
+    VkDevice device = gpu->vk_device;
+    vkDestroyImageView(device, gpu->depth_views[0], ALLOCATION_CALLBACKS);
+    vkDestroyImage(device, gpu->memory_resources.depth_attachments[0], ALLOCATION_CALLBACKS);
+    vkFreeMemory(device, gpu->memory_resources.depth_mems[0], ALLOCATION_CALLBACKS);
 
-    gpu_destroy_linear_allocator(gpu->vma_allocator, gpu->vertex_device_allocator);
-    gpu_destroy_linear_allocator(gpu->vma_allocator, gpu->index_device_allocator);
+    vkDestroyBuffer(device, gpu->memory_resources.index_bufs_device [0], ALLOCATION_CALLBACKS);
+    vkDestroyBuffer(device, gpu->memory_resources.vertex_bufs_device[0], ALLOCATION_CALLBACKS);
+    vkFreeMemory(device, gpu->memory_resources.index_vertex_mems_device[0], ALLOCATION_CALLBACKS);
 
-    if (gpu->vertex_staging_allocator->cap) {
-        gpu_destroy_linear_allocator(gpu->vma_allocator, gpu->vertex_staging_allocator);
-        gpu_destroy_linear_allocator(gpu->vma_allocator, gpu->index_staging_allocator);
+    if ((gpu->memory_resources.flags & GPU_MEM_UMA_BIT) == 0) {
+        vkDestroyBuffer(device, gpu->memory_resources.index_bufs_host [0], ALLOCATION_CALLBACKS);
+        vkDestroyBuffer(device, gpu->memory_resources.vertex_bufs_host[0], ALLOCATION_CALLBACKS);
+        vkFreeMemory(device, gpu->memory_resources.index_vertex_mems_host[0], ALLOCATION_CALLBACKS);
     }
 
-    vmaDestroyAllocator(gpu->vma_allocator);
     vkDestroyDevice(gpu->vk_device, ALLOCATION_CALLBACKS);
 #if DEBUG
     vkDestroyDebugUtilsMessengerEXT(gpu->vk_instance, *get_vk_debug_messenger_instance(), ALLOCATION_CALLBACKS);
@@ -150,10 +154,11 @@ VkInstance create_vk_instance(Create_Vk_Instance_Info *info) {
 // `Device ///////////
 VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills in gpu.physical_device
 
-    uint32_t ext_count = 2;
+    uint32_t ext_count = 3;
     const char *ext_names[] = {
         "VK_KHR_swapchain",
         "VK_EXT_descriptor_buffer",
+        "VK_EXT_memory_priority",
     };
 
     VkPhysicalDeviceFeatures vk1_features = {
@@ -168,19 +173,16 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
         .pNext = (void*)&vk12_features,
         .synchronization2 = VK_TRUE,
-        .dynamicRendering = VK_TRUE,
+        //.dynamicRendering = VK_TRUE,
     };
-    VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptor_buffer_features = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT,
-        .pNext = (void*)&vk13_features,
-        .descriptorBuffer = VK_TRUE,
-        .descriptorBufferCaptureReplay = VK_FALSE,
-        .descriptorBufferImageLayoutIgnored = VK_TRUE,
-        .descriptorBufferPushDescriptors = VK_TRUE,
+    VkPhysicalDeviceMemoryPriorityFeaturesEXT mem_priority = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PRIORITY_FEATURES_EXT,
+        .pNext = &vk13_features,
+        .memoryPriority = VK_TRUE,
     };
     VkPhysicalDeviceFeatures2 features_full = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext = &descriptor_buffer_features,
+        .pNext = &mem_priority,
         .features = vk1_features,
     };
 
@@ -190,11 +192,11 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
     VkPhysicalDeviceVulkan13Features vk13_features_unfilled = vk13_features;
     vk13_features_unfilled.pNext = &vk12_features_unfilled;
 
-    VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptor_buffer_features_unfilled =  descriptor_buffer_features;
-    descriptor_buffer_features_unfilled.pNext = &vk13_features_unfilled;
+    VkPhysicalDeviceMemoryPriorityFeaturesEXT mem_priority_empty =  mem_priority;
+    mem_priority_empty.pNext = &vk13_features_unfilled;
 
     VkPhysicalDeviceFeatures2 features_full_unfilled = features_full;
-    features_full_unfilled.pNext = &descriptor_buffer_features_unfilled;
+    features_full_unfilled.pNext = &mem_priority_empty;
 
     features_full_unfilled.features = vk1_features_unfilled;
 
@@ -220,12 +222,8 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
         vkGetPhysicalDeviceFeatures2(physical_devices[i], &features_full);
 
         bool incompatible = false;
-        if (descriptor_buffer_features.descriptorBuffer == VK_FALSE) {
-            std::cerr << "Device Index " << i << " does not support descriptorBuffer\n";
-            incompatible = true;
-        }
-        if (vk13_features.dynamicRendering == VK_FALSE) {
-            std::cerr << "Device Index " << i << " does not support dynamicRendering\n";
+        if (mem_priority.memoryPriority == VK_FALSE) {
+            std::cerr << "Device Index " << i << " does not support Memory Priority\n";
             incompatible = true;
         }
 
@@ -262,7 +260,9 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
             {
                 transfer_queue_index = j;
             }
-            if (transfer_queue_index != -1 && graphics_queue_index != -1 && presentation_queue_index != -1) {
+            if (transfer_queue_index != -1 && graphics_queue_index != -1 && 
+                presentation_queue_index != -1) 
+            {
                 physical_device_index = i;
                 break_outer = true;
                 break;
@@ -364,23 +364,319 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
 } // func create_vk_device
 
 // `Allocator
-VmaAllocator create_vma_allocator(Gpu *gpu) {
-    VmaVulkanFunctions vulkanFunctions = {};
-    vulkanFunctions.vkGetInstanceProcAddr = &vkGetInstanceProcAddr;
-    vulkanFunctions.vkGetDeviceProcAddr = &vkGetDeviceProcAddr;
 
-    VmaAllocatorCreateInfo allocatorCreateInfo = {};
-    allocatorCreateInfo.vulkanApiVersion = VK_API_VERSION_1_3;
-    allocatorCreateInfo.physicalDevice = gpu->vk_physical_device;
-    allocatorCreateInfo.device = gpu->vk_device;
-    allocatorCreateInfo.instance = gpu->vk_instance;
-    allocatorCreateInfo.pVulkanFunctions = &vulkanFunctions;
 
-    VmaAllocator allocator;
-    auto check = vmaCreateAllocator(&allocatorCreateInfo, &allocator);
-    DEBUG_OBJ_CREATION(vmaCreateAllocator, check);
+    /* Host -> Device buffer upload function defs (definition below memory_resources_init() func */
+VkSubmitInfo2 gpu_device_buffer_upload_uma(Gpu_Buffer_Copy_Info *info);
+VkSubmitInfo2 gpu_device_buffer_upload_non_uma_unified_transfer(Gpu_Buffer_Copy_Info *info);
+VkSubmitInfo2 gpu_device_buffer_upload_non_uma_discrete_transfer(Gpu_Buffer_Copy_Info *info);
 
-    return allocator;
+// @Todo Unimplemented allocator / memory resource setups:
+//     - Color Attachment
+//     - Uniform
+//     - Texture 
+//     - Storage Image
+//     - Storage Buffer
+//     - Recreate depth and color attachments on swapchain recreation (window resize)
+// Complete Setups:
+//     - Vertex / Index
+//     - Depth Attachment
+void gpu_init_memory_resources(Gpu *gpu)
+{
+    gpu->memory_resources.flags = 0x0;
+    VkPhysicalDeviceMemoryProperties props;
+    vkGetPhysicalDeviceMemoryProperties(gpu->vk_physical_device, &props);
+    // This does not work. For instance, on my laptop there are two heaps, despite uma. One of them
+    // is just listed as zero size.
+    //bool uma = props.memoryHeapCount == 1;
+
+    bool uma = gpu->info.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+
+    int device_heap_index = -1;
+    int host_heap_index   = -1;
+    u64 host_heap_size    = 0;
+    u64 device_heap_size  = 0;
+
+
+    if (uma)
+        goto memory_type_selection;
+    
+    for(uint i = 0; i < props.memoryHeapCount; ++i)
+        if (props.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+            if (device_heap_size < props.memoryHeaps[i].size) {
+                device_heap_size = props.memoryHeaps[i].size;
+                device_heap_index = i;
+            }
+        } else {
+            if (host_heap_size < props.memoryHeaps[i].size) {
+                host_heap_size = props.memoryHeaps[i].size;
+                host_heap_index = i;
+            }
+        }
+
+    memory_type_selection: // goto label;
+
+    int uniform_index    = -1;
+    int attachment_index = -1;
+
+    // @Note Assumes that any memory type which is host visible is also coherent.
+    for(uint i = 0; i < props.memoryTypeCount; ++i)
+        if (props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT  &&
+            props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)  {
+            if (uma && props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+                uniform_index    = i;
+                attachment_index = i;
+                break;
+            } else {
+                if (props.memoryTypes[i].heapIndex == host_heap_index)
+                    uniform_index = i;
+                else if (uniform_index == -1)
+                    uniform_index = i;
+            }
+        } else if (props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+            if (props.memoryTypes[i].heapIndex == device_heap_index)
+                attachment_index = i;
+            else if (attachment_index == -1)
+                attachment_index = i;
+        }
+
+                                 /* Attachments Begin */
+
+    // @Unused Color allocation currently unimplemented.
+    // - To be added with threading and deferred rendering.
+    float render_target_priority = 1.0;
+    VkImageCreateInfo color_info = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+
+    VkExtent2D screen = get_window_instance()->info.imageExtent;
+    VkImageCreateInfo image_info = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    image_info.imageType     = VK_IMAGE_TYPE_2D;
+    image_info.format        = VK_FORMAT_D16_UNORM;
+    image_info.extent        = {.width = screen.width, .height = screen.height, .depth = 1};
+    image_info.mipLevels     = 1;
+    image_info.arrayLayers   = 1;
+    image_info.samples       = VK_SAMPLE_COUNT_1_BIT;
+    image_info.tiling        = VK_IMAGE_TILING_OPTIMAL;
+    image_info.usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    image_info.samples       = VK_SAMPLE_COUNT_1_BIT;
+    image_info.tiling        = VK_IMAGE_TILING_OPTIMAL;
+    image_info.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+    image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    VkDevice device = gpu->vk_device;
+    VkImage depth;
+    auto check = vkCreateImage(device, &image_info, ALLOCATION_CALLBACKS, &depth);
+    DEBUG_OBJ_CREATION(vkCreateImage, check);
+
+    VkMemoryRequirements mem_req;
+    vkGetImageMemoryRequirements(device, depth, &mem_req);
+
+    VkMemoryPriorityAllocateInfoEXT priority = {VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT};
+    priority.priority = render_target_priority;
+
+    VkMemoryDedicatedAllocateInfo dedicate_allocation = {VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO};
+    dedicate_allocation.image = depth;
+    dedicate_allocation.pNext = &priority;
+
+    VkMemoryAllocateInfo allocation_info = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    allocation_info.pNext = &dedicate_allocation;
+    allocation_info.allocationSize = mem_req.size;
+    allocation_info.memoryTypeIndex = attachment_index;
+
+    VkDeviceMemory depth_mem;
+    check = vkAllocateMemory(device, &allocation_info, ALLOCATION_CALLBACKS, &depth_mem);
+    DEBUG_OBJ_CREATION(vkAllocateMemory, check);
+
+    VkBindImageMemoryInfo image_bind = {VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO};
+    image_bind.image  = depth;
+    image_bind.memory = depth_mem;
+    image_bind.memoryOffset = 0;
+    vkBindImageMemory2(device, 1, &image_bind);
+
+    VkImageView depth_view = gpu_create_depth_attachment_view(device, depth);
+    gpu->depth_views[0] = depth_view;
+
+                            /* Attachments End */
+
+                          /* Vertex Index Begin */
+
+    VkBufferCreateInfo buffer_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    
+    VkBuffer index_device_buffer;
+    VkBuffer vertex_device_buffer;
+    VkBuffer index_host_buffer;
+    VkBuffer vertex_host_buffer;
+    VkDeviceMemory index_vertex_device_mem;
+    VkDeviceMemory index_vertex_host_mem;
+
+    VkMemoryRequirements index_vertex_mem_req[4];
+    VkBindBufferMemoryInfo buffer_bind = {VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO};
+
+    void *mapped_ptr;
+    float index_vertex_priority_device = 0.5;
+    float index_vertex_priority_host   = 0.0;
+    if (uma) {
+        gpu->device_buffer_upload_fn = &gpu_device_buffer_upload_uma;
+        gpu->memory_resources.flags |= GPU_MEM_UMA_BIT;
+
+        buffer_info.size = GPU_INDEX_ALLOCATOR_SIZE;
+        buffer_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        vkCreateBuffer(device, &buffer_info, ALLOCATION_CALLBACKS, &index_device_buffer);
+
+        buffer_info.size = GPU_VERTEX_ALLOCATOR_SIZE;
+        buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        vkCreateBuffer(device, &buffer_info, ALLOCATION_CALLBACKS, &vertex_device_buffer);
+
+        vkGetBufferMemoryRequirements(device, index_device_buffer,  &index_vertex_mem_req[0]);
+        vkGetBufferMemoryRequirements(device, vertex_device_buffer, &index_vertex_mem_req[1]);
+
+        priority.priority = index_vertex_priority_device;
+
+        allocation_info.pNext = &priority;
+        allocation_info.allocationSize  = index_vertex_mem_req[0].size + index_vertex_mem_req[1].size;
+        allocation_info.memoryTypeIndex = attachment_index;
+        vkAllocateMemory(device, &allocation_info, ALLOCATION_CALLBACKS, &index_vertex_device_mem);
+
+        buffer_bind.buffer = index_device_buffer;
+        buffer_bind.memory = index_vertex_device_mem;
+        buffer_bind.memoryOffset = 0;
+        vkBindBufferMemory2(device, 1, &buffer_bind);
+
+        buffer_bind.buffer = vertex_device_buffer;
+        buffer_bind.memory = index_vertex_device_mem;
+        buffer_bind.memoryOffset = index_vertex_mem_req[0].size;
+        vkBindBufferMemory2(device, 1, &buffer_bind);
+
+        vkMapMemory(device, index_vertex_device_mem, 0, VK_WHOLE_SIZE, 0x0, &mapped_ptr);
+
+        *gpu->index_device_allocator = 
+            gpu_get_buf_allocator(
+                index_device_buffer,
+                mapped_ptr,
+                GPU_INDEX_ALLOCATOR_SIZE,
+                32);
+
+        *gpu->vertex_device_allocator = 
+            gpu_get_buf_allocator(
+                vertex_device_buffer,
+                (u8*)mapped_ptr + index_vertex_mem_req[0].size,
+                GPU_VERTEX_ALLOCATOR_SIZE,
+                32);
+
+        gpu->index_host_allocator  = gpu->index_device_allocator;
+        gpu->vertex_host_allocator = gpu->vertex_device_allocator;
+
+    } else {
+
+        if (gpu->vk_queue_indices[0] == gpu->vk_queue_indices[2])
+            gpu->device_buffer_upload_fn = &gpu_device_buffer_upload_non_uma_unified_transfer;
+        else
+            gpu->device_buffer_upload_fn = &gpu_device_buffer_upload_non_uma_discrete_transfer;
+
+        buffer_info.size = GPU_INDEX_ALLOCATOR_SIZE;
+        buffer_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        vkCreateBuffer(device, &buffer_info, ALLOCATION_CALLBACKS, &index_device_buffer);
+
+        buffer_info.size = GPU_VERTEX_ALLOCATOR_SIZE;
+        buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        vkCreateBuffer(device, &buffer_info, ALLOCATION_CALLBACKS, &vertex_device_buffer);
+
+        buffer_info.size  = GPU_INDEX_ALLOCATOR_SIZE;
+        buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        vkCreateBuffer(device, &buffer_info, ALLOCATION_CALLBACKS, &index_host_buffer);
+
+        buffer_info.size  = GPU_VERTEX_ALLOCATOR_SIZE;
+        buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        vkCreateBuffer(device, &buffer_info, ALLOCATION_CALLBACKS, &vertex_host_buffer);
+
+        vkGetBufferMemoryRequirements(device, index_device_buffer,  &index_vertex_mem_req[0]);
+        vkGetBufferMemoryRequirements(device, vertex_device_buffer, &index_vertex_mem_req[1]);
+        vkGetBufferMemoryRequirements(device, index_host_buffer,    &index_vertex_mem_req[2]);
+        vkGetBufferMemoryRequirements(device, vertex_host_buffer,   &index_vertex_mem_req[3]);
+
+        priority.priority = index_vertex_priority_device;
+
+        allocation_info.pNext = &priority;
+        allocation_info.allocationSize  = index_vertex_mem_req[0].size + index_vertex_mem_req[1].size;
+        allocation_info.memoryTypeIndex = attachment_index;
+        vkAllocateMemory(device, &allocation_info, ALLOCATION_CALLBACKS, &index_vertex_device_mem);
+
+        priority.priority = index_vertex_priority_host;
+
+        allocation_info.allocationSize  = index_vertex_mem_req[2].size + index_vertex_mem_req[3].size;
+        allocation_info.memoryTypeIndex = uniform_index;
+        vkAllocateMemory(device, &allocation_info, ALLOCATION_CALLBACKS, &index_vertex_host_mem);
+
+        buffer_bind.buffer = index_device_buffer;
+        buffer_bind.memory = index_vertex_device_mem;
+        buffer_bind.memoryOffset = 0;
+        vkBindBufferMemory2(device, 1, &buffer_bind);
+
+        buffer_bind.buffer = vertex_device_buffer;
+        buffer_bind.memory = index_vertex_device_mem;
+        buffer_bind.memoryOffset = index_vertex_mem_req[0].size;
+        vkBindBufferMemory2(device, 1, &buffer_bind);
+
+        buffer_bind.buffer = index_host_buffer;
+        buffer_bind.memory = index_vertex_host_mem;
+        buffer_bind.memoryOffset = 0;
+        vkBindBufferMemory2(device, 1, &buffer_bind);
+
+        buffer_bind.buffer = vertex_host_buffer;
+        buffer_bind.memory = index_vertex_host_mem;
+        buffer_bind.memoryOffset = index_vertex_mem_req[2].size;
+        vkBindBufferMemory2(device, 1, &buffer_bind);
+
+        vkMapMemory(device, index_vertex_host_mem, 0, VK_WHOLE_SIZE, 0x0, &mapped_ptr);
+
+        *gpu->index_device_allocator =
+            gpu_get_buf_allocator(
+                index_device_buffer,
+                NULL,
+                GPU_INDEX_ALLOCATOR_SIZE,
+                32);
+
+        *gpu->vertex_device_allocator =
+            gpu_get_buf_allocator(
+                vertex_device_buffer,
+                NULL,
+                GPU_VERTEX_ALLOCATOR_SIZE,
+                32);
+
+        *gpu->index_host_allocator =
+            gpu_get_buf_allocator(
+                index_device_buffer,
+                mapped_ptr,
+                GPU_INDEX_ALLOCATOR_SIZE,
+                32);
+
+        *gpu->vertex_host_allocator =
+            gpu_get_buf_allocator(
+                vertex_device_buffer,
+                (u8*)mapped_ptr + index_vertex_mem_req[2].size,
+                GPU_VERTEX_ALLOCATOR_SIZE,
+                32);
+    }
+                          /* Vertex Index End */
+
+    gpu->memory_resources.index_vertex_mems_device[0] = index_vertex_device_mem;
+    gpu->memory_resources.index_vertex_mems_host[0]   = index_vertex_host_mem;
+    //gpu->memory_resources.uniform_mems             ;//= ;
+    //gpu->memory_resources.color_mems               ;//= ;
+    gpu->memory_resources.depth_mems[0]               = depth_mem;
+    //gpu->memory_resources.texture_mems_stage       ;//= ;
+    //gpu->memory_resources.texture_mems_device      ;//= ;
+
+    gpu->memory_resources.index_bufs_device[0]        = index_device_buffer;
+    gpu->memory_resources.vertex_bufs_device[0]       = vertex_device_buffer;
+    gpu->memory_resources.index_bufs_host[0]          = index_host_buffer;
+    gpu->memory_resources.vertex_bufs_host[0]         = vertex_host_buffer;
+    //gpu->memory_resources.uniform_bufs             ;//= ;
+    //gpu->memory_resources.color_attachments        ;//= ;
+    gpu->memory_resources.depth_attachments[0]        = depth;
+    //gpu->memory_resources.texture_stages           ;//= ;
+
+    u64 image_alignment;
 }
 
     /* Host -> Device buffer upload functions*/
@@ -525,65 +821,6 @@ VkSubmitInfo2 gpu_device_buffer_upload_non_uma_discrete_transfer(Gpu_Buffer_Copy
     ret.pWaitSemaphoreInfos = semaphore_info;
     return ret;
 }
-
-// @Todo use the heap size in some way to judge allocation
-void gpu_init_allocators(Gpu *gpu)
-{
-    VkPhysicalDeviceMemoryProperties props;
-    vkGetPhysicalDeviceMemoryProperties(gpu->vk_physical_device, &props);
-
-    /* 
-       I am pretty sure (according to the vma docs) that amd, intel and nvidia have had
-       host coherent for all host visible memory types for a while, therefore I am risking
-       not checking for this.
-    */
-    bool device_coherent = false;
-    bool host_coherent   = false;
-    for(int i = 0; i < props.memoryTypeCount; ++i) {
-        if (props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT  &&
-            props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT &&
-            props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) 
-                device_coherent = true;
-    }
-
-    // @Note remember to consistently check and test with this if on and off
-    // (remove/add the '!')
-    //  v
-    if (!device_coherent) {
-        gpu->device_buffer_upload_fn = &gpu_device_buffer_upload_uma;
-
-        *gpu->index_device_allocator  =
-            gpu_create_vertex_index_linear_allocator_host(
-                    gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_INDEX);
-        *gpu->vertex_device_allocator =
-            gpu_create_vertex_index_linear_allocator_host(
-                    gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_VERTEX);
-
-        gpu->index_staging_allocator  = gpu->index_device_allocator;
-        gpu->vertex_staging_allocator = gpu->vertex_device_allocator;
-
-    } else {
-        if (gpu->vk_queue_indices[0] == gpu->vk_queue_indices[2])
-            gpu->device_buffer_upload_fn = &gpu_device_buffer_upload_non_uma_unified_transfer;
-        else
-            gpu->device_buffer_upload_fn = &gpu_device_buffer_upload_non_uma_discrete_transfer;
-
-        *gpu->index_device_allocator =
-            gpu_create_vertex_index_linear_allocator_device(
-                    gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_INDEX);
-        *gpu->vertex_device_allocator =
-            gpu_create_vertex_index_linear_allocator_device(
-                    gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_VERTEX);
-
-        *gpu->index_staging_allocator =
-            gpu_create_vertex_index_linear_allocator_host(
-                    gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_INDEX);
-        *gpu->vertex_staging_allocator =
-            gpu_create_vertex_index_linear_allocator_host(
-                    gpu->vma_allocator, 10000, GPU_ALLOCATOR_TYPE_VERTEX);
-    }
-}
-
 // `Surface and `Swapchain
 static Window *s_Window;
 Window* get_window_instance() { return s_Window; }
@@ -2107,135 +2344,46 @@ void gpu_destroy_framebuffer(VkDevice vk_device, VkFramebuffer framebuffer) {
 
 /* `Resources */
 
-// `GpuLinearAllocator
-Gpu_Linear_Allocator gpu_create_texture_linear_allocator_host(
-    VmaAllocator vma_allocator, u64 size)
+// `Gpu Buf Allocator
+Gpu_Buf_Allocator 
+gpu_get_buf_allocator(VkBuffer buffer, void *ptr, u64 size, u32 count)
 {
-    VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    size = align(size, 8);
-    buffer_create_info.size  = size;
-    buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    Gpu_Buf_Allocator ret = {};
+    ret.alloc_cap = count;
 
-    VmaAllocationCreateInfo allocation_create_info = {};
-    allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
-    allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                                   VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    VkPhysicalDeviceLimits *lim = &get_gpu_instance()->info.properties.limits;
+    // @Note Assumes that this is great enough alignment for any type of allocator.
+    ret.alignment = lim->nonCoherentAtomSize;
+    ret.cap = align(size, ret.alignment);
+    ret.buf = buffer;
+    ret.ptr = ptr;
 
-    Gpu_Linear_Allocator gpu_linear_allocator = {};
-    VmaAllocationInfo allocation_info = {};
-    auto check = vmaCreateBuffer(
-                    vma_allocator,
-                    &buffer_create_info,
-                    &allocation_create_info,
-                    &gpu_linear_allocator.buffer,
-                    &gpu_linear_allocator.vma_allocation,
-                    &allocation_info);
-
-    DEBUG_OBJ_CREATION(vmaCreateBuffer, check);
-
-    gpu_linear_allocator.cap = size;
-    gpu_linear_allocator.mapped_ptr = allocation_info.pMappedData;
-    gpu_linear_allocator.offset = allocation_info.offset;
-    return gpu_linear_allocator;
+    return ret;
 }
-Gpu_Linear_Allocator gpu_create_vertex_index_linear_allocator_host(
-    VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type) {
-    VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    size = align(size, 8);
-    buffer_create_info.size  = size;
-
-    VmaAllocationCreateInfo allocation_create_info = {};
-    allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
-    allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                                   VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-    // Determine if we will be doing transfer cmds
-    Gpu *gpu = get_gpu_instance();
-    if (gpu->device_buffer_upload_fn == &gpu_device_buffer_upload_uma) {
-
-        if ((VkBufferUsageFlags)usage_type & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) {
-
-            buffer_create_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-            allocation_create_info.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-
-        } else if ((VkBufferUsageFlags)usage_type & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) {
-            buffer_create_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-            allocation_create_info.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        }
-
-    } else if (gpu->device_buffer_upload_fn == &gpu_device_buffer_upload_non_uma_unified_transfer ||
-               gpu->device_buffer_upload_fn == &gpu_device_buffer_upload_non_uma_discrete_transfer) {
-
-        if ((VkBufferUsageFlags)usage_type & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-                                             VK_BUFFER_USAGE_INDEX_BUFFER_BIT) 
-        {
-            buffer_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        }
-    }
-
-    Gpu_Linear_Allocator gpu_linear_allocator = {};
-    VmaAllocationInfo allocation_info = {};
-    auto check = vmaCreateBuffer(
-                    vma_allocator,
-                    &buffer_create_info,
-                    &allocation_create_info,
-                    &gpu_linear_allocator.buffer,
-                    &gpu_linear_allocator.vma_allocation,
-                    &allocation_info);
-
-    DEBUG_OBJ_CREATION(vmaCreateBuffer, check);
-
-    gpu_linear_allocator.cap = size;
-    gpu_linear_allocator.mapped_ptr = allocation_info.pMappedData;
-    gpu_linear_allocator.offset = allocation_info.offset;
-    return gpu_linear_allocator;
-}
-Gpu_Linear_Allocator gpu_create_vertex_index_linear_allocator_device(
-    VmaAllocator vma_allocator, u64 size, Gpu_Allocator_Type usage_type) {
-    VkBufferCreateInfo buffer_create_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    size = align(size, 8);
-    buffer_create_info.size  = size;
-    buffer_create_info.usage = (VkBufferUsageFlags)usage_type;
-
-    VmaAllocationCreateInfo allocation_create_info = {};
-    allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-    allocation_create_info.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-
-    Gpu_Linear_Allocator gpu_linear_allocator = {};
-    auto check = vmaCreateBuffer(vma_allocator, &buffer_create_info, &allocation_create_info, &gpu_linear_allocator.buffer, &gpu_linear_allocator.vma_allocation, NULL);
-    DEBUG_OBJ_CREATION(vmaCreateBuffer, check);
-
-    gpu_linear_allocator.cap = size;
-    return gpu_linear_allocator;
-}
-void gpu_destroy_linear_allocator(VmaAllocator vma_allocator, Gpu_Linear_Allocator *linear_allocator) {
-    vmaDestroyBuffer(vma_allocator, linear_allocator->buffer, linear_allocator->vma_allocation);
-    linear_allocator->used = 0;
-    linear_allocator->cap  = 0;
-}
-void* gpu_make_linear_allocation(Gpu_Linear_Allocator *allocator, u64 size, u64 *offset) {
-    // @Note I removed user setting alignment here:
-    // I need to better check alignment rules for Vulkan resources
-    // to see if 8 is actually fine, or if stuff actually needs greater alignment
-    u64 alignment = 8;
-    u64 alignment_mask = allocator->used & (alignment - 1);
-    allocator->used    = (allocator->used + alignment_mask) & ~alignment_mask;
-
-    u64 ret = allocator->used;
-    if (offset)
-        *offset = ret;
-    allocator->used += size;
-    return (void*)((u8*)allocator->mapped_ptr + ret);
-}
-void gpu_reset_linear_allocator(Gpu_Linear_Allocator *allocator) {
+void gpu_reset_buf_allocator(VkDevice device, Gpu_Buf_Allocator *allocator)
+{
+    allocator->alloc_cnt = 0;
     allocator->used = 0;
 }
-void gpu_cut_tail_linear_allocator(Gpu_Linear_Allocator *allocator, u64 size) {
-    allocator->used -= size;
+void* gpu_make_buf_allocation(Gpu_Buf_Allocator *allocator, u64 size, u64 *ret_offset)
+{
+    allocator->used = align(allocator->used, allocator->alignment);
+    u64 offset = allocator->used;
+
+    allocator->alloc_cnt++;
+    ASSERT(allocator->alloc_cnt <= allocator->alloc_cap, "Gpu Buf Overflow");
+
+    allocator->used += align(size, allocator->alignment);
+    ASSERT(allocator->used <= allocator->cap, "Gpu Buf Overflow");
+
+    if (ret_offset)
+        *ret_offset = offset;
+    
+    return (void*)((u8*)allocator->ptr + offset);
 }
-VkCopyBufferInfo2 gpu_linear_allocator_setup_copy(
-    Gpu_Linear_Allocator *to_allocator, 
-    Gpu_Linear_Allocator *from_allocator, 
+VkCopyBufferInfo2 gpu_buf_allocator_setup_copy(
+    Gpu_Buf_Allocator *to_allocator, 
+    Gpu_Buf_Allocator *from_allocator, 
     u64 src_offset, u64 size)
 {
     VkBufferCopy2 *copy = (VkBufferCopy2*)memory_allocate_temp(sizeof(VkBufferCopy2), 8);
@@ -2244,11 +2392,11 @@ VkCopyBufferInfo2 gpu_linear_allocator_setup_copy(
     copy->dstOffset    = to_allocator->used;
     copy->size         = size;
 
-    gpu_make_linear_allocation(to_allocator, size, NULL);
+    gpu_make_buf_allocation(to_allocator, size, NULL);
 
     VkCopyBufferInfo2 ret = {VK_STRUCTURE_TYPE_COPY_BUFFER_INFO_2};
-    ret.srcBuffer = from_allocator->buffer;
-    ret.dstBuffer = to_allocator->buffer;
+    ret.srcBuffer = from_allocator->buf;
+    ret.dstBuffer = to_allocator->buf;
     ret.regionCount = 1;
     ret.pRegions    = copy;
 
@@ -2256,35 +2404,6 @@ VkCopyBufferInfo2 gpu_linear_allocator_setup_copy(
 }
 
 // `Attachments
-Gpu_Attachment gpu_create_depth_attachment(VmaAllocator vma_allocator, int width, int height) {
-    VkImageCreateInfo imgCreateInfo = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
-    imgCreateInfo.imageType     = VK_IMAGE_TYPE_2D;
-    imgCreateInfo.extent.width  = width;
-    imgCreateInfo.extent.height = height;
-    imgCreateInfo.extent.depth  = 1;
-    imgCreateInfo.mipLevels     = 1;
-    imgCreateInfo.arrayLayers   = 1;
-    imgCreateInfo.format        = VK_FORMAT_D16_UNORM; // 32bit depth accuracy
-    imgCreateInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
-    imgCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imgCreateInfo.usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    imgCreateInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
-
-    VmaAllocationCreateInfo allocCreateInfo = {};
-    allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
-    allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-    allocCreateInfo.priority = 1.0f;
-
-    VkImage img;
-    VmaAllocation alloc;
-    vmaCreateImage(vma_allocator, &imgCreateInfo, &allocCreateInfo, &img, &alloc, nullptr);
-    Gpu_Attachment gpu_image = {.vk_image = img, .vma_allocation = alloc};
-    return gpu_image;
-}
-void gpu_destroy_attachment(VmaAllocator vma_allocator, Gpu_Attachment *image)
-{
-    vmaDestroyImage(vma_allocator, image->vk_image, image->vma_allocation);
-}
 VkImageView gpu_create_depth_attachment_view(VkDevice vk_device, VkImage vk_image)
 {
     VkImageViewCreateInfo create_info = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
@@ -2302,18 +2421,12 @@ VkImageView gpu_create_depth_attachment_view(VkDevice vk_device, VkImage vk_imag
     DEBUG_OBJ_CREATION(vkCreateImageView, check);
     return view;
 }
-void gpu_destroy_image_view(VkDevice vk_device, VkImageView view) {
+void gpu_destroy_image_view(VkDevice vk_device, VkImageView view)
+{
     vkDestroyImageView(vk_device, view, ALLOCATION_CALLBACKS);
 }
 
 // `Textures
-Gpu_Texture gpu_create_Texture(VmaAllocator vma_allocator, int width, int height, Gpu_Texture_Type type)
-{
-    return {};
-}
-void gpu_destroy_Texture(VmaAllocator vma_allocator, Gpu_Texture *Texture)
-{
-}
 
 // `Samplers
 Gpu_Sampler_Storage gpu_create_sampler_storage(int size)
