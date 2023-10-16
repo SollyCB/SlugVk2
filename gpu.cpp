@@ -312,13 +312,13 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
     VkDeviceQueueCreateInfo transfer_queue_create_info;
 
     if (transfer_queue_index != graphics_queue_index) {
-        std::cout << "Selected Device (Primary Choice) " << props.deviceName << '\n';
+        println("Selected Device (Primary Choice) %c", props.deviceName);
 
         queue_info_count++;
         transfer_queue_create_info = graphics_queue_create_info;
         transfer_queue_create_info.queueFamilyIndex = transfer_queue_index;
     } else {
-        std::cout << "Selected Device (Backup) " << props.deviceName << '\n';
+        println("Selected Device (Backup) %c", props.deviceName);
     }
 
     VkDeviceQueueCreateInfo queue_infos[] = { graphics_queue_create_info, transfer_queue_create_info };
