@@ -102,20 +102,6 @@ renderer_setup_vertex_attribute_resources_static_model(Gltf *model, Renderer_Gpu
     gpu_make_buf_allocation(allocators->index_allocator,  0, &ret.index_allocation_start);
     gpu_make_buf_allocation(allocators->vertex_allocator, 0, &ret.vertex_allocation_start);
 
-    // I dont like calling heap allocate in a loop at all, but this is not a tight loop anyway,
-    // and the data per mesh will still be contiguous in memory... I could make a big allocation
-    // and then have each mesh index in, but Idk how much this would help: the data would be
-    // more contiguous, but it would still be random access, unless access pattern will be
-    // looping the meshes without jumps?? Maybe I can add data to the Gltf struct to say the
-    // allocation requirements for all the mesh resources? So that I can make one allocation
-    // here and add all the meshes to it in order?...
-    // t. I am using a fast
-    // allocator anyway, there are never THAT many meshes, but normally lots of primitives,
-    // and to use it it would only be a cache miss everytime you begin a new mesh which is not big
-    // as you are spending most of the time in the primitives...
-    //
-    // (The above is all surrounded in a big "I think??" :D)
-    //
     for(int i = 0; i < mesh_count; ++i) {
         primitive = mesh->primitives;
 

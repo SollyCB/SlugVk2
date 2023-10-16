@@ -260,8 +260,8 @@ VkDevice create_vk_device(Gpu *gpu) { // returns logical device, silently fills 
             {
                 transfer_queue_index = j;
             }
-            if (transfer_queue_index != -1 && graphics_queue_index != -1 && 
-                presentation_queue_index != -1) 
+            if (transfer_queue_index != -1 && graphics_queue_index != -1 &&
+                presentation_queue_index != -1)
             {
                 physical_device_index = i;
                 break_outer = true;
@@ -374,7 +374,7 @@ VkSubmitInfo2 gpu_device_buffer_upload_non_uma_discrete_transfer(Gpu_Buffer_Copy
 // @Todo Unimplemented allocator / memory resource setups:
 //     - Color Attachment
 //     - Uniform
-//     - Texture 
+//     - Texture
 //     - Storage Image
 //     - Storage Buffer
 //     - Recreate depth and color attachments on swapchain recreation (window resize)
@@ -400,7 +400,7 @@ void gpu_init_memory_resources(Gpu *gpu)
 
     if (uma)
         goto memory_type_selection;
-    
+
     for(uint i = 0; i < props.memoryHeapCount; ++i)
         if (props.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
             if (device_heap_size < props.memoryHeaps[i].size) {
@@ -501,7 +501,7 @@ void gpu_init_memory_resources(Gpu *gpu)
 
     VkBufferCreateInfo buffer_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    
+
     VkBuffer index_device_buffer;
     VkBuffer vertex_device_buffer;
     VkBuffer index_host_buffer;
@@ -549,14 +549,14 @@ void gpu_init_memory_resources(Gpu *gpu)
 
         vkMapMemory(device, index_vertex_device_mem, 0, VK_WHOLE_SIZE, 0x0, &mapped_ptr);
 
-        *gpu->index_device_allocator = 
+        *gpu->index_device_allocator =
             gpu_get_buf_allocator(
                 index_device_buffer,
                 mapped_ptr,
                 GPU_INDEX_ALLOCATOR_SIZE,
                 32);
 
-        *gpu->vertex_device_allocator = 
+        *gpu->vertex_device_allocator =
             gpu_get_buf_allocator(
                 vertex_device_buffer,
                 (u8*)mapped_ptr + index_vertex_mem_req[0].size,
@@ -686,7 +686,7 @@ VkSubmitInfo2 gpu_device_buffer_upload_uma(Gpu_Buffer_Copy_Info *info) {
 
     vkBeginCommandBuffer(info->graphics_cmd, &cmd_begin_info);
 
-    VkCommandBufferSubmitInfo *cmd_info = 
+    VkCommandBufferSubmitInfo *cmd_info =
         (VkCommandBufferSubmitInfo*)memory_allocate_temp(
                 sizeof(VkCommandBufferSubmitInfo), 8);
     *cmd_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
@@ -716,7 +716,7 @@ VkSubmitInfo2 gpu_device_buffer_upload_non_uma_unified_transfer(Gpu_Buffer_Copy_
         for(u32 i = 0; i < info->buffer_count; ++i)
             vkCmdCopyBuffer2(info->graphics_cmd, &info->copy_infos[i]);
 
-    VkCommandBufferSubmitInfo *cmd_info = 
+    VkCommandBufferSubmitInfo *cmd_info =
         (VkCommandBufferSubmitInfo*)memory_allocate_temp(
                 sizeof(VkCommandBufferSubmitInfo), 8);
     *cmd_info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
@@ -760,7 +760,7 @@ VkSubmitInfo2 gpu_device_buffer_upload_non_uma_discrete_transfer(Gpu_Buffer_Copy
         graphics_barriers[i].buffer              = info->buffers[i];
         graphics_barriers[i].offset              = 0;
         graphics_barriers[i].size                = VK_WHOLE_SIZE;
-    }                                              
+    }
         // @Note Unsure as whether to separate out vertex and index stages...
 
     VkDependencyInfo transfer_dependency = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
@@ -799,11 +799,11 @@ VkSubmitInfo2 gpu_device_buffer_upload_non_uma_discrete_transfer(Gpu_Buffer_Copy
 
         vkCmdPipelineBarrier2(info->graphics_cmd, &graphics_dependency);
 
-    VkCommandBufferSubmitInfo *cmd_submit_info = 
+    VkCommandBufferSubmitInfo *cmd_submit_info =
         (VkCommandBufferSubmitInfo*)memory_allocate_temp(
                 sizeof(VkCommandBufferSubmitInfo), 8);
 
-    VkSemaphoreSubmitInfo *semaphore_info = 
+    VkSemaphoreSubmitInfo *semaphore_info =
         (VkSemaphoreSubmitInfo*)memory_allocate_temp(
                 sizeof(VkSemaphoreSubmitInfo), 8);
 
@@ -2345,7 +2345,7 @@ void gpu_destroy_framebuffer(VkDevice vk_device, VkFramebuffer framebuffer) {
 /* `Resources */
 
 // `Gpu Buf Allocator
-Gpu_Buf_Allocator 
+Gpu_Buf_Allocator
 gpu_get_buf_allocator(VkBuffer buffer, void *ptr, u64 size, u32 count)
 {
     Gpu_Buf_Allocator ret = {};
@@ -2378,12 +2378,12 @@ void* gpu_make_buf_allocation(Gpu_Buf_Allocator *allocator, u64 size, u64 *ret_o
 
     if (ret_offset)
         *ret_offset = offset;
-    
+
     return (void*)((u8*)allocator->ptr + offset);
 }
 VkCopyBufferInfo2 gpu_buf_allocator_setup_copy(
-    Gpu_Buf_Allocator *to_allocator, 
-    Gpu_Buf_Allocator *from_allocator, 
+    Gpu_Buf_Allocator *to_allocator,
+    Gpu_Buf_Allocator *from_allocator,
     u64 src_offset, u64 size)
 {
     VkBufferCopy2 *copy = (VkBufferCopy2*)memory_allocate_temp(sizeof(VkBufferCopy2), 8);
@@ -2401,6 +2401,24 @@ VkCopyBufferInfo2 gpu_buf_allocator_setup_copy(
     ret.pRegions    = copy;
 
     return ret;
+}
+
+// `Gpu Tex Allocator
+Gpu_Tex_Allocator gpu_create_tex_allocator(VkDeviceMemory img_mem, VkBuffer stage, void *mapped_ptr, u64 byte_cap, u32 img_cap, u64 alignment)
+{
+    Gpu_Tex_Allocator alloc = {};
+    alloc.img_cap = img_cap;
+    alloc.cap = byte_cap;
+    alloc.stage = stage;
+    alloc.mem = img_mem;
+    alloc.ptr = mapped_ptr;
+    alloc.alignment = alignment;
+    alloc.imgs = (VkImage*)memory_allocate_heap(sizeof(VkImage) * img_cap, 8);
+    return alloc;
+}
+void gpu_destroy_tex_allocator(Gpu_Tex_Allocator *alloc)
+{
+    memory_free_heap(alloc->imgs);
 }
 
 // `Attachments

@@ -136,7 +136,7 @@ void gpu_init_memory_resources(Gpu *gpu);
 struct Gpu_Buf_Allocator {
     u32 alloc_cnt;
     u32 alloc_cap;
-    
+
     u64  alignment;
     u64  used;
     u64  cap;
@@ -144,15 +144,19 @@ struct Gpu_Buf_Allocator {
     VkBuffer buf;
     void *ptr;
 };
-/* Idk if this is necessary (the idea was for setting alignments for different types...)
-enum Gpu_Buf_Type {
-    GPU_BUF_TYPE_VERTEX,
-    GPU_BUF_TYPE_UNIFORM,
-    // @Todo add storage versions
-};
-*/
 Gpu_Buf_Allocator gpu_get_buf_allocator(VkBuffer buffer, void *ptr, u64 size, u32 count);
 void gpu_reset_buf_allocator(VkDevice device, Gpu_Buf_Allocator *allocator);
+// Reserve space in allocator; Return pointer to beginning of new allocation
+void* gpu_make_buf_allocation(Gpu_Buf_Allocator *allocator, u64 size, u64 *offset);
+// Get copy information using allocators
+VkCopyBufferInfo2 gpu_buf_allocator_setup_copy(
+    Gpu_Buf_Allocator *to_allocator,
+    Gpu_Buf_Allocator *from_allocator,
+    u64 src_offset, u64 size);
+// Call the correct vertex attribute upload function
+inline static VkSubmitInfo2 gpu_cmd_begin_buf_transfer_graphics(Gpu_Buffer_Copy_Info *info) {
+    return get_gpu_instance()->device_buffer_upload_fn(info);
+}
 
 struct Gpu_Tex_Allocator {
     u32 img_cap;
@@ -167,18 +171,10 @@ struct Gpu_Tex_Allocator {
     VkDeviceMemory mem;
     void *ptr;
 };
-
-// Return mapped ptr + offset into allocation; returns actual offset in 'offset'
-void* gpu_make_buf_allocation(Gpu_Buf_Allocator *allocator, u64 size, u64 *offset);
-// Reduce used by size
-VkCopyBufferInfo2 gpu_buf_allocator_setup_copy(
-    Gpu_Buf_Allocator *to_allocator, 
-    Gpu_Buf_Allocator *from_allocator, 
-    u64 src_offset, u64 size);
-
-inline static VkSubmitInfo2 gpu_cmd_begin_buf_transfer_graphics(Gpu_Buffer_Copy_Info *info) {
-    return get_gpu_instance()->device_buffer_upload_fn(info);
-}
+// Setup allocator; Memory allocate .imgs pointer
+Gpu_Tex_Allocator gpu_create_tex_allocator(VkDeviceMemory img_mem, VkBuffer stage, void *mapped_ptr, u64 byte_cap, u32 img_cap, u64 alignment);
+// Free .imgs pointer
+void gpu_destroy_tex_allocator(Gpu_Tex_Allocator *alloc);
 
 // Surface and Swapchain
 struct Window {
@@ -241,11 +237,11 @@ void gpu_reset_command_allocator(VkDevice vk_device, Gpu_Command_Allocator *allo
 
 // Allocate into allocator.buffers + allocators.in_use (offset pointer); Increment in_use by count;
 // Return pointer to beginning of new allocation
-VkCommandBuffer* 
-gpu_allocate_command_buffers(VkDevice vk_device, Gpu_Command_Allocator *allocator, 
+VkCommandBuffer*
+gpu_allocate_command_buffers(VkDevice vk_device, Gpu_Command_Allocator *allocator,
                              int count, bool secondary);
 
-inline static void 
+inline static void
 gpu_begin_primary_command_buffer(VkCommandBuffer cmd, bool one_time)
 {
     VkCommandBufferBeginInfo info = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
