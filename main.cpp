@@ -78,8 +78,8 @@ int main() {
 
     u64 code_sizes[2];
     const u32 *shader_blobs[2] = {
-        (const u32*)file_read_bin_temp("shaders/vertex_cube_basic.spv", &code_sizes[0]),
-        (const u32*)file_read_bin_temp("shaders/fragment_cube_basic.spv", &code_sizes[1]),
+        (const u32*)file_read_bin_temp("shaders/vertex_cube_basic.vert.spv", &code_sizes[0]),
+        (const u32*)file_read_bin_temp("shaders/fragment_cube_basic.frag.spv", &code_sizes[1]),
     };
 
     int descriptor_set_counts[2];

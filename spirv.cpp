@@ -35,8 +35,10 @@ Create_Vk_Descriptor_Set_Layout_Info* group_spirv(int count, Parsed_Spirv *parse
     int set_count = pop_count64(set_mask);
 
     // Find unique bindings per mask
-    u64 *binding_masks = (u64*)memory_allocate_temp(sizeof(u64) * set_count, 8);
     u64 *binding_mask;
+    u64 *binding_masks = (u64*)memory_allocate_temp(sizeof(u64) * set_count, 8);
+    memset(binding_masks, 0, sizeof(u64) * set_count);
+
     for(int i = 0; i < count; ++i) {
         for(int j = 0; j < parsed_spirv[i].binding_count; ++j)
             binding_masks[parsed_spirv[i].bindings[j].set] |= 1 << parsed_spirv[i].bindings[j].binding;

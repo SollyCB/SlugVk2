@@ -114,7 +114,7 @@ Gltf parse_gltf(const char *filename) {
     //     so if a closing brace is ever found before a key, there must be no keys left in the file.
     //
     u64 size;
-    const char *data = (const char*)file_read_char_heap_padded(filename, &size, 16);
+    const char *data = (const char*)file_read_char_temp_padded(filename, &size, 16);
     Gltf gltf;
     char buf[16];
     u64 offset = 0;
@@ -184,7 +184,6 @@ Gltf parse_gltf(const char *filename) {
             ASSERT(false, "This is not a top level gltf key");
         }
     }
-    memory_free_heap((void*)data); // free file data
 
     //
     // OMFG!! I practically have to rewrite this thing!!! One day maybe I will idk...

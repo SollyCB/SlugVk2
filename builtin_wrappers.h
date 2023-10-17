@@ -1,16 +1,20 @@
 #pragma once
 #include "typedef.h"
+#include <immintrin.h>
+
+inline int count_trailing_zeros_u16(u16 num) {
+    return (int)_tzcnt_u16(num);
+}
+inline int count_trailing_zeros_u32(u32 num) {
+    return (int)_tzcnt_u32(num);
+}
+inline int count_trailing_zeros_u64(u64 num) {
+    return (int)_tzcnt_u64(num);
+}
 
 // builtin wrappers (why the fuck do they differ between compilers!!! the world is retarded)
 #ifndef _WIN32
 // bit manipulation
-inline int count_trailing_zeros_u16(u16 num) {
-    return int(__builtin_ctz(num));
-}
-
-inline int count_trailing_zeros_u32(u32 num) {
-    return __builtin_ctzl(num);
-}
 inline int count_leading_zeros_u16(u16 mask) {
     return __builtin_clzs(mask);
 }
@@ -41,19 +45,6 @@ inline float acosf(float x) {
     return __builtin_acosf(x);
 }
 #else
-// bit manipulation
-inline int count_trailing_zeros_u16(u16 num) {
-    unsigned long tz;
-    // Who needs the return value??
-    _BitScanForward(&tz, num);
-    return tz;
-}
-inline int ctzl(unsigned long num) {
-    unsigned long tz;
-    // Who needs the return value??
-    _BitScanForward(&tz, num);
-    return tz;
-}
 inline int count_leading_zeros_u16(u16 mask) {
     return __lzcnt16(mask);
 }

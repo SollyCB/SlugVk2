@@ -565,6 +565,9 @@ void gpu_init_memory_resources(Gpu *gpu)
 
         gpu->index_host_allocator  = gpu->index_device_allocator;
         gpu->vertex_host_allocator = gpu->vertex_device_allocator;
+        index_vertex_host_mem = NULL;
+        index_host_buffer = NULL;
+        vertex_host_buffer = NULL;
 
     } else {
 
