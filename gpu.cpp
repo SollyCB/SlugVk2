@@ -2342,7 +2342,7 @@ void gpu_destroy_framebuffer(VkDevice vk_device, VkFramebuffer framebuffer) {
     vkDestroyFramebuffer(vk_device, framebuffer, ALLOCATION_CALLBACKS);
 }
 
-/* `Resources */
+/* `Memory Resources */
 
 // `Gpu Buf Allocator
 Gpu_Buf_Allocator
@@ -2404,7 +2404,7 @@ VkCopyBufferInfo2 gpu_buf_allocator_setup_copy(
 }
 
 // `Gpu Tex Allocator
-Gpu_Tex_Allocator gpu_create_tex_allocator(VkDeviceMemory img_mem, VkBuffer stage, void *mapped_ptr, u64 byte_cap, u32 img_cap, u64 alignment)
+Gpu_Tex_Allocator gpu_create_tex_allocator(VkDeviceMemory img_mem, VkBuffer stage, void *mapped_ptr, u64 byte_cap, u32 img_cap)
 {
     Gpu_Tex_Allocator alloc = {};
     alloc.img_cap = img_cap;
@@ -2412,13 +2412,62 @@ Gpu_Tex_Allocator gpu_create_tex_allocator(VkDeviceMemory img_mem, VkBuffer stag
     alloc.stage = stage;
     alloc.mem = img_mem;
     alloc.ptr = mapped_ptr;
-    alloc.alignment = alignment;
+
+    // @Todo add row pitch alignment, not just the host buffer alignment offset
+    alloc.alignment = get_gpu_instance()->info.properties.limits.optimalBufferCopyOffsetAlignment;
+
     alloc.imgs = (VkImage*)memory_allocate_heap(sizeof(VkImage) * img_cap, 8);
+    alloc.offsets = (u64*)memory_allocate_heap(sizeof(u64) * img_cap, 8);
+
     return alloc;
 }
 void gpu_destroy_tex_allocator(Gpu_Tex_Allocator *alloc)
 {
     memory_free_heap(alloc->imgs);
+}
+void* gpu_make_tex_allocation(VkDevice device, Gpu_Tex_Allocator *alloc, u32 width, u32 height, VkImage *image)
+{
+    VkImageCreateInfo info = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    info.imageType     = VK_IMAGE_TYPE_2D;
+    info.format        = VK_FORMAT_R8G8B8A8_SRGB;
+    info.extent        = {.width = width, .height = height, .depth = 1};
+    info.mipLevels     = 1; // @Todo mip mapping
+    info.arrayLayers   = 1;
+    info.samples       = VK_SAMPLE_COUNT_1_BIT; // @Todo multisampling
+    info.tiling        = VK_IMAGE_TILING_OPTIMAL;
+    info.usage         = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    info.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+    info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    auto check = vkCreateImage(device, &info, ALLOCATION_CALLBACKS, image);
+    DEBUG_OBJ_CREATION(vkCreateImage, check);
+
+    alloc->buf_used = align(alloc->buf_used, alloc->alignment);
+    void *ptr = (u8*)alloc->ptr + alloc->buf_used;
+    alloc->offsets[alloc->img_cnt] = alloc->buf_used;
+
+    alloc->buf_used += width * height;
+    alloc->imgs[alloc->img_cnt] = *image;
+    alloc->img_cnt++;
+    // @Todo Handle failure better here, or not? Not because it should never happen
+    ASSERT(alloc->img_cnt <= alloc->img_cap, "Tex Allocator Overflow");
+    ASSERT(alloc->buf_used <= alloc->cap, "Tex Allocator Overflow");
+
+    VkMemoryRequirements req;
+    vkGetImageMemoryRequirements(device, *image, &req);
+    alloc->mem_used = align(alloc->mem_used, req.alignment);
+
+    vkBindImageMemory(device, *image, alloc->mem, alloc->mem_used);
+    alloc->mem_used += req.size;
+    ASSERT(alloc->mem_used <= alloc->cap, "Tex Allocator Overflow");
+
+    return ptr;
+}
+void gpu_reset_tex_allocator(Gpu_Tex_Allocator *alloc)
+{
+    alloc->img_cnt  = 0;
+    alloc->buf_used = 0;
+    alloc->mem_used = 0;
 }
 
 // `Attachments
@@ -2443,8 +2492,6 @@ void gpu_destroy_image_view(VkDevice vk_device, VkImageView view)
 {
     vkDestroyImageView(vk_device, view, ALLOCATION_CALLBACKS);
 }
-
-// `Textures
 
 // `Samplers
 Gpu_Sampler_Storage gpu_create_sampler_storage(int size)

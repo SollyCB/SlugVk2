@@ -163,18 +163,22 @@ struct Gpu_Tex_Allocator {
     u32 img_cnt;
 
     u64 alignment;
-    u64 used;
+    u64 mem_used;
+    u64 buf_used;
     u64 cap;
 
     VkBuffer stage;
+    u64 *offsets;
     VkImage *imgs;
     VkDeviceMemory mem;
     void *ptr;
 };
 // Setup allocator; Memory allocate .imgs pointer
-Gpu_Tex_Allocator gpu_create_tex_allocator(VkDeviceMemory img_mem, VkBuffer stage, void *mapped_ptr, u64 byte_cap, u32 img_cap, u64 alignment);
+Gpu_Tex_Allocator gpu_create_tex_allocator(VkDeviceMemory img_mem, VkBuffer stage, void *mapped_ptr, u64 byte_cap, u32 img_cap);
 // Free .imgs pointer
 void gpu_destroy_tex_allocator(Gpu_Tex_Allocator *alloc);
+void* gpu_make_tex_allocation(Gpu_Tex_Allocator *alloc, u64 width, u64 height, VkImage *image);
+void gpu_reset_tex_allocator(Gpu_Tex_Allocator *alloc);
 
 // Surface and Swapchain
 struct Window {
