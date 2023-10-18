@@ -6,6 +6,14 @@
 #include "gltf.hpp"
 #include "string.hpp"
 
+struct Renderer_Gpu_Allocator_Group {
+    Linear_Allocator  *draw_info_allocator;
+    Gpu_Buf_Allocator *index_allocator;
+    Gpu_Buf_Allocator *vertex_allocator;
+    Gpu_Buf_Allocator *uniform_allocator;
+    Gpu_Tex_Allocator *tex_allocator;
+};
+
 // @Todo Renderer_Draw_Info_Skinned
 
 struct Renderer_Draw_Info_Static {
@@ -28,7 +36,7 @@ struct Renderer_Buffer_View {
 };
 struct Renderer_Vertex_Attribute_Resources {
     int buffer_view_count;
-    int mesh_count; // The number of integers in 'primitive_counts'
+    int mesh_count;
     Renderer_Buffer_View *buffer_views;
 
     // Buffer areas to sync for transfer
@@ -40,14 +48,16 @@ struct Renderer_Vertex_Attribute_Resources {
     Renderer_Mesh *meshes;
     Gpu_Vertex_Input_State **vertex_state_infos; // Temp allocated
 };
-struct Renderer_Gpu_Allocator_Group {
-    Linear_Allocator     *draw_info_allocator;
-    Gpu_Buf_Allocator *index_allocator;
-    Gpu_Buf_Allocator *vertex_allocator;
-    Gpu_Buf_Allocator *uniform_allocator;
+struct Renderer_Texture_Resources {
+    u32 texture_count;
+    VkImage *textures;
+    u64 *offsets;
 };
+
 // Get list of required resources from gltf model
 Renderer_Vertex_Attribute_Resources renderer_setup_vertex_attribute_resources_static_model(
+    Gltf *model, Renderer_Gpu_Allocator_Group *allocators);
+Renderer_Texture_Resources renderer_setup_textures_static_model(
     Gltf *model, Renderer_Gpu_Allocator_Group *allocators);
 Renderer_Draws renderer_download_model_data(
     Gltf *model, Renderer_Vertex_Attribute_Resources *list, const char *model_dir_path);
@@ -60,7 +70,7 @@ Gpu_Rasterization_State renderer_define_rasterization_state(Gpu_Polygon_Mode_Fla
 
 // Pl_Stage_3
 struct Renderer_Fragment_Shader_State_Info {
-    Gpu_Fragment_Shader_Flags flags = 
+    Gpu_Fragment_Shader_Flags flags =
         GPU_FRAGMENT_SHADER_DEPTH_TEST_ENABLE_BIT |
         GPU_FRAGMENT_SHADER_DEPTH_WRITE_ENABLE_BIT;
     VkCompareOp depth_compare_op = VK_COMPARE_OP_LESS;
@@ -70,7 +80,7 @@ struct Renderer_Fragment_Shader_State_Info {
 };
 Gpu_Fragment_Shader_State renderer_define_fragment_shader_state(Renderer_Fragment_Shader_State_Info *info);
 
-// @Todo color blending. The goal here is to have an enum with a bunch of options for typical combinations. 
+// @Todo color blending. The goal here is to have an enum with a bunch of options for typical combinations.
 // Pl_Stage_4
 Gpu_Fragment_Output_State renderer_define_fragment_output_state(Gpu_Blend_Setting blend_setting = GPU_BLEND_SETTING_OPAQUE_FULL_COLOR);
 

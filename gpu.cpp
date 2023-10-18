@@ -2450,7 +2450,7 @@ void* gpu_make_tex_allocation(VkDevice device, Gpu_Tex_Allocator *alloc, u32 wid
     alloc->imgs[alloc->img_cnt] = *image;
     alloc->img_cnt++;
     // @Todo Handle failure better here, or not? Not because it should never happen
-    ASSERT(alloc->img_cnt <= alloc->img_cap, "Tex Allocator Overflow");
+    ASSERT(alloc->img_cnt  <= alloc->img_cap, "Tex Allocator Overflow");
     ASSERT(alloc->buf_used <= alloc->cap, "Tex Allocator Overflow");
 
     VkMemoryRequirements req;

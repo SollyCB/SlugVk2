@@ -249,6 +249,11 @@ renderer_setup_vertex_attribute_resources_static_model(Gltf *model, Renderer_Gpu
 
     return ret;
 }
+
+Renderer_Texture_Resources renderer_setup_textures_static_model(
+    Gltf *model, Renderer_Gpu_Allocator_Group *allocators)
+{}
+
 // @Todo @Speed @MemoryAccess. Idk if this function can benefit from rejigging data, because it
 // seems that the buffer views already exist is the correct grouping. As in I dont think that I can
 // order the data in some way that I can do fewer memcpys using larger contiguous blocks.
