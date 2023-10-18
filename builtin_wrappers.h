@@ -2,19 +2,22 @@
 #include "typedef.h"
 #include <immintrin.h>
 
-inline int count_trailing_zeros_u16(u16 num) {
-    return (int)_tzcnt_u16(num);
-}
-inline int count_trailing_zeros_u32(u32 num) {
-    return (int)_tzcnt_u32(num);
-}
-inline int count_trailing_zeros_u64(u64 num) {
-    return (int)_tzcnt_u64(num);
-}
 
 // builtin wrappers (why the fuck do they differ between compilers!!! the world is retarded)
 #ifndef _WIN32
-// bit manipulation
+    /* bit manipulation */
+inline int count_trailing_zeros_u16(unsigned short a) {
+    // @Note This has to be copied between compiler directives because gcc will not compile
+    // tzcnt16 with only one leading undescore. I assume this is a compiler bug, because tzcnt32
+    // and 64 both want one leading underscore...
+    return (int)__tzcnt_u16(a);
+}
+inline int count_trailing_zeros_u32(unsigned int a) {
+    return (int)_tzcnt_u32(a);
+}
+inline int count_trailing_zeros_u64(u64 a) {
+    return (int)_tzcnt_u64(a);
+}
 inline int count_leading_zeros_u16(u16 mask) {
     return __builtin_clzs(mask);
 }
@@ -31,7 +34,7 @@ inline int pop_count64(u64 num) {
     return (int)__builtin_popcount(num);
 }
 
-// math
+    /* math */
 inline float sinf(float x) {
     return __builtin_sinf(x);
 }
@@ -45,6 +48,15 @@ inline float acosf(float x) {
     return __builtin_acosf(x);
 }
 #else
+inline int count_trailing_zeros_u16(unsigned short a) {
+    return (int)_tzcnt_u16(a);
+}
+inline int count_trailing_zeros_u32(unsigned int a) {
+    return (int)_tzcnt_u32(a);
+}
+inline int count_trailing_zeros_u64(u64 a) {
+    return (int)_tzcnt_u64(a);
+}
 inline int count_leading_zeros_u16(u16 mask) {
     return __lzcnt16(mask);
 }
